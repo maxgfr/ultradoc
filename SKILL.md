@@ -53,9 +53,11 @@ hand control back mid-retrieval.
    ```
    node scripts/ultradoc.mjs ask --repo <url> --q "<precise question>" --sources code,issues,prs,docs
    ```
-   Add `--docs-url <official-docs-page>` when the project's docs live off-repo.
-   Add `web,so` when the question is conceptual or the repo is sparse. The
-   command prints the dossier path.
+   ultradoc auto-discovers the project's **official docs URL** from its own
+   README/manifests (and prioritizes the canonical in-repo `docs/` tree), then
+   grounds against it — pass `--docs-url <url>` only to override. Add `web,so`
+   when the question is conceptual or the repo is sparse. The command prints the
+   dossier path.
 
 3. **Read the dossier.** Open `EVIDENCE.md` in the run folder. Each item has an
    id (`[E1]`, `[E2]`, …), a provenance `ref`, and a snippet. This is your

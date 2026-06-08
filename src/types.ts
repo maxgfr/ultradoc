@@ -70,6 +70,8 @@ export interface StructuralIndex {
   symbols: CodeSymbol[];
   docFiles: string[]; // README, docs/**, *.md, *.mdx, *.rst …
   configFiles: string[]; // package.json, pyproject.toml, go.mod …
+  docsRoot?: string; // canonical in-repo docs folder, e.g. "docs" (discovered)
+  docsUrl?: string; // official external docs URL discovered from README/manifests
   schemaVersion: number;
 }
 

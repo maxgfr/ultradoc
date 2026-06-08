@@ -295,6 +295,7 @@ async function main(): Promise<void> {
               repo: ctx.repoRef.raw, dir: ctx.repoDir, commit: ctx.index.commit,
               fileCount: ctx.index.fileCount, symbols: ctx.index.symbols.length,
               docFiles: ctx.index.docFiles.length, configFiles: ctx.index.configFiles.length,
+              docsRoot: ctx.index.docsRoot, docsUrl: ctx.index.docsUrl,
               languages: ctx.index.languages,
             },
             null,
@@ -308,6 +309,8 @@ async function main(): Promise<void> {
         `  path:     ${ctx.repoDir}`,
         `  files:    ${ctx.index.fileCount} · symbols: ${ctx.index.symbols.length} · docs: ${ctx.index.docFiles.length} · config: ${ctx.index.configFiles.length}`,
         `  langs:    ${langs.join(" · ")}`,
+        ...(ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : []),
+        ...(ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : []),
       ];
       process.stderr.write(lines.join("\n") + "\n");
       return;

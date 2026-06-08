@@ -4,8 +4,9 @@ import type { StructuralIndex, CodeSymbol } from "../types.js";
 import { walk, readText } from "../walk.js";
 import { extractSymbols, languageOf } from "../lang/registry.js";
 import { headCommit } from "../clone.js";
+import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 // Files that are documentation: conventional top-level docs, anything under a
 // docs tree, and prose extensions. Used to feed the `docs` source and to weight
@@ -43,7 +44,7 @@ function isConfig(rel: string): boolean {
 export function buildIndex(
   root: string,
   slug: string,
-  opts: { maxFiles?: number } = {},
+  opts: { maxFiles?: number; project?: string[] } = {},
 ): StructuralIndex {
   const files = walk(root, { maxFiles: opts.maxFiles });
   const languages: Record<string, number> = {};
@@ -66,6 +67,8 @@ export function buildIndex(
     for (const s of syms.slice(0, 400)) symbols.push(s);
   }
 
+  const sortedDocs = docFiles.sort();
+  const sortedConfigs = configFiles.sort();
   const index: StructuralIndex = {
     slug,
     root,
@@ -74,8 +77,12 @@ export function buildIndex(
     fileCount: files.length,
     languages,
     symbols,
-    docFiles: docFiles.sort(),
-    configFiles: configFiles.sort(),
+    docFiles: sortedDocs,
+    configFiles: sortedConfigs,
+    // Discover the canonical docs folder + official docs URL once, from the
+    // repo's own README/manifests, and cache them so questions cost no extra work.
+    docsRoot: discoverDocsRoot(sortedDocs),
+    docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
     schemaVersion: SCHEMA_VERSION,
   };
 
@@ -106,11 +113,11 @@ export function loadIndex(root: string): StructuralIndex | undefined {
 export function ensureIndex(
   root: string,
   slug: string,
-  opts: { refresh?: boolean; maxFiles?: number } = {},
+  opts: { refresh?: boolean; maxFiles?: number; project?: string[] } = {},
 ): StructuralIndex {
   if (!opts.refresh) {
     const existing = loadIndex(root);
     if (existing) return existing;
   }
-  return buildIndex(root, slug, { maxFiles: opts.maxFiles });
+  return buildIndex(root, slug, { maxFiles: opts.maxFiles, project: opts.project });
 }

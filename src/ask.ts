@@ -10,7 +10,10 @@ import type { DossierPaths } from "./dossier.js";
 export function buildContext(options: AskOptions): RunContext {
   const repoRef = resolveRepo(options.repo);
   const repoDir = ensureClone(repoRef, { refresh: options.refresh, branch: options.ref });
-  const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh });
+  // Pass the repo/owner name so docs-URL discovery can prefer the project's own
+  // documentation over links to dependencies.
+  const project = [repoRef.repo, repoRef.owner].filter((x): x is string => !!x);
+  const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
   return { repoRef, repoDir, index, options };
 }
 

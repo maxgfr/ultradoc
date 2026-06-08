@@ -278,7 +278,7 @@ function originUrl(dir) {
 
 // src/index/structural.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2 } from "fs";
-import { join as join3 } from "path";
+import { join as join4 } from "path";
 
 // src/walk.ts
 import { readdirSync as readdirSync2, statSync as statSync2, readFileSync } from "fs";
@@ -810,11 +810,98 @@ function languageOf(ext) {
   return BY_EXT.get(ext)?.lang ?? extToLang(ext);
 }
 
+// src/sources/doc-discovery.ts
+import { join as join3 } from "path";
+var DOC_DIR = /(^|\/)(docs?|documentation|website|guides?|book|manual|handbook|reference)$/i;
+function discoverDocsRoot(docFiles) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const rel of docFiles) {
+    const parts = rel.split("/");
+    for (const depth of [1, 2]) {
+      if (parts.length <= depth) continue;
+      const dir = parts.slice(0, depth).join("/");
+      if (DOC_DIR.test(dir)) counts.set(dir, (counts.get(dir) ?? 0) + 1);
+    }
+  }
+  let best;
+  let bestN = 1;
+  for (const [k, v] of counts) {
+    if (v > bestN || v === bestN && best && k.length < best.length) {
+      best = k;
+      bestN = v;
+    }
+  }
+  return best;
+}
+var KNOWN_DOC_HOST = /readthedocs\.(io|org)|\.gitbook\.io|mintlify|docusaurus|\.readme\.io/i;
+var HOSTED = /\.github\.io|\.netlify\.app|\.vercel\.app|\.pages\.dev/i;
+var DOC_SUBDOMAIN = /^https?:\/\/docs?\./i;
+var DOC_PATH = /(^|\/)(docs?|documentation|guide|guides|manual|handbook|reference|learn)(\/|$|#|\?)/i;
+var URL_RE = /https?:\/\/[^\s)"'<>`\]]+/g;
+function scoreDocUrl(url, context) {
+  let s = 0;
+  if (DOC_SUBDOMAIN.test(url)) s += 5;
+  if (KNOWN_DOC_HOST.test(url)) s += 5;
+  if (DOC_PATH.test(url)) s += 3;
+  if (HOSTED.test(url) && DOC_PATH.test(url)) s += 1;
+  if (/\b(documentation|docs|guide|manual|reference|api docs)\b/i.test(context)) s += 2;
+  const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+  const depth = (path.match(/\//g) ?? []).length;
+  if (depth >= 3) s -= Math.min(2, (depth - 2) * 0.5);
+  return s;
+}
+function clean(url) {
+  return url.replace(/[.,;]+$/, "").replace(/\)+$/, "");
+}
+function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
+  const candidates = [];
+  const names = projectNames.filter((n) => n && n.length >= 3).map((n) => n.toLowerCase());
+  const related = (url) => names.some((n) => url.toLowerCase().includes(n));
+  const add = (url, context, bonus = 0) => {
+    const u = clean(url);
+    if (!/^https?:\/\//.test(u)) return;
+    candidates.push({ url: u, score: scoreDocUrl(u, context) + bonus + (related(u) ? 3 : 0) });
+  };
+  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
+  if (readme) {
+    const text = readText(join3(repoDir, readme)).slice(0, 4e4);
+    let m;
+    const link = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+    while (m = link.exec(text)) add(m[2], m[1]);
+    for (const line of text.split("\n")) {
+      if (!/\b(doc|documentation|guide|manual|reference)\b/i.test(line)) continue;
+      const urls = line.match(URL_RE);
+      if (urls) for (const u of urls) add(u, line);
+    }
+  }
+  for (const cfg of configFiles) {
+    const base = cfg.split("/").pop().toLowerCase();
+    const text = readText(join3(repoDir, cfg));
+    if (!text) continue;
+    if (base === "package.json" || base === "composer.json") {
+      try {
+        const j = JSON.parse(text);
+        if (typeof j.homepage === "string") add(j.homepage, "homepage", 1);
+        if (typeof j.documentation === "string") add(j.documentation, "documentation", 8);
+        const docs = j.support?.docs ?? j.support?.documentation;
+        if (typeof docs === "string") add(docs, "documentation", 8);
+      } catch {
+      }
+    } else if (base === "pyproject.toml" || base === "setup.cfg") {
+      const m = /^\s*Documentation\s*=\s*["']?(https?:\/\/[^"'\s]+)/im.exec(text);
+      if (m) add(m[1], "documentation", 8);
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  return best && best.score >= 4 ? best.url : void 0;
+}
+
 // src/index/structural.ts
-var SCHEMA_VERSION = 1;
+var SCHEMA_VERSION = 2;
 var DOC_BASENAME = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
 var DOC_EXT = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
-var DOC_DIR = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
+var DOC_DIR2 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
 var CONFIG_BASENAME = /* @__PURE__ */ new Set([
   "package.json",
   "pnpm-workspace.yaml",
@@ -841,14 +928,14 @@ var CONFIG_BASENAME = /* @__PURE__ */ new Set([
   "manifest.json"
 ]);
 function indexDir(root) {
-  return join3(root, ".ultradoc");
+  return join4(root, ".ultradoc");
 }
 function indexPath(root) {
-  return join3(indexDir(root), "index.json");
+  return join4(indexDir(root), "index.json");
 }
 function isDoc(rel, ext) {
   const base = rel.split("/").pop().toLowerCase();
-  return DOC_EXT.has(ext) || DOC_BASENAME.test(base) || DOC_DIR.test(rel);
+  return DOC_EXT.has(ext) || DOC_BASENAME.test(base) || DOC_DIR2.test(rel);
 }
 function isConfig(rel) {
   return CONFIG_BASENAME.has(rel.split("/").pop().toLowerCase());
@@ -869,6 +956,8 @@ function buildIndex(root, slug, opts = {}) {
     const syms = extractSymbols(f.rel, f.ext, content);
     for (const s of syms.slice(0, 400)) symbols.push(s);
   }
+  const sortedDocs = docFiles.sort();
+  const sortedConfigs = configFiles.sort();
   const index = {
     slug,
     root,
@@ -877,8 +966,12 @@ function buildIndex(root, slug, opts = {}) {
     fileCount: files.length,
     languages,
     symbols,
-    docFiles: docFiles.sort(),
-    configFiles: configFiles.sort(),
+    docFiles: sortedDocs,
+    configFiles: sortedConfigs,
+    // Discover the canonical docs folder + official docs URL once, from the
+    // repo's own README/manifests, and cache them so questions cost no extra work.
+    docsRoot: discoverDocsRoot(sortedDocs),
+    docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
     schemaVersion: SCHEMA_VERSION
   };
   try {
@@ -904,11 +997,11 @@ function ensureIndex(root, slug, opts = {}) {
     const existing = loadIndex(root);
     if (existing) return existing;
   }
-  return buildIndex(root, slug, { maxFiles: opts.maxFiles });
+  return buildIndex(root, slug, { maxFiles: opts.maxFiles, project: opts.project });
 }
 
 // src/index/search.ts
-import { join as join4, relative as relative2, sep as sep2 } from "path";
+import { join as join5, relative as relative2, sep as sep2 } from "path";
 var MAX_KEYWORDS = 8;
 var CONTEXT = 3;
 function rgSearch(root, kws) {
@@ -1080,7 +1173,7 @@ function searchCode(root, ref, index, question, perSource) {
   const items = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
-    const content = readText(join4(root, f.rel));
+    const content = readText(join5(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let start;
@@ -1118,7 +1211,7 @@ function searchCode(root, ref, index, question, perSource) {
 
 // src/index/semantic.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
-import { join as join5, dirname } from "path";
+import { join as join6, dirname } from "path";
 import { fileURLToPath } from "url";
 
 // src/sources/fetch.ts
@@ -1280,7 +1373,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join5(repoDir, ".ultradoc", "semantic.json");
+  return join6(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name}`);
@@ -1304,7 +1397,7 @@ async function buildIfNeeded(ctx) {
   const chunks = [];
   for (const rel of files) {
     if (chunks.length >= MAX_CHUNKS) break;
-    const content = readText(join5(ctx.repoDir, rel));
+    const content = readText(join6(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
     for (const c2 of chunkText(rel, content, isDoc2)) {
@@ -1383,10 +1476,10 @@ async function semanticSearch(ctx) {
 }
 function composeFile() {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const cand of [join5(here, "..", "docker-compose.yml"), join5(here, "docker-compose.yml")]) {
+  for (const cand of [join6(here, "..", "docker-compose.yml"), join6(here, "docker-compose.yml")]) {
     if (existsSync3(cand)) return cand;
   }
-  return join5(here, "..", "docker-compose.yml");
+  return join6(here, "..", "docker-compose.yml");
 }
 function semanticControl(action) {
   if (!["up", "down", "status"].includes(action)) {
@@ -1451,7 +1544,25 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
-import { join as join6 } from "path";
+import { join as join7 } from "path";
+import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
+async function getDocText(repoDir, url) {
+  const dir = join7(repoDir, ".ultradoc", "extdocs");
+  const file = join7(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt");
+  try {
+    if (existsSync4(file)) return { text: readFileSync4(file, "utf8") };
+  } catch {
+  }
+  const res = await fetchAndExtract(url);
+  if (res.text) {
+    try {
+      mkdirSync4(dir, { recursive: true });
+      writeFileSync3(file, res.text);
+    } catch {
+    }
+  }
+  return res;
+}
 async function docsSource(ctx) {
   const notes = [];
   const kws = keywords(ctx.options.question).map((k) => k.toLowerCase());
@@ -1459,7 +1570,7 @@ async function docsSource(ctx) {
   const scored = [];
   for (const rel of ctx.index.docFiles) {
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join6(ctx.repoDir, rel));
+    const content = readText(join7(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -1478,7 +1589,8 @@ async function docsSource(ctx) {
       }
     }
     if (covered.size === 0) continue;
-    const boost = /readme|getting|guide|usage|tutorial/i.test(rel) ? 1.2 : 1;
+    const inDocsRoot = ctx.index.docsRoot ? rel.startsWith(ctx.index.docsRoot + "/") : false;
+    const boost = (/readme|getting|guide|usage|tutorial/i.test(rel) ? 1.2 : 1) * (inDocsRoot ? 1.5 : 1);
     scored.push({ rel, score: covered.size * 3 * boost + bestHits * 0.5, anchor: bestLine, lines });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
@@ -1495,19 +1607,16 @@ async function docsSource(ctx) {
       url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${d.rel}`
     });
   }
-  if (ctx.options.docsUrl) {
-    const { text, note } = await fetchAndExtract(ctx.options.docsUrl);
+  const docsUrl = ctx.options.docsUrl ?? ctx.index.docsUrl;
+  if (docsUrl) {
+    const discovered = !ctx.options.docsUrl;
+    const { text, note } = await getDocText(ctx.repoDir, docsUrl);
     if (note) notes.push(note);
     if (text) {
-      const ext = excerptsFromText(
-        text,
-        ctx.options.docsUrl,
-        `Official docs \u2014 ${ctx.options.docsUrl}`,
-        "docs",
-        ctx.options.question,
-        ctx.options.perSource
-      );
+      const label = discovered ? `Official docs (auto-discovered) \u2014 ${docsUrl}` : `Official docs \u2014 ${docsUrl}`;
+      const ext = excerptsFromText(text, docsUrl, label, "docs", ctx.options.question, ctx.options.perSource);
       items.push(...ext);
+      if (discovered) notes.push(`Auto-discovered official docs from the repo: ${docsUrl}`);
       if (ext.length === 0) notes.push("Fetched the docs URL but found no keyword matches in it.");
     }
   }
@@ -1867,8 +1976,8 @@ async function runSources(ctx) {
 }
 
 // src/dossier.ts
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync3 } from "fs";
-import { join as join7 } from "path";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync4 } from "fs";
+import { join as join8 } from "path";
 var SOURCE_ORDER = ["code", "docs", "issue", "pr", "so", "web"];
 var SOURCE_LABEL = {
   code: "Code",
@@ -1889,7 +1998,7 @@ function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(slug, d) {
-  return join7(cacheRoot(), slug, "runs", runId(d));
+  return join8(cacheRoot(), slug, "runs", runId(d));
 }
 function assignIds(results) {
   const flat = results.flatMap((r) => r.items);
@@ -1945,13 +2054,13 @@ function renderEvidenceMarkdown(evidence, meta) {
   return out.join("\n");
 }
 function writeDossier(dir, evidence, meta) {
-  mkdirSync4(dir, { recursive: true });
-  const evidenceJson = join7(dir, "evidence.json");
-  const evidenceMd = join7(dir, "EVIDENCE.md");
-  const metaJson = join7(dir, "meta.json");
-  writeFileSync3(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync3(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync3(metaJson, JSON.stringify(meta, null, 2));
+  mkdirSync5(dir, { recursive: true });
+  const evidenceJson = join8(dir, "evidence.json");
+  const evidenceMd = join8(dir, "EVIDENCE.md");
+  const metaJson = join8(dir, "meta.json");
+  writeFileSync4(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync4(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync4(metaJson, JSON.stringify(meta, null, 2));
   return { dir, evidenceJson, evidenceMd, metaJson };
 }
 
@@ -1959,7 +2068,8 @@ function writeDossier(dir, evidence, meta) {
 function buildContext(options) {
   const repoRef = resolveRepo(options.repo);
   const repoDir = ensureClone(repoRef, { refresh: options.refresh, branch: options.ref });
-  const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh });
+  const project = [repoRef.repo, repoRef.owner].filter((x) => !!x);
+  const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
   return { repoRef, repoDir, index, options };
 }
 async function runAsk(options) {
@@ -1989,8 +2099,8 @@ async function runSingleSource(options, kind) {
 }
 
 // src/check.ts
-import { existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
-import { join as join8 } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
+import { join as join9 } from "path";
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
@@ -2019,9 +2129,9 @@ function resolves(tok, evidence, ids, refs) {
 function checkRun(dir) {
   const errors = [];
   const warnings = [];
-  const answerPath = join8(dir, "ANSWER.md");
-  const evidencePath = join8(dir, "evidence.json");
-  if (!existsSync4(evidencePath)) {
+  const answerPath = join9(dir, "ANSWER.md");
+  const evidencePath = join9(dir, "evidence.json");
+  if (!existsSync5(evidencePath)) {
     return {
       ok: false,
       citations: [],
@@ -2034,7 +2144,7 @@ function checkRun(dir) {
   }
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync4(evidencePath, "utf8"));
+    evidence = JSON.parse(readFileSync5(evidencePath, "utf8"));
   } catch (e) {
     return {
       ok: false,
@@ -2046,7 +2156,7 @@ function checkRun(dir) {
       warnings: []
     };
   }
-  if (!existsSync4(answerPath)) {
+  if (!existsSync5(answerPath)) {
     return {
       ok: false,
       citations: [],
@@ -2057,7 +2167,7 @@ function checkRun(dir) {
       warnings: []
     };
   }
-  const answer = readFileSync4(answerPath, "utf8");
+  const answer = readFileSync5(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const citations = [];
@@ -2418,6 +2528,8 @@ async function main() {
               symbols: ctx.index.symbols.length,
               docFiles: ctx.index.docFiles.length,
               configFiles: ctx.index.configFiles.length,
+              docsRoot: ctx.index.docsRoot,
+              docsUrl: ctx.index.docsUrl,
               languages: ctx.index.languages
             },
             null,
@@ -2430,7 +2542,9 @@ async function main() {
         `ultradoc: indexed ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
         `  path:     ${ctx.repoDir}`,
         `  files:    ${ctx.index.fileCount} \xB7 symbols: ${ctx.index.symbols.length} \xB7 docs: ${ctx.index.docFiles.length} \xB7 config: ${ctx.index.configFiles.length}`,
-        `  langs:    ${langs.join(" \xB7 ")}`
+        `  langs:    ${langs.join(" \xB7 ")}`,
+        ...ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : [],
+        ...ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : []
       ];
       process.stderr.write(lines.join("\n") + "\n");
       return;
