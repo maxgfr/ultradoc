@@ -1,0 +1,116 @@
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { StructuralIndex, CodeSymbol } from "../types.js";
+import { walk, readText } from "../walk.js";
+import { extractSymbols, languageOf } from "../lang/registry.js";
+import { headCommit } from "../clone.js";
+
+const SCHEMA_VERSION = 1;
+
+// Files that are documentation: conventional top-level docs, anything under a
+// docs tree, and prose extensions. Used to feed the `docs` source and to weight
+// code search away from prose.
+const DOC_BASENAME = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
+const DOC_EXT = new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
+const DOC_DIR = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
+
+// Manifests / config that reveal the stack, deps, scripts and entry points.
+const CONFIG_BASENAME = new Set([
+  "package.json", "pnpm-workspace.yaml", "tsconfig.json", "pyproject.toml", "setup.py",
+  "setup.cfg", "requirements.txt", "pipfile", "go.mod", "cargo.toml", "gemfile", "pom.xml",
+  "build.gradle", "build.gradle.kts", "composer.json", "mix.exs", "pubspec.yaml", "build.sbt",
+  "dockerfile", "docker-compose.yml", "makefile", ".env.example", "manifest.json",
+]);
+
+export function indexDir(root: string): string {
+  return join(root, ".ultradoc");
+}
+export function indexPath(root: string): string {
+  return join(indexDir(root), "index.json");
+}
+
+function isDoc(rel: string, ext: string): boolean {
+  const base = rel.split("/").pop()!.toLowerCase();
+  return DOC_EXT.has(ext) || DOC_BASENAME.test(base) || DOC_DIR.test(rel);
+}
+function isConfig(rel: string): boolean {
+  return CONFIG_BASENAME.has(rel.split("/").pop()!.toLowerCase());
+}
+
+// Build the deterministic structural index from a working tree: language
+// histogram, declared symbols, and the doc/config file lists. No LLM, no
+// network. Persisted under <root>/.ultradoc/index.json for reuse.
+export function buildIndex(
+  root: string,
+  slug: string,
+  opts: { maxFiles?: number } = {},
+): StructuralIndex {
+  const files = walk(root, { maxFiles: opts.maxFiles });
+  const languages: Record<string, number> = {};
+  const symbols: CodeSymbol[] = [];
+  const docFiles: string[] = [];
+  const configFiles: string[] = [];
+
+  for (const f of files) {
+    const lang = languageOf(f.ext);
+    languages[lang] = (languages[lang] ?? 0) + 1;
+    if (isDoc(f.rel, f.ext)) docFiles.push(f.rel);
+    if (isConfig(f.rel)) configFiles.push(f.rel);
+
+    // Only read+extract from files an extractor can handle, to bound work on
+    // huge repos. Other files remain fully searchable via ripgrep.
+    const content = readText(f.abs);
+    if (!content) continue;
+    const syms = extractSymbols(f.rel, f.ext, content);
+    // Cap symbols per file to avoid a generated/giant file dominating.
+    for (const s of syms.slice(0, 400)) symbols.push(s);
+  }
+
+  const index: StructuralIndex = {
+    slug,
+    root,
+    commit: headCommit(root),
+    builtAt: new Date().toISOString(),
+    fileCount: files.length,
+    languages,
+    symbols,
+    docFiles: docFiles.sort(),
+    configFiles: configFiles.sort(),
+    schemaVersion: SCHEMA_VERSION,
+  };
+
+  try {
+    mkdirSync(indexDir(root), { recursive: true });
+    writeFileSync(indexPath(root), JSON.stringify(index));
+  } catch {
+    // A read-only tree still works in-memory; persistence is an optimization.
+  }
+  return index;
+}
+
+export function loadIndex(root: string): StructuralIndex | undefined {
+  const p = indexPath(root);
+  if (!existsSync(p)) return undefined;
+  try {
+    const idx = JSON.parse(readFileSync(p, "utf8")) as StructuralIndex;
+    if (idx.schemaVersion !== SCHEMA_VERSION) return undefined;
+    return idx;
+  } catch {
+    return undefined;
+  }
+}
+
+// Return a usable index, building it once and reusing it thereafter (unless
+// `refresh`). The cached index lives inside the clone, so it is discarded
+// whenever the clone is refreshed.
+export function ensureIndex(
+  root: string,
+  slug: string,
+  opts: { refresh?: boolean; maxFiles?: number } = {},
+): StructuralIndex {
+  if (!opts.refresh) {
+    const existing = loadIndex(root);
+    if (existing) return existing;
+  }
+  return buildIndex(root, slug, { maxFiles: opts.maxFiles });
+}

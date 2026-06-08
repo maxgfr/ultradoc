@@ -1,0 +1,63 @@
+{
+  "name": "ultradoc",
+  "version": "0.0.0",
+  "description": "Answer ultra-precise questions about any open-source project from its real source code, issues, PRs, docs and the web — grounded retrieval, not the model's memory. A skills.sh agent skill.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "bin": {
+    "ultradoc": "scripts/ultradoc.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "scripts",
+    "references",
+    "assets",
+    "src",
+    "docker-compose.yml",
+    "docker"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check:build": "tsup && git diff --exit-code -- scripts/ultradoc.mjs",
+    "demo": "node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib --q \"how does the retry backoff work?\" --sources code,docs --out /tmp/ultradoc-demo",
+    "release": "semantic-release"
+  },
+  "keywords": [
+    "skills",
+    "agent-skill",
+    "skills.sh",
+    "documentation",
+    "code-search",
+    "rag",
+    "open-source",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "author": "maxgfr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxgfr/ultradoc"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/node": "^20.14.0",
+    "semantic-release": "^24.2.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.0",
+    "yaml": "^2.9.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24]
+    name: build-test (node ${{ matrix.node-version }})
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build is reproducible (committed bundle up to date)
+        run: pnpm run check:build # tsup && git diff --exit-code -- scripts/ultradoc.mjs
+
+      - name: Test
+        run: pnpm test
+
+      - name: Smoke-run the committed bundle (offline, fixture repo)
+        run: pnpm run demo # node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib ...
+
+      - name: Assert dossier was produced
+        run: test -f /tmp/ultradoc-demo/evidence.json && test -f /tmp/ultradoc-demo/EVIDENCE.md
+
+  # The shipped scripts/ultradoc.mjs is a dependency-free bundle that declares
+  # engines.node ">=18", but the dev toolchain (vitest 4) needs Node >=20.19 —
+  # so build-test above can't prove the floor. This job runs ONLY the committed
+  # bundle on Node 18, with no install, to guarantee the published ">=18"
+  # promise actually holds (a Node 20+ API sneaking into src/ would build green
+  # on Node 24 yet break for real users on 18; this catches that).
+  runtime-node-floor:
+    runs-on: ubuntu-latest
+    name: runtime (Node 18 floor, zero-dep bundle)
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 18
+
+      - name: Offline ask (code + docs) runs on Node 18
+        run: |
+          node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib --q "how does the retry backoff work?" --sources code,docs --out "$RUNNER_TEMP/u18"
+          test -f "$RUNNER_TEMP/u18/evidence.json"
+          test -f "$RUNNER_TEMP/u18/EVIDENCE.md"
+
+      - name: Citation check runs on Node 18
+        run: |
+          node scripts/ultradoc.mjs check --run "$RUNNER_TEMP/u18" || true

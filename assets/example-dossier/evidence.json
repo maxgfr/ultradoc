@@ -1,0 +1,96 @@
+[
+  {
+    "id": "E1",
+    "source": "code",
+    "title": "src/retry.ts — interface RetryOptions",
+    "ref": "src/retry.ts",
+    "location": "src/retry.ts:1-19",
+    "score": 20.5,
+    "snippet": "export interface RetryOptions {\n  maxRetries: number;\n  baseDelayMs: number;\n  maxDelayMs: number;\n  jitter: boolean;\n}\n\nexport const DEFAULT_RETRY: RetryOptions = {\n  maxRetries: 5,\n  baseDelayMs: 200,\n  maxDelayMs: 10_000,\n  jitter: true,\n};\n\n// Compute the exponential backoff delay for a given attempt. The delay doubles\n// each attempt (2^attempt * base), is capped at maxDelayMs, and — when jitter\n// is enabled — is randomized in [delay/2, delay] to avoid thundering-herd\n// retries hammering the server in lockstep.\nexport function computeBackoff(attempt: number, opts: RetryOptions): number {",
+    "meta": {
+      "matchedKeywords": [
+        "retry",
+        "backoff",
+        "http",
+        "retried"
+      ],
+      "symbol": "RetryOptions"
+    }
+  },
+  {
+    "id": "E2",
+    "source": "code",
+    "title": "src/client.ts — class HttpClient",
+    "ref": "src/client.ts",
+    "location": "src/client.ts:8-25",
+    "score": 16.7,
+    "snippet": "// A tiny HTTP client that wraps every GET in the retry/backoff policy.\nexport class HttpClient {\n  private baseUrl: string;\n  private retry: RetryOptions;\n\n  constructor(opts: ClientOptions) {\n    this.baseUrl = opts.baseUrl.replace(/\\/$/, \"\");\n    this.retry = { ...DEFAULT_RETRY, ...opts.retry };\n  }\n\n  async get(path: string): Promise<{ status: number; value: string; attempts: number }> {\n    return retryRequest(async () => {\n      const res = await fetch(`${this.baseUrl}${path}`);\n      return { status: res.status, value: await res.text() };\n    }, this.retry);\n  }\n}\n",
+    "meta": {
+      "matchedKeywords": [
+        "retry",
+        "http",
+        "backoff"
+      ],
+      "symbol": "HttpClient"
+    }
+  },
+  {
+    "id": "E3",
+    "source": "code",
+    "title": "src/index.ts — match",
+    "ref": "src/index.ts",
+    "location": "src/index.ts:1-9",
+    "score": 11.8,
+    "snippet": "export { HttpClient } from \"./client.js\";\nexport {\n  retryRequest,\n  computeBackoff,\n  isRetryable,\n  DEFAULT_RETRY,\n  type RetryOptions,\n} from \"./retry.js\";\n",
+    "meta": {
+      "matchedKeywords": [
+        "http",
+        "retry",
+        "backoff"
+      ]
+    }
+  },
+  {
+    "id": "E4",
+    "source": "code",
+    "title": "package.json — match",
+    "ref": "package.json",
+    "location": "package.json:1-7",
+    "score": 9.4,
+    "snippet": "{\n  \"name\": \"sample-lib\",\n  \"version\": \"1.0.0\",\n  \"description\": \"A tiny HTTP client with retry + exponential backoff, used as an ultradoc test fixture.\",\n  \"type\": \"module\",\n  \"main\": \"src/index.ts\"\n}",
+    "meta": {
+      "matchedKeywords": [
+        "http",
+        "retry",
+        "backoff"
+      ]
+    }
+  },
+  {
+    "id": "E5",
+    "source": "code",
+    "title": "README.md — match",
+    "ref": "README.md",
+    "location": "README.md:1-25",
+    "score": 8.55,
+    "snippet": "# sample-lib\n\nA tiny HTTP client with automatic retries.\n\n## Retry and backoff\n\nFailed requests are retried with **exponential backoff**. The delay starts at\n`baseDelayMs` and doubles on every attempt (`2^attempt * base`), capped at\n`maxDelayMs`. When `jitter` is enabled (the default), the delay is randomized\nbetween half and the full computed value to avoid a thundering herd of clients\nretrying in lockstep.\n\nOnly transient failures are retried: network errors, HTTP `429` (rate limit),\nand `5xx` responses. Other `4xx` statuses are considered permanent and are not\nretried.\n\n```ts\nimport { HttpClient } from \"sample-lib\";\n\nconst client = new HttpClient({\n  baseUrl: \"https://api.example.com\",\n  retry: { maxRetries: 5, baseDelayMs: 200, maxDelayMs: 10_000, jitter: true },\n});\n\nconst res = await client.get(\"/users\");",
+    "meta": {
+      "matchedKeywords": [
+        "http",
+        "retry",
+        "backoff",
+        "retried",
+        "statuses"
+      ]
+    }
+  },
+  {
+    "id": "E6",
+    "source": "docs",
+    "title": "README.md (in-repo docs)",
+    "ref": "README.md",
+    "location": "README.md:1-18",
+    "score": 19,
+    "snippet": "# sample-lib\n\nA tiny HTTP client with automatic retries.\n\n## Retry and backoff\n\nFailed requests are retried with **exponential backoff**. The delay starts at\n`baseDelayMs` and doubles on every attempt (`2^attempt * base`), capped at\n`maxDelayMs`. When `jitter` is enabled (the default), the delay is randomized\nbetween half and the full computed value to avoid a thundering herd of clients\nretrying in lockstep.\n\nOnly transient failures are retried: network errors, HTTP `429` (rate limit),\nand `5xx` responses. Other `4xx` statuses are considered permanent and are not\nretried.\n\n```ts\nimport { HttpClient } from \"sample-lib\";"
+  }
+]

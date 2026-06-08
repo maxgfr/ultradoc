@@ -1,0 +1,13 @@
+{
+  "question": "How does the retry backoff work, and which HTTP statuses are retried?",
+  "repo": "tests/fixtures/sample-lib",
+  "host": "local",
+  "sources": [
+    "code",
+    "docs"
+  ],
+  "semantic": false,
+  "evidenceCount": 6,
+  "builtAt": "2026-06-08T11:36:19.635Z",
+  "notes": []
+}

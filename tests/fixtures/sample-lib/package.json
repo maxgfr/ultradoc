@@ -1,0 +1,7 @@
+{
+  "name": "sample-lib",
+  "version": "1.0.0",
+  "description": "A tiny HTTP client with retry + exponential backoff, used as an ultradoc test fixture.",
+  "type": "module",
+  "main": "src/index.ts"
+}
