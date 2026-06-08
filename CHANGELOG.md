@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.2.0](https://github.com/maxgfr/ultradoc/compare/v1.1.1...v1.2.0) (2026-06-08)
+
+
+### Features
+
+* auto-discover the project's official docs (folder + URL) from its .md/manifests ([7b0b113](https://github.com/maxgfr/ultradoc/commit/7b0b11320994132313f801b8a2aeb4c5db9a0b66))
+
 ## [1.1.1](https://github.com/maxgfr/ultradoc/compare/v1.1.0...v1.1.1) (2026-06-08)
 
 
