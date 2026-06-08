@@ -1458,6 +1458,7 @@ async function docsSource(ctx) {
   const items = [];
   const scored = [];
   for (const rel of ctx.index.docFiles) {
+    if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
     const content = readText(join6(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
@@ -1580,18 +1581,34 @@ var github = {
       return { items: [], notes: ["No owner/repo resolved; cannot query GitHub issues/PRs."] };
     }
     const ranked = rankedKeywords(question);
-    const singles = ranked.slice(0, 3).map((k) => [k]);
-    const attempts = uniqueAttempts([ranked.slice(0, 3), ranked.slice(0, 2), ...singles]);
+    if (ranked.length === 0) return { items: [], notes: [`No keywords to search ${kind}s.`] };
     let lastError;
-    for (const terms of attempts) {
-      if (terms.length === 0) continue;
-      const { items, error } = await query(ref, terms, kind, perSource);
+    for (const terms of uniqueAttempts([ranked.slice(0, 3), ranked.slice(0, 2)])) {
+      const { items, error } = await query(ref, terms, kind, perSource * 2);
       if (error) lastError = error;
-      if (items.length) return { items, notes: [] };
+      if (items.length) return { items: rerank(items, ranked).slice(0, perSource), notes: [] };
     }
+    const seen = /* @__PURE__ */ new Map();
+    for (const t of ranked.slice(0, 4)) {
+      const { items, error } = await query(ref, [t], kind, perSource * 2);
+      if (error) lastError = error;
+      for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
+    }
+    const merged = rerank([...seen.values()], ranked).slice(0, perSource);
+    if (merged.length) return { items: merged, notes: [] };
     return { items: [], notes: lastError ? [lastError] : [`No ${kind}s matched the question.`] };
   }
 };
+function rerank(items, ranked) {
+  const terms = ranked.map((t) => t.toLowerCase());
+  const coverage = (it) => {
+    const hay = `${it.title} ${it.snippet}`.toLowerCase();
+    let c2 = 0;
+    for (const t of terms) if (hay.includes(t)) c2++;
+    return c2;
+  };
+  return items.map((it) => ({ it, c: coverage(it), s: it.score })).sort((a, b) => b.c - a.c || b.s - a.s).map((x) => x.it);
+}
 function uniqueAttempts(lists) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];

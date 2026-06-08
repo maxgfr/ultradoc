@@ -17,6 +17,10 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
 
   const scored: { rel: string; score: number; anchor: number; lines: string[] }[] = [];
   for (const rel of ctx.index.docFiles) {
+    // Skip docs that ship inside test fixtures, examples, or vendored deps —
+    // e.g. a bundled third-party lib's README is never the answer to a question
+    // about the host project.
+    if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
     const content = readText(join(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
