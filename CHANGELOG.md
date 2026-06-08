@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.1.0](https://github.com/maxgfr/ultradoc/compare/v1.0.0...v1.1.0) (2026-06-08)
+
+
+### Features
+
+* symbol extractors for 9 more languages + lockfile/ranking fixes ([ebd0869](https://github.com/maxgfr/ultradoc/commit/ebd0869708dd8b09a98e2b5dae94f44b3a5b0f48))
+
 # 1.0.0 (2026-06-08)
 
 
