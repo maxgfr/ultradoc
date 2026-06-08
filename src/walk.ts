@@ -10,6 +10,15 @@ const IGNORE_DIRS = new Set([
   "tmp", ".ultradoc", "Pods", "DerivedData", ".terraform", "elm-stuff", ".dart_tool",
 ]);
 
+// Lockfiles: huge, machine-generated, and pure noise for a code/docs question —
+// they'd otherwise rank as keyword-dense "code" hits (e.g. package-lock.json
+// matching a dependency name). Skipped entirely.
+const LOCKFILES = new Set([
+  "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+  "composer.lock", "cargo.lock", "poetry.lock", "pipfile.lock", "gemfile.lock", "go.sum",
+  "flake.lock", "packages.lock.json", "podfile.lock", "mix.lock",
+]);
+
 // Binary / non-source extensions to skip when reading file contents.
 const BINARY_EXT = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".icns", ".svg", ".pdf", ".zip",
@@ -62,6 +71,7 @@ export function walk(root: string, opts: WalkOptions = {}): WalkedFile[] {
       }
       if (!st.isFile()) continue;
       if (st.size > maxFileBytes) continue;
+      if (LOCKFILES.has(name.toLowerCase())) continue;
       const ext = extname(name).toLowerCase();
       if (BINARY_EXT.has(ext)) continue;
       if (name.endsWith(".min.js") || name.endsWith(".min.css")) continue;

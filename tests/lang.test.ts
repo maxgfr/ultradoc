@@ -50,6 +50,83 @@ type Config struct {}`;
     expect(syms.find((s) => s.name === "Config")).toMatchObject({ kind: "struct" });
   });
 
+  it("extracts C# types and methods with visibility", () => {
+    const src = `public class LoggerConfiguration {
+    public Logger CreateLogger() { }
+    private void Flush() { }
+}
+internal interface ISink { }
+public enum LogLevel { }`;
+    const s = extractSymbols("a.cs", ".cs", src);
+    const by = Object.fromEntries(s.map((x) => [x.name, x]));
+    expect(by.LoggerConfiguration).toMatchObject({ kind: "class", exported: true });
+    expect(by.CreateLogger).toMatchObject({ kind: "method", exported: true });
+    expect(by.Flush).toMatchObject({ exported: false });
+    expect(by.ISink).toMatchObject({ kind: "interface" });
+    expect(by.LogLevel).toMatchObject({ kind: "enum" });
+  });
+
+  it("extracts PHP classes and functions", () => {
+    const src = `class Client {
+    public function send() {}
+    private function build() {}
+}
+interface ClientInterface {}
+trait HasHeaders {}`;
+    const s = extractSymbols("a.php", ".php", src);
+    const by = Object.fromEntries(s.map((x) => [x.name, x]));
+    expect(by.Client).toMatchObject({ kind: "class" });
+    expect(by.send).toMatchObject({ kind: "function", exported: true });
+    expect(by.build).toMatchObject({ exported: false });
+    expect(by.ClientInterface).toMatchObject({ kind: "interface" });
+    expect(by.HasHeaders).toMatchObject({ kind: "trait" });
+  });
+
+  it("extracts Elixir modules and def/defp", () => {
+    const src = `defmodule Ecto.Query do
+  def from(expr) do
+  end
+  defp build(x) do
+  end
+  defmacro where(q) do
+  end
+end`;
+    const s = extractSymbols("a.ex", ".ex", src);
+    const by = Object.fromEntries(s.map((x) => [x.name, x]));
+    expect(by["Ecto.Query"]).toMatchObject({ kind: "module" });
+    expect(by.from).toMatchObject({ kind: "function", exported: true });
+    expect(by.build).toMatchObject({ kind: "function", exported: false });
+    expect(by.where).toMatchObject({ kind: "macro" });
+  });
+
+  it("extracts shell functions (both syntaxes, incl. .zsh)", () => {
+    const src = `function is_plugin {
+  return 0
+}
+load_plugin() {
+  echo hi
+}`;
+    const s = extractSymbols("plugin.zsh", ".zsh", src);
+    const names = s.map((x) => x.name);
+    expect(names).toContain("is_plugin");
+    expect(names).toContain("load_plugin");
+    expect(languageOf(".zsh")).toBe("shell");
+  });
+
+  it("extracts Swift and Kotlin declarations", () => {
+    const swiftSyms = extractSymbols("a.swift", ".swift", `public func validate() {}\nstruct Request {}\nprivate func internalOnly() {}`);
+    const sby = Object.fromEntries(swiftSyms.map((x) => [x.name, x]));
+    expect(sby.validate).toMatchObject({ kind: "function", exported: true });
+    expect(sby.Request).toMatchObject({ kind: "struct" });
+    expect(sby.internalOnly).toMatchObject({ exported: false });
+
+    const kotlinSyms = extractSymbols("a.kt", ".kt", `class ConnectionPool {\n  fun reuse() {}\n  private fun evict() {}\n}`);
+    const kby = Object.fromEntries(kotlinSyms.map((x) => [x.name, x]));
+    expect(kby.ConnectionPool).toMatchObject({ kind: "class" });
+    expect(kby.reuse).toMatchObject({ kind: "function", exported: true });
+    expect(kby.evict).toMatchObject({ exported: false });
+  });
+
   it("returns [] for an unknown extension but still labels the language", () => {
     expect(extractSymbols("a.txt", ".txt", "hello")).toEqual([]);
     expect(languageOf(".ts")).toBe("javascript/typescript");

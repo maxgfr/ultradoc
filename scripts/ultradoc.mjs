@@ -316,6 +316,23 @@ var IGNORE_DIRS = /* @__PURE__ */ new Set([
   "elm-stuff",
   ".dart_tool"
 ]);
+var LOCKFILES = /* @__PURE__ */ new Set([
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+  "composer.lock",
+  "cargo.lock",
+  "poetry.lock",
+  "pipfile.lock",
+  "gemfile.lock",
+  "go.sum",
+  "flake.lock",
+  "packages.lock.json",
+  "podfile.lock",
+  "mix.lock"
+]);
 var BINARY_EXT = /* @__PURE__ */ new Set([
   ".png",
   ".jpg",
@@ -392,6 +409,7 @@ function walk(root, opts = {}) {
       }
       if (!st.isFile()) continue;
       if (st.size > maxFileBytes) continue;
+      if (LOCKFILES.has(name.toLowerCase())) continue;
       const ext = extname(name).toLowerCase();
       if (BINARY_EXT.has(ext)) continue;
       if (name.endsWith(".min.js") || name.endsWith(".min.css")) continue;
@@ -466,6 +484,7 @@ var EXT_LANG = {
   ".kt": "kotlin",
   ".kts": "kotlin",
   ".scala": "scala",
+  ".sc": "scala",
   ".clj": "clojure",
   ".ex": "elixir",
   ".exs": "elixir",
@@ -475,6 +494,12 @@ var EXT_LANG = {
   ".lua": "lua",
   ".sh": "shell",
   ".bash": "shell",
+  ".zsh": "shell",
+  ".ksh": "shell",
+  ".fish": "shell",
+  ".hh": "cpp",
+  ".m": "objective-c",
+  ".mm": "objective-c",
   ".sql": "sql",
   ".graphql": "graphql",
   ".gql": "graphql",
@@ -604,8 +629,172 @@ var rust = {
   }
 };
 
+// src/lang/csharp.ts
+var pub2 = (_m, l) => /\b(public|internal)\b/.test(l);
+var RULES7 = [
+  { re: /^\s*(?:public|internal|protected|private)?\s*(?:static\s+|sealed\s+|abstract\s+|partial\s+)*(?:class|record)\s+(?<name>\w+)/, kind: "class", exported: pub2 },
+  { re: /^\s*(?:public|internal|protected|private)?\s*(?:partial\s+)?interface\s+(?<name>\w+)/, kind: "interface", exported: pub2 },
+  { re: /^\s*(?:public|internal|protected|private)?\s*(?:readonly\s+)?(?:ref\s+)?struct\s+(?<name>\w+)/, kind: "struct", exported: pub2 },
+  { re: /^\s*(?:public|internal|protected|private)?\s*enum\s+(?<name>\w+)/, kind: "enum", exported: pub2 },
+  // method: a visibility modifier, a return type, then `name(`
+  { re: /^\s*(?:public|internal|protected|private)\s+(?:static\s+|virtual\s+|override\s+|async\s+|sealed\s+|abstract\s+|new\s+)*[\w<>\[\],.?]+\s+(?<name>\w+)\s*(?:<[^>]*>)?\s*\(/, kind: "method", exported: pub2 }
+];
+var csharp = {
+  lang: "csharp",
+  exts: [".cs"],
+  extract(rel, content) {
+    return scan(rel, content, "csharp", RULES7);
+  }
+};
+
+// src/lang/php.ts
+var RULES8 = [
+  { re: /^\s*(?:abstract\s+|final\s+)*class\s+(?<name>\w+)/, kind: "class", exported: true },
+  { re: /^\s*interface\s+(?<name>\w+)/, kind: "interface", exported: true },
+  { re: /^\s*trait\s+(?<name>\w+)/, kind: "trait", exported: true },
+  { re: /^\s*enum\s+(?<name>\w+)/, kind: "enum", exported: true },
+  {
+    re: /^\s*(?:public\s+|protected\s+|private\s+|static\s+|abstract\s+|final\s+)*function\s+(?<name>\w+)\s*\(/,
+    kind: "function",
+    exported: (_m, l) => !/\b(private|protected)\b/.test(l)
+  }
+];
+var php = {
+  lang: "php",
+  exts: [".php"],
+  extract(rel, content) {
+    return scan(rel, content, "php", RULES8);
+  }
+};
+
+// src/lang/swift.ts
+var vis = (_m, l) => !/\b(private|fileprivate)\b/.test(l);
+var MODS = "(?:public\\s+|open\\s+|internal\\s+|private\\s+|fileprivate\\s+)?(?:final\\s+)?";
+var RULES9 = [
+  { re: new RegExp(`^\\s*${MODS}class\\s+(?<name>\\w+)`), kind: "class", exported: vis },
+  { re: new RegExp(`^\\s*${MODS}struct\\s+(?<name>\\w+)`), kind: "struct", exported: vis },
+  { re: new RegExp(`^\\s*${MODS}enum\\s+(?<name>\\w+)`), kind: "enum", exported: vis },
+  { re: new RegExp(`^\\s*${MODS}protocol\\s+(?<name>\\w+)`), kind: "protocol", exported: vis },
+  { re: /^\s*(?:public\s+|open\s+|internal\s+|private\s+|fileprivate\s+)?(?:static\s+|class\s+|final\s+|override\s+|mutating\s+|@\w+\s+)*func\s+(?<name>\w+)/, kind: "function", exported: vis }
+];
+var swift = {
+  lang: "swift",
+  exts: [".swift"],
+  extract(rel, content) {
+    return scan(rel, content, "swift", RULES9);
+  }
+};
+
+// src/lang/kotlin.ts
+var vis2 = (_m, l) => !/\b(private|internal)\b/.test(l);
+var RULES10 = [
+  { re: /^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|sealed\s+|open\s+|final\s+|data\s+)*class\s+(?<name>\w+)/, kind: "class", exported: vis2 },
+  { re: /^\s*(?:public\s+|internal\s+|private\s+|fun\s+)?interface\s+(?<name>\w+)/, kind: "interface", exported: vis2 },
+  { re: /^\s*(?:public\s+|internal\s+|private\s+|companion\s+)?object\s+(?<name>\w+)/, kind: "object", exported: vis2 },
+  { re: /^\s*(?:public\s+|internal\s+|private\s+|protected\s+|override\s+|open\s+|abstract\s+|suspend\s+|inline\s+|operator\s+)*fun\s+(?:<[^>]*>\s+)?(?<name>\w+)\s*\(/, kind: "function", exported: vis2 }
+];
+var kotlin = {
+  lang: "kotlin",
+  exts: [".kt", ".kts"],
+  extract(rel, content) {
+    return scan(rel, content, "kotlin", RULES10);
+  }
+};
+
+// src/lang/c.ts
+var NOT_KEYWORD = "(?!\\s*(?:if|for|while|switch|return|else|do|sizeof|typedef)\\b)";
+var RULES11 = [
+  // C++ types
+  { re: /^\s*(?:class|struct)\s+(?<name>[A-Za-z_]\w+)\s*(?:[:{]|$)/, kind: "class", exported: true },
+  { re: /^\s*namespace\s+(?<name>[A-Za-z_]\w+)/, kind: "namespace", exported: true },
+  // typedef struct/enum/union NAME {
+  { re: /^\s*(?:typedef\s+)?(?:struct|enum|union)\s+(?<name>[A-Za-z_]\w+)\s*\{/, kind: "struct", exported: true },
+  // function definition: <type ...> name(<args>) [const] {?  at column 0-ish
+  { re: new RegExp(`^${NOT_KEYWORD}[A-Za-z_][\\w\\s\\*&<>:,]*?\\b(?<name>[A-Za-z_]\\w+)\\s*\\([^;{]*\\)\\s*(?:const)?\\s*\\{?\\s*$`), kind: "function", exported: true }
+];
+var c = {
+  lang: "c/cpp",
+  exts: [".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh"],
+  extract(rel, content) {
+    return scan(rel, content, rel.match(/\.(c|h)$/) ? "c" : "cpp", RULES11);
+  }
+};
+
+// src/lang/lua.ts
+var RULES12 = [
+  { re: /^\s*local\s+function\s+(?<name>[\w.:]+)\s*\(/, kind: "function", exported: false },
+  { re: /^\s*function\s+(?<name>[\w.:]+)\s*\(/, kind: "function", exported: true },
+  { re: /^\s*(?:local\s+)?(?<name>[\w.]+)\s*=\s*function\s*\(/, kind: "function", exported: true }
+];
+var lua = {
+  lang: "lua",
+  exts: [".lua"],
+  extract(rel, content) {
+    return scan(rel, content, "lua", RULES12);
+  }
+};
+
+// src/lang/shell.ts
+var RULES13 = [
+  { re: /^\s*function\s+(?<name>[\w:-]+)\s*(?:\(\))?\s*\{?/, kind: "function", exported: true },
+  { re: /^\s*(?<name>[A-Za-z_][\w:-]*)\s*\(\)\s*\{?/, kind: "function", exported: true }
+];
+var shell = {
+  lang: "shell",
+  exts: [".sh", ".bash", ".zsh", ".ksh"],
+  extract(rel, content) {
+    return scan(rel, content, "shell", RULES13);
+  }
+};
+
+// src/lang/elixir.ts
+var RULES14 = [
+  { re: /^\s*defmodule\s+(?<name>[\w.]+)/, kind: "module", exported: true },
+  { re: /^\s*defp\s+(?<name>[\w?!]+)/, kind: "function", exported: false },
+  { re: /^\s*def\s+(?<name>[\w?!]+)/, kind: "function", exported: true },
+  { re: /^\s*defmacrop?\s+(?<name>[\w?!]+)/, kind: "macro", exported: true }
+];
+var elixir = {
+  lang: "elixir",
+  exts: [".ex", ".exs"],
+  extract(rel, content) {
+    return scan(rel, content, "elixir", RULES14);
+  }
+};
+
+// src/lang/scala.ts
+var RULES15 = [
+  { re: /^\s*(?:final\s+|sealed\s+|abstract\s+|implicit\s+)*(?:case\s+)?class\s+(?<name>\w+)/, kind: "class", exported: true },
+  { re: /^\s*(?:sealed\s+)?trait\s+(?<name>\w+)/, kind: "trait", exported: true },
+  { re: /^\s*(?:case\s+)?object\s+(?<name>\w+)/, kind: "object", exported: true },
+  { re: /^\s*(?:override\s+|final\s+|private\s+|protected\s+|implicit\s+)*def\s+(?<name>\w+)/, kind: "def", exported: (_m, l) => !/\b(private|protected)\b/.test(l) }
+];
+var scala = {
+  lang: "scala",
+  exts: [".scala", ".sc"],
+  extract(rel, content) {
+    return scan(rel, content, "scala", RULES15);
+  }
+};
+
 // src/lang/registry.ts
-var EXTRACTORS = [jsTs, python, go, ruby, java, rust];
+var EXTRACTORS = [
+  jsTs,
+  python,
+  go,
+  ruby,
+  java,
+  rust,
+  csharp,
+  php,
+  swift,
+  kotlin,
+  c,
+  lua,
+  shell,
+  elixir,
+  scala
+];
 var BY_EXT = /* @__PURE__ */ new Map();
 for (const e of EXTRACTORS) for (const ext of e.exts) BY_EXT.set(ext, e);
 function extractSymbols(rel, ext, content) {
@@ -736,7 +925,21 @@ function rgSearch(root, kws) {
     "-g",
     "!**/node_modules/**",
     "-g",
-    "!**/{dist,build,vendor}/**"
+    "!**/{dist,build,vendor}/**",
+    // Lockfiles are machine-generated noise (walk skips them for the index, but
+    // ripgrep scans the tree directly, so exclude them here too).
+    "-g",
+    "!**/*.lock",
+    "-g",
+    "!**/package-lock.json",
+    "-g",
+    "!**/npm-shrinkwrap.json",
+    "-g",
+    "!**/pnpm-lock.yaml",
+    "-g",
+    "!**/yarn.lock",
+    "-g",
+    "!**/go.sum"
   ];
   for (const kw of kws) args.push("-e", kw);
   args.push(root);
@@ -1104,8 +1307,8 @@ async function buildIfNeeded(ctx) {
     const content = readText(join5(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
-    for (const c of chunkText(rel, content, isDoc2)) {
-      chunks.push(c);
+    for (const c2 of chunkText(rel, content, isDoc2)) {
+      chunks.push(c2);
       if (chunks.length >= MAX_CHUNKS) break;
     }
   }
@@ -1126,13 +1329,13 @@ async function buildIfNeeded(ctx) {
     return up.ok;
   };
   for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i];
-    const vector = i === 0 ? first : await embed(c.text);
+    const c2 = chunks[i];
+    const vector = i === 0 ? first : await embed(c2.text);
     if (!vector) continue;
     points.push({
       id: i + 1,
       vector,
-      payload: { rel: c.rel, start: c.start, end: c.end, isDoc: c.isDoc, snippet: c.text.slice(0, 1500) }
+      payload: { rel: c2.rel, start: c2.start, end: c2.end, isDoc: c2.isDoc, snippet: c2.text.slice(0, 1500) }
     });
     if (points.length >= 64 && !await flush()) return { error: "failed to upsert vectors to Qdrant" };
   }
@@ -1852,11 +2055,11 @@ function checkRun(dir) {
   }
   const resolved = [];
   const dangling = [];
-  for (const c of citations) {
-    if (resolves(c, evidence, ids, refs)) resolved.push(c);
-    else dangling.push(c);
+  for (const c2 of citations) {
+    if (resolves(c2, evidence, ids, refs)) resolved.push(c2);
+    else dangling.push(c2);
   }
-  const citedIds = new Set(resolved.filter((c) => SHAPE.id.test(c)));
+  const citedIds = new Set(resolved.filter((c2) => SHAPE.id.test(c2)));
   const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
   if (citations.length === 0) {
     errors.push("ANSWER.md contains no citations \u2014 a grounded answer must cite evidence ids like [E1].");

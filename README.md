@@ -85,6 +85,13 @@ well-known, lesser-known, and deliberately-odd repos across 5 languages:
 Top hits land on the actual implementation, not changelogs or examples. Shallow,
 filtered clones keep even a 2,700-file monorepo at a few seconds.
 
+Separately stress-tested across **15 more repositories in 13+ languages**
+(`axios`, `zod`, `fzf`, `mdBook`, `sinatra`, `guzzle`, `Alamofire`, `okhttp`,
+`serilog`, `ecto`, `pydantic`, `svelte`, `ohmyzsh`, `tldr`, `neovim`) — every
+one indexed and answered without a crash, with symbol-aware retrieval landing on
+the right layer (e.g. `Alamofire` → `Validation.swift`, `neovim` → `event/loop.h`,
+`serilog` → `Core/Logger.cs`).
+
 ## How it works
 
 ```
@@ -101,8 +108,9 @@ question + repo URL
 Two retrieval tiers:
 
 - **Tier 1 — deterministic (default).** ripgrep + a structural symbol index
-  (functions, classes, exports, …) across JS/TS, Python, Go, Ruby, Java, Rust and
-  more. Zero dependencies, no keys, offline, reproducible.
+  (functions, classes, exports, …) across **15 languages** — JS/TS, Python, Go,
+  Ruby, Java, Rust, C#, PHP, Swift, Kotlin, C/C++, Lua, Shell, Elixir, Scala.
+  Zero dependencies, no keys, offline, reproducible.
 - **Tier 2 — semantic (optional).** Fully-local vector search — Qdrant + a local
   embedding model (`nomic-embed-text`) — started with `ultradoc semantic up`. No
   key, nothing leaves your machine. Fuses with Tier 1 via Reciprocal Rank Fusion,

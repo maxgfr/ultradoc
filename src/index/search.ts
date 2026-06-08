@@ -29,6 +29,10 @@ function rgSearch(root: string, kws: string[]): Map<string, FileHits> {
   const args = [
     "--json", "-i", "-F", "--max-count", "40", "--max-filesize", "1M",
     "-g", "!**/.ultradoc/**", "-g", "!**/node_modules/**", "-g", "!**/{dist,build,vendor}/**",
+    // Lockfiles are machine-generated noise (walk skips them for the index, but
+    // ripgrep scans the tree directly, so exclude them here too).
+    "-g", "!**/*.lock", "-g", "!**/package-lock.json", "-g", "!**/npm-shrinkwrap.json",
+    "-g", "!**/pnpm-lock.yaml", "-g", "!**/yarn.lock", "-g", "!**/go.sum",
   ];
   for (const kw of kws) args.push("-e", kw);
   args.push(root);
