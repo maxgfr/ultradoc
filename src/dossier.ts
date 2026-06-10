@@ -58,7 +58,8 @@ export function renderEvidenceMarkdown(
   out.push(`**Question:** ${meta.question}`);
   out.push(
     `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}` +
-      `${meta.ref ? ` (ref: ${meta.ref})` : ""} · **host:** ${meta.host}`,
+      `${meta.ref ? ` (ref: ${meta.ref})` : ""} · **host:** ${meta.host}` +
+      `${meta.pkg ? ` · **package:** ${meta.pkg}` : ""}`,
   );
   out.push(`**Sources:** ${meta.sources.join(", ")} · **semantic:** ${meta.semantic ? "on" : "off"} · **built:** ${meta.builtAt}`);
   out.push("");

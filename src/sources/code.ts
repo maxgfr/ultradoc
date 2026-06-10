@@ -13,11 +13,14 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
     ctx.index,
     ctx.options.question,
     ctx.options.perSource,
+    ctx.scopeDir,
   );
 
   if (!ctx.options.semantic) return { source: "code", items: lexical.items, notes: lexical.notes };
 
   const sem = await semanticSearch(ctx);
+  // Semantic chunks cover the whole repo; honor a --package scope here too.
+  if (ctx.scopeDir) sem.items = sem.items.filter((it) => it.ref.startsWith(ctx.scopeDir + "/"));
   if (!sem.available) {
     return {
       source: "code",

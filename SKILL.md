@@ -1,6 +1,6 @@
 ---
 name: ultradoc
-description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', questions about a specific function/flag/option in a named open-source project."
+description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
 license: MIT
 metadata:
   version: 1.2.0
@@ -25,19 +25,27 @@ metadata:
 One committed, dependency-free bundle: `node scripts/ultradoc.mjs <command>`.
 No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
 
-- `ask --repo <url|path> --q "<question>" [--sources ...] [--semantic] [--docs-url <u>]`
+- `ask --repo <url|path> --q "<question>" [--sources ...] [--package <p>] [--semantic] [--docs-url <u>]`
   Clone (any git URL, cached in `/tmp/ultradoc/<slug>`), index, retrieve from all
   selected sources, and write an **evidence dossier** (`EVIDENCE.md`,
   `evidence.json`, `meta.json`) to a run folder. Default sources:
   `code,issues,prs,docs` (add `web,so` when the repo alone won't answer it).
+  In a monorepo, `--package <name|dir>` scopes code/docs retrieval to one
+  workspace package.
 - `code|issues|prs|docs|so --repo <...> --q "..."` — drill into ONE source, print
   evidence to stdout (no dossier). Use these to expand a thin area.
 - `web --repo <...> [--q "..."] [--url <u,...>]` — keyless web discovery
   (SearXNG → DuckDuckGo → your WebSearch) + fetch/extract. Pass `--url` to ground
   a specific page you found with your own WebSearch.
+- `overview --repo <...> [--refresh]` — generate (once) a cached markdown digest
+  of the repo: what it is, its workspace packages, layout, public API and docs
+  map. Cached beside the clone and reused while the commit is unchanged — read
+  it to orient yourself across several questions without re-indexing. It is a
+  navigation map, NOT citable evidence.
 - `check --run <dossier-dir>` — validate `ANSWER.md`'s citations against the
   dossier's `evidence.json`. Exit non-zero ⇒ ungrounded.
-- `index --repo <...>` — build/print the structural index (debugging/inspection).
+- `index --repo <...>` — build/print the structural index (debugging/inspection);
+  lists discovered workspace packages for a monorepo.
 - `semantic up|down|status` — optional local vector backend (see below).
 
 ## Workflow
@@ -48,6 +56,18 @@ hand control back mid-retrieval.
 1. **Resolve the target.** Identify the project and the precise question. If you
    only have a name, find the canonical repo URL (use your WebSearch, or ask the
    user if ambiguous). Note any version/branch the user cares about (`--ref`).
+
+   *Multiple questions about the same repo?* Run `overview --repo <url>` once
+   and read the cached `OVERVIEW.md` it prints: it maps the repo (packages,
+   layout, public API, docs) so follow-up questions reuse the same clone+index
+   instead of re-orienting from scratch. Never cite it — it is navigation, not
+   evidence.
+
+   *Monorepo?* If `ask`/`index`/`overview` reports workspace packages (e.g.
+   `socialgouv/code-du-travail-numerique` → `@cdt/frontend`,
+   `@socialgouv/modeles-social`, …), pick the package the question is about and
+   add `--package <name|dir>` so retrieval doesn't drown in the other packages.
+   An unknown package name fails loudly and lists what exists.
 
 2. **Retrieve.** Run `ask` with the question and the sources that fit:
    ```

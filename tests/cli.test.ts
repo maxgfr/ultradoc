@@ -57,4 +57,15 @@ describe("parseArgs", () => {
   it("exits 0 on --version", () => {
     expect(trapExit(() => parseArgs(["--version"])).code).toBe(0);
   });
+
+  it("accepts the overview command with --package", () => {
+    const p = parseArgs(["overview", "--repo", "owner/repo", "--package", "web"]);
+    expect(p.command).toBe("overview");
+    expect(p.values.package).toBe("web");
+  });
+
+  it("accepts --package on ask", () => {
+    const p = parseArgs(["ask", "--repo", "owner/repo", "--q", "why?", "--package", "packages/api"]);
+    expect(p.values.package).toBe("packages/api");
+  });
 });

@@ -134,13 +134,49 @@ Two retrieval tiers:
 | `ask` | Retrieve from all selected sources → write an evidence dossier |
 | `code` / `issues` / `prs` / `docs` / `so` | Drill into one source (prints evidence) |
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
+| `overview` | Generate a cached markdown digest of the repo (packages, layout, public API, docs map) |
 | `check --run <dir>` | Validate ANSWER.md citations against the dossier |
 | `index` | Build/print the structural index for a repo |
 | `semantic up\|down\|status` | Manage the optional local Docker stack |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
-code,issues,prs,docs,web,so`, `--ref <branch>` (pin a version), `--docs-url
-<url>`, `--semantic`.
+code,issues,prs,docs,web,so`, `--ref <branch>` (pin a version), `--package
+<name|dir>` (scope a monorepo), `--docs-url <url>`, `--semantic`.
+
+## Monorepos
+
+Workspace monorepos (yarn/npm/pnpm workspaces, lerna, Cargo workspaces,
+`go.work`) are detected at index time — each package's name, path and
+description land in the index. Scope any question to one package:
+
+```bash
+node scripts/ultradoc.mjs ask \
+  --repo https://github.com/socialgouv/code-du-travail-numerique \
+  --q "comment l'indemnité de licenciement est-elle calculée ?" \
+  --package modeles-social
+# → every code/docs evidence item comes from packages/code-du-travail-modeles/
+```
+
+`--package` accepts the full name (`@socialgouv/modeles-social`), a short name
+(`modeles-social`), or the directory. A wrong name fails loudly and lists the
+packages that exist.
+
+## Ask many questions without re-indexing
+
+The clone and the structural index are already cached per repo. For multi-question
+sessions, `overview` additionally writes a **cached markdown digest** —
+what the project is, its workspace packages, layout, exported API surface and
+documentation map:
+
+```bash
+node scripts/ultradoc.mjs overview --repo https://github.com/socialgouv/code-du-travail-numerique
+# → /tmp/ultradoc/<slug>/.ultradoc/OVERVIEW.md  (reused while the commit is unchanged)
+```
+
+An agent reads `OVERVIEW.md` once to orient itself (and pick a `--package`),
+then answers each question from a fresh evidence dossier. The overview is a
+navigation map, not citable evidence — `check` still enforces that answers cite
+retrieved evidence.
 
 ## Install as a skill
 

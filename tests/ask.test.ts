@@ -42,4 +42,42 @@ describe("runAsk (offline integration)", () => {
 
     rmSync(out, { recursive: true, force: true });
   });
+
+  it("scopes retrieval to one workspace package with pkg", async () => {
+    const out = mkdtempSync(join(tmpdir(), "ultradoc-ask-"));
+    const opts: AskOptions = {
+      repo: resolve("tests/fixtures/sample-mono"),
+      question: "how is a page rendered (renderPage)?",
+      sources: ["code"],
+      pkg: "api",
+      semantic: false,
+      webEngine: "auto",
+      perSource: 6,
+      json: false,
+      refresh: true,
+      out,
+    };
+    const r = await runAsk(opts);
+    expect(r.evidence.length).toBeGreaterThan(0);
+    for (const e of r.evidence.filter((x) => x.source === "code")) {
+      expect(e.ref.startsWith("packages/api/")).toBe(true);
+    }
+    expect(r.meta.pkg).toBe("@sample/api");
+    rmSync(out, { recursive: true, force: true });
+  });
+
+  it("fails loudly on an unknown package, listing what exists", async () => {
+    const opts: AskOptions = {
+      repo: resolve("tests/fixtures/sample-mono"),
+      question: "anything",
+      sources: ["code"],
+      pkg: "nope",
+      semantic: false,
+      webEngine: "auto",
+      perSource: 6,
+      json: false,
+      refresh: true,
+    };
+    await expect(runAsk(opts)).rejects.toThrow(/@sample\/web/);
+  });
 });

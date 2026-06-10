@@ -1,5 +1,6 @@
 import { resolveRepo, ensureClone } from "./clone.js";
 import { ensureIndex } from "./index/structural.js";
+import { resolvePackage } from "./index/workspaces.js";
 import { runSources } from "./sources/registry.js";
 import { assignIds, writeDossier, defaultRunDir } from "./dossier.js";
 import type { AskOptions, RunContext, DossierMeta, EvidenceItem, SourceKind } from "./types.js";
@@ -14,7 +15,20 @@ export function buildContext(options: AskOptions): RunContext {
   // documentation over links to dependencies.
   const project = [repoRef.repo, repoRef.owner].filter((x): x is string => !!x);
   const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
-  return { repoRef, repoDir, index, options };
+
+  // --package: resolve to one workspace package and scope retrieval to its
+  // subtree. An unknown name fails loudly with what actually exists.
+  let scopePkg;
+  if (options.pkg) {
+    scopePkg = resolvePackage(index.packages, options.pkg);
+    if (!scopePkg) {
+      const known = index.packages.length
+        ? `known packages: ${index.packages.map((p) => `${p.name} (${p.dir})`).join(", ")}`
+        : "this repo declares no workspace packages";
+      throw new Error(`--package "${options.pkg}" does not match one package — ${known}`);
+    }
+  }
+  return { repoRef, repoDir, index, options, scopePkg, scopeDir: scopePkg?.dir };
 }
 
 export interface AskResult {
@@ -37,6 +51,7 @@ export async function runAsk(options: AskOptions): Promise<AskResult> {
     host: ctx.repoRef.host,
     ref: options.ref,
     commit: ctx.index.commit,
+    pkg: ctx.scopePkg?.name,
     sources: options.sources,
     semantic: options.semantic,
     evidenceCount: evidence.length,

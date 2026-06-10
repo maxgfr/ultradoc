@@ -42,6 +42,8 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
 
   const scored: { rel: string; score: number; anchor: number; lines: string[] }[] = [];
   for (const rel of ctx.index.docFiles) {
+    // --package scope: only this package's own docs (its README etc.).
+    if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     // Skip docs that ship inside test fixtures, examples, or vendored deps —
     // e.g. a bundled third-party lib's README is never the answer to a question
     // about the host project.

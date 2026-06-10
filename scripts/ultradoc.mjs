@@ -277,8 +277,8 @@ function originUrl(dir) {
 }
 
 // src/index/structural.ts
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2 } from "fs";
-import { join as join4 } from "path";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, writeFileSync, readFileSync as readFileSync2 } from "fs";
+import { join as join5 } from "path";
 
 // src/walk.ts
 import { readdirSync as readdirSync2, statSync as statSync2, readFileSync } from "fs";
@@ -897,8 +897,140 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   return best && best.score >= 4 ? best.url : void 0;
 }
 
+// src/index/workspaces.ts
+import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
+import { join as join4 } from "path";
+var PKG_MANIFESTS = ["package.json", "Cargo.toml", "go.mod", "composer.json", "pyproject.toml"];
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+}
+function isDir(abs) {
+  try {
+    return statSync3(abs).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function subDirs(root, rel) {
+  const abs = rel ? join4(root, rel) : root;
+  let entries;
+  try {
+    entries = readdirSync3(abs);
+  } catch {
+    return [];
+  }
+  return entries.filter((n) => !n.startsWith(".") && n !== "node_modules" && isDir(join4(abs, n))).map((n) => rel ? `${rel}/${n}` : n);
+}
+function expandOne(root, pat) {
+  if (!pat.includes("*")) return isDir(join4(root, pat)) ? [pat] : [];
+  const prefix = pat.slice(0, pat.indexOf("*")).replace(/\/$/, "");
+  if (prefix.includes("*")) return [];
+  const level1 = subDirs(root, prefix);
+  if (!pat.includes("**")) return level1;
+  return [...level1, ...level1.flatMap((d) => subDirs(root, d))];
+}
+function expand(root, patterns) {
+  const include = [];
+  const exclude = /* @__PURE__ */ new Set();
+  for (const raw of patterns) {
+    const neg = raw.startsWith("!");
+    const pat = (neg ? raw.slice(1) : raw).replace(/^\.\//, "").replace(/\/+$/, "");
+    if (!pat || pat === ".") continue;
+    for (const dir of expandOne(root, pat)) neg ? exclude.add(dir) : include.push(dir);
+  }
+  return include.filter((d) => !exclude.has(d));
+}
+function describePackage(root, dir) {
+  if (!PKG_MANIFESTS.some((m) => existsSync2(join4(root, dir, m)))) return void 0;
+  const base = dir.split("/").pop();
+  const pj = parseJson(readText(join4(root, dir, "package.json")) || readText(join4(root, dir, "composer.json")));
+  if (pj && typeof pj.name === "string") {
+    return { name: pj.name, dir, description: typeof pj.description === "string" ? pj.description : void 0 };
+  }
+  const cargo = readText(join4(root, dir, "Cargo.toml"));
+  if (cargo) {
+    const name = /^\s*name\s*=\s*["']([^"']+)["']/m.exec(cargo)?.[1];
+    const description = /^\s*description\s*=\s*["']([^"']+)["']/m.exec(cargo)?.[1];
+    if (name) return { name, dir, description };
+  }
+  const gomod = readText(join4(root, dir, "go.mod"));
+  if (gomod) {
+    const mod = /^module\s+(\S+)/m.exec(gomod)?.[1];
+    if (mod) return { name: mod, dir, description: void 0 };
+  }
+  return { name: base, dir, description: void 0 };
+}
+function workspacePatterns(root) {
+  const patterns = [];
+  const pj = parseJson(readText(join4(root, "package.json")));
+  const ws = pj?.workspaces;
+  if (Array.isArray(ws)) patterns.push(...ws.filter((p) => typeof p === "string"));
+  else if (ws && Array.isArray(ws.packages)) patterns.push(...ws.packages.filter((p) => typeof p === "string"));
+  const pnpm = readText(join4(root, "pnpm-workspace.yaml"));
+  if (pnpm) {
+    let inPackages = false;
+    for (const line of pnpm.split(/\r?\n/)) {
+      if (/^packages\s*:/.test(line)) {
+        inPackages = true;
+        continue;
+      }
+      if (inPackages) {
+        const m = /^\s+-\s*["']?([^"'#]+?)["']?\s*$/.exec(line);
+        if (m) patterns.push(m[1]);
+        else if (/^\S/.test(line)) inPackages = false;
+      }
+    }
+  }
+  const lerna = parseJson(readText(join4(root, "lerna.json")));
+  if (lerna && Array.isArray(lerna.packages)) {
+    patterns.push(...lerna.packages.filter((p) => typeof p === "string"));
+  }
+  const cargo = readText(join4(root, "Cargo.toml"));
+  if (cargo) {
+    const members = /\[workspace\][^[]*?members\s*=\s*\[([^\]]*)\]/.exec(cargo)?.[1];
+    if (members) {
+      for (const m of members.matchAll(/["']([^"']+)["']/g)) patterns.push(m[1]);
+    }
+  }
+  const gowork = readText(join4(root, "go.work"));
+  if (gowork) {
+    const block = /^use\s*\(([\s\S]*?)\)/m.exec(gowork)?.[1];
+    const uses = block ? block.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("//")) : [...gowork.matchAll(/^use\s+(\S+)/gm)].map((m) => m[1]);
+    patterns.push(...uses);
+  }
+  return patterns;
+}
+function discoverWorkspaces(root) {
+  const dirs = expand(root, workspacePatterns(root));
+  const byDir = /* @__PURE__ */ new Map();
+  for (const dir of dirs) {
+    if (byDir.has(dir)) continue;
+    const pkg = describePackage(root, dir);
+    if (pkg) byDir.set(dir, pkg);
+  }
+  return [...byDir.values()].sort((a, b) => a.dir.localeCompare(b.dir));
+}
+function resolvePackage(packages, query2) {
+  const q = query2.toLowerCase().replace(/\/+$/, "");
+  const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
+  if (exact) return exact;
+  const short = packages.filter(
+    (p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q
+  );
+  if (short.length === 1) return short[0];
+  if (short.length > 1) return void 0;
+  const loose = packages.filter(
+    (p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q)
+  );
+  return loose.length === 1 ? loose[0] : void 0;
+}
+
 // src/index/structural.ts
-var SCHEMA_VERSION = 2;
+var SCHEMA_VERSION = 3;
 var DOC_BASENAME = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
 var DOC_EXT = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
 var DOC_DIR2 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
@@ -928,10 +1060,10 @@ var CONFIG_BASENAME = /* @__PURE__ */ new Set([
   "manifest.json"
 ]);
 function indexDir(root) {
-  return join4(root, ".ultradoc");
+  return join5(root, ".ultradoc");
 }
 function indexPath(root) {
-  return join4(indexDir(root), "index.json");
+  return join5(indexDir(root), "index.json");
 }
 function isDoc(rel, ext) {
   const base = rel.split("/").pop().toLowerCase();
@@ -972,6 +1104,9 @@ function buildIndex(root, slug, opts = {}) {
     // repo's own README/manifests, and cache them so questions cost no extra work.
     docsRoot: discoverDocsRoot(sortedDocs),
     docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
+    // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
+    // questions can be scoped to one package with --package.
+    packages: discoverWorkspaces(root),
     schemaVersion: SCHEMA_VERSION
   };
   try {
@@ -983,7 +1118,7 @@ function buildIndex(root, slug, opts = {}) {
 }
 function loadIndex(root) {
   const p = indexPath(root);
-  if (!existsSync2(p)) return void 0;
+  if (!existsSync3(p)) return void 0;
   try {
     const idx = JSON.parse(readFileSync2(p, "utf8"));
     if (idx.schemaVersion !== SCHEMA_VERSION) return void 0;
@@ -1001,10 +1136,10 @@ function ensureIndex(root, slug, opts = {}) {
 }
 
 // src/index/search.ts
-import { join as join5, relative as relative2, sep as sep2 } from "path";
+import { join as join6, relative as relative2, sep as sep2 } from "path";
 var MAX_KEYWORDS = 8;
 var CONTEXT = 3;
-function rgSearch(root, kws) {
+function rgSearch(root, kws, scope) {
   const args = [
     "--json",
     "-i",
@@ -1034,6 +1169,7 @@ function rgSearch(root, kws) {
     "-g",
     "!**/go.sum"
   ];
+  if (scope) args.push("-g", `${scope}/**`);
   for (const kw of kws) args.push("-e", kw);
   args.push(root);
   const res = sh("rg", args, { timeoutMs: 6e4 });
@@ -1143,8 +1279,9 @@ function symbolScores(index, kws) {
   }
   return byFile;
 }
-function searchCode(root, ref, index, question, perSource) {
+function searchCode(root, ref, index, question, perSource, scope) {
   const notes = [];
+  const inScope = (rel) => !scope || rel.startsWith(scope + "/");
   let kws = keywords(question).slice(0, MAX_KEYWORDS);
   if (kws.length === 0) {
     notes.push("No distinctive keywords in the question; code search may be weak.");
@@ -1153,9 +1290,9 @@ function searchCode(root, ref, index, question, perSource) {
   if (kws.length === 0) return { items: [], notes };
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found \u2014 used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, kws) : jsSearch(root, kws);
+  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws);
   const symbols = symbolScores(index, kws);
-  const files = /* @__PURE__ */ new Set([...lexical.keys(), ...symbols.keys()]);
+  const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
   const docSet = new Set(index.docFiles);
   const scored = [];
   for (const rel of files) {
@@ -1173,7 +1310,7 @@ function searchCode(root, ref, index, question, perSource) {
   const items = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
-    const content = readText(join5(root, f.rel));
+    const content = readText(join6(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let start;
@@ -1210,8 +1347,8 @@ function searchCode(root, ref, index, question, perSource) {
 }
 
 // src/index/semantic.ts
-import { existsSync as existsSync3, readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
-import { join as join6, dirname } from "path";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
+import { join as join7, dirname } from "path";
 import { fileURLToPath } from "url";
 
 // src/sources/fetch.ts
@@ -1373,7 +1510,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join6(repoDir, ".ultradoc", "semantic.json");
+  return join7(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name}`);
@@ -1383,7 +1520,7 @@ async function buildIfNeeded(ctx) {
   const name = collectionName(ctx.repoRef.slug);
   const marker = markerPath(ctx.repoDir);
   const commit = ctx.index.commit ?? "HEAD";
-  if (existsSync3(marker)) {
+  if (existsSync4(marker)) {
     try {
       const m = JSON.parse(readFileSync3(marker, "utf8"));
       if (m.collection === name && m.commit === commit && await collectionExists(name)) {
@@ -1397,7 +1534,7 @@ async function buildIfNeeded(ctx) {
   const chunks = [];
   for (const rel of files) {
     if (chunks.length >= MAX_CHUNKS) break;
-    const content = readText(join6(ctx.repoDir, rel));
+    const content = readText(join7(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
     for (const c2 of chunkText(rel, content, isDoc2)) {
@@ -1476,10 +1613,10 @@ async function semanticSearch(ctx) {
 }
 function composeFile() {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const cand of [join6(here, "..", "docker-compose.yml"), join6(here, "docker-compose.yml")]) {
-    if (existsSync3(cand)) return cand;
+  for (const cand of [join7(here, "..", "docker-compose.yml"), join7(here, "docker-compose.yml")]) {
+    if (existsSync4(cand)) return cand;
   }
-  return join6(here, "..", "docker-compose.yml");
+  return join7(here, "..", "docker-compose.yml");
 }
 function semanticControl(action) {
   if (!["up", "down", "status"].includes(action)) {
@@ -1518,10 +1655,12 @@ async function codeSource(ctx) {
     ctx.repoRef,
     ctx.index,
     ctx.options.question,
-    ctx.options.perSource
+    ctx.options.perSource,
+    ctx.scopeDir
   );
   if (!ctx.options.semantic) return { source: "code", items: lexical.items, notes: lexical.notes };
   const sem = await semanticSearch(ctx);
+  if (ctx.scopeDir) sem.items = sem.items.filter((it) => it.ref.startsWith(ctx.scopeDir + "/"));
   if (!sem.available) {
     return {
       source: "code",
@@ -1544,13 +1683,13 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
-import { join as join7 } from "path";
-import { existsSync as existsSync4, readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
+import { join as join8 } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
 async function getDocText(repoDir, url) {
-  const dir = join7(repoDir, ".ultradoc", "extdocs");
-  const file = join7(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt");
+  const dir = join8(repoDir, ".ultradoc", "extdocs");
+  const file = join8(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt");
   try {
-    if (existsSync4(file)) return { text: readFileSync4(file, "utf8") };
+    if (existsSync5(file)) return { text: readFileSync4(file, "utf8") };
   } catch {
   }
   const res = await fetchAndExtract(url);
@@ -1569,8 +1708,9 @@ async function docsSource(ctx) {
   const items = [];
   const scored = [];
   for (const rel of ctx.index.docFiles) {
+    if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join7(ctx.repoDir, rel));
+    const content = readText(join8(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -1977,7 +2117,7 @@ async function runSources(ctx) {
 
 // src/dossier.ts
 import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync4 } from "fs";
-import { join as join8 } from "path";
+import { join as join9 } from "path";
 var SOURCE_ORDER = ["code", "docs", "issue", "pr", "so", "web"];
 var SOURCE_LABEL = {
   code: "Code",
@@ -1998,7 +2138,7 @@ function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(slug, d) {
-  return join8(cacheRoot(), slug, "runs", runId(d));
+  return join9(cacheRoot(), slug, "runs", runId(d));
 }
 function assignIds(results) {
   const flat = results.flatMap((r) => r.items);
@@ -2013,7 +2153,7 @@ function renderEvidenceMarkdown(evidence, meta) {
   out.push("");
   out.push(`**Question:** ${meta.question}`);
   out.push(
-    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}`
+    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}${meta.pkg ? ` \xB7 **package:** ${meta.pkg}` : ""}`
   );
   out.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
   out.push("");
@@ -2055,9 +2195,9 @@ function renderEvidenceMarkdown(evidence, meta) {
 }
 function writeDossier(dir, evidence, meta) {
   mkdirSync5(dir, { recursive: true });
-  const evidenceJson = join8(dir, "evidence.json");
-  const evidenceMd = join8(dir, "EVIDENCE.md");
-  const metaJson = join8(dir, "meta.json");
+  const evidenceJson = join9(dir, "evidence.json");
+  const evidenceMd = join9(dir, "EVIDENCE.md");
+  const metaJson = join9(dir, "meta.json");
   writeFileSync4(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync4(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync4(metaJson, JSON.stringify(meta, null, 2));
@@ -2070,7 +2210,15 @@ function buildContext(options) {
   const repoDir = ensureClone(repoRef, { refresh: options.refresh, branch: options.ref });
   const project = [repoRef.repo, repoRef.owner].filter((x) => !!x);
   const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
-  return { repoRef, repoDir, index, options };
+  let scopePkg;
+  if (options.pkg) {
+    scopePkg = resolvePackage(index.packages, options.pkg);
+    if (!scopePkg) {
+      const known = index.packages.length ? `known packages: ${index.packages.map((p) => `${p.name} (${p.dir})`).join(", ")}` : "this repo declares no workspace packages";
+      throw new Error(`--package "${options.pkg}" does not match one package \u2014 ${known}`);
+    }
+  }
+  return { repoRef, repoDir, index, options, scopePkg, scopeDir: scopePkg?.dir };
 }
 async function runAsk(options) {
   const ctx = buildContext(options);
@@ -2082,6 +2230,7 @@ async function runAsk(options) {
     host: ctx.repoRef.host,
     ref: options.ref,
     commit: ctx.index.commit,
+    pkg: ctx.scopePkg?.name,
     sources: options.sources,
     semantic: options.semantic,
     evidenceCount: evidence.length,
@@ -2099,8 +2248,8 @@ async function runSingleSource(options, kind) {
 }
 
 // src/check.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
-import { join as join9 } from "path";
+import { existsSync as existsSync6, readFileSync as readFileSync5 } from "fs";
+import { join as join10 } from "path";
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
@@ -2129,9 +2278,9 @@ function resolves(tok, evidence, ids, refs) {
 function checkRun(dir) {
   const errors = [];
   const warnings = [];
-  const answerPath = join9(dir, "ANSWER.md");
-  const evidencePath = join9(dir, "evidence.json");
-  if (!existsSync5(evidencePath)) {
+  const answerPath = join10(dir, "ANSWER.md");
+  const evidencePath = join10(dir, "evidence.json");
+  if (!existsSync6(evidencePath)) {
     return {
       ok: false,
       citations: [],
@@ -2156,7 +2305,7 @@ function checkRun(dir) {
       warnings: []
     };
   }
-  if (!existsSync5(answerPath)) {
+  if (!existsSync6(answerPath)) {
     return {
       ok: false,
       citations: [],
@@ -2219,6 +2368,132 @@ function formatCheckReport(r, dir) {
   return lines.join("\n");
 }
 
+// src/overview.ts
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync5 } from "fs";
+import { basename as basename2, dirname as dirname2, join as join11 } from "path";
+var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
+function overviewPath(repoDir) {
+  return join11(repoDir, ".ultradoc", "OVERVIEW.md");
+}
+function readmeAbout(repoDir, docFiles) {
+  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
+  if (!readme) return [];
+  const text = readText(join11(repoDir, readme));
+  const out = [];
+  let chars = 0;
+  for (const para of text.split(/\r?\n\s*\r?\n/)) {
+    const p = para.trim();
+    if (!p || p.startsWith("#") || p.startsWith("<") || p.startsWith("!") || p.startsWith("[![") || p.startsWith("```")) continue;
+    out.push(p.replace(/\s*\r?\n\s*/g, " "));
+    chars += p.length;
+    if (out.length >= 3 || chars > 700) break;
+  }
+  return out;
+}
+function layout(repoDir) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const f of walk(repoDir)) {
+    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
+    counts.set(top, (counts.get(top) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([dir, files]) => ({ dir, files })).sort((a, b) => b.files - a.files || a.dir.localeCompare(b.dir)).slice(0, 15);
+}
+function apiLines(symbols, prefix, maxFiles = 15, maxSyms = 8) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const s of symbols) {
+    if (!s.exported) continue;
+    if (prefix && !s.file.startsWith(prefix + "/")) continue;
+    const list = byFile.get(s.file) ?? [];
+    list.push(s);
+    byFile.set(s.file, list);
+  }
+  const files = [...byFile.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).slice(0, maxFiles);
+  return files.map(([file, syms]) => {
+    const shown = syms.sort((a, b) => a.line - b.line).slice(0, maxSyms).map((s) => `${s.kind} \`${s.name}\``).join(", ");
+    const more = syms.length > maxSyms ? ` (+${syms.length - maxSyms} more)` : "";
+    return `- \`${file}\` \u2014 ${shown}${more}`;
+  });
+}
+function renderOverview(index, ref, repoDir) {
+  const name = ref.repo ?? basename2(repoDir);
+  const out = [];
+  out.push(`<!-- ultradoc:overview commit=${index.commit ?? "unknown"} -->`);
+  out.push(`# ${name} \u2014 repository overview`);
+  out.push("");
+  out.push(`**Repo:** ${ref.raw}${index.commit ? ` @ ${index.commit}` : ""} \xB7 **host:** ${ref.host}`);
+  const langs = Object.entries(index.languages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`);
+  out.push(`**Files:** ${index.fileCount} \xB7 **symbols:** ${index.symbols.length} \xB7 **languages:** ${langs.join(", ")}`);
+  out.push(`**Generated:** ${index.builtAt} (regenerate with \`ultradoc overview --refresh\`)`);
+  out.push("");
+  out.push(
+    `> This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence \u2014 ground answers in a dossier from \`ultradoc ask\`.`
+  );
+  out.push("");
+  const about = readmeAbout(repoDir, index.docFiles);
+  if (about.length) {
+    out.push("## About");
+    out.push("");
+    for (const p of about) out.push(p, "");
+  }
+  if (index.packages.length) {
+    out.push("## Workspace packages");
+    out.push("");
+    out.push(`This is a monorepo with ${index.packages.length} packages. Scope any question with \`--package <name|dir>\`.`);
+    out.push("");
+    out.push("| package | path | description |");
+    out.push("|---------|------|-------------|");
+    for (const p of index.packages) {
+      out.push(`| ${p.name} | \`${p.dir}\` | ${p.description ?? ""} |`);
+    }
+    out.push("");
+  }
+  out.push("## Layout");
+  out.push("");
+  for (const l of layout(repoDir)) out.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
+  out.push("");
+  out.push("## Public API");
+  out.push("");
+  if (index.packages.length) {
+    for (const p of index.packages) {
+      const lines = apiLines(index.symbols, p.dir, 10, 8);
+      if (!lines.length) continue;
+      out.push(`### ${p.name} (\`${p.dir}\`)`);
+      out.push("");
+      out.push(...lines);
+      out.push("");
+    }
+  } else {
+    const lines = apiLines(index.symbols);
+    out.push(...lines.length ? lines : ["_No exported symbols were detected._"]);
+    out.push("");
+  }
+  out.push("## Documentation");
+  out.push("");
+  if (index.docsRoot) out.push(`- Canonical docs tree: \`${index.docsRoot}/\``);
+  if (index.docsUrl) out.push(`- Official docs site: ${index.docsUrl}`);
+  for (const d of index.docFiles.slice(0, 40)) out.push(`- \`${d}\``);
+  if (index.docFiles.length > 40) out.push(`- \u2026 ${index.docFiles.length - 40} more doc files`);
+  out.push("");
+  return out.join("\n");
+}
+function ensureOverview(index, ref, repoDir, opts = {}) {
+  const path = opts.out ?? overviewPath(repoDir);
+  if (!opts.refresh && existsSync7(path)) {
+    try {
+      const existing = readFileSync6(path, "utf8");
+      const commit = CACHE_MARK.exec(existing)?.[1];
+      if (commit && commit === (index.commit ?? "unknown")) {
+        return { path, markdown: existing, cached: true };
+      }
+    } catch {
+    }
+  }
+  const markdown = renderOverview(index, ref, repoDir);
+  mkdirSync6(dirname2(path), { recursive: true });
+  writeFileSync5(path, markdown);
+  return { path, markdown, cached: false };
+}
+
 // src/cli.ts
 var HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -2228,6 +2503,7 @@ Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
   ultradoc code|issues|prs|docs|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
+  ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir>
   ultradoc semantic up|down|status
@@ -2238,6 +2514,9 @@ Commands:
   issues     Drill into related issues.       prs   Drill into related PRs.
   docs       Drill into documentation.        so    Drill into StackOverflow.
   web        Discover + fetch web pages (keyless: SearXNG \u2192 DuckDuckGo \u2192 WebSearch).
+  overview   Generate (once) a cached markdown digest of the repo \u2014 packages,
+             layout, public API, docs map \u2014 to answer follow-up questions
+             without re-indexing. Reused while the commit is unchanged.
   index      Build/refresh the structural index for a repo and print stats.
   check      Validate ANSWER.md citations against a dossier's evidence.json.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
@@ -2247,6 +2526,8 @@ Options:
   --q, --question <s>  The question to answer                       (required for ask/drill)
   --sources <list>     code,issues,prs,docs,web,so   (default: code,issues,prs,docs)
   --ref <branch>       Branch/tag/commit to clone                   (default: default branch)
+  --package <p>        Monorepo: scope code/docs retrieval to one workspace
+                       package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
@@ -2274,6 +2555,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "docs",
   "so",
   "web",
+  "overview",
   "index",
   "check",
   "semantic"
@@ -2289,7 +2571,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "url",
   "per-source",
   "out",
-  "run"
+  "run",
+  "package"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh"]);
 function fail(message) {
@@ -2407,6 +2690,7 @@ function buildAskOptions(p, opts = {}) {
     sources,
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
+    pkg: p.values.package,
     out: p.values.out ? resolve2(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     webEngine,
@@ -2513,6 +2797,38 @@ async function main() {
       printEvidence(p, evidence, meta);
       return;
     }
+    case "overview": {
+      const opts = buildAskOptions(p, { requireQuestion: false });
+      const ctx = buildContext(opts);
+      const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, {
+        refresh: opts.refresh,
+        out: opts.out
+      });
+      if (opts.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              path: r.path,
+              cached: r.cached,
+              commit: ctx.index.commit,
+              packages: ctx.index.packages,
+              fileCount: ctx.index.fileCount
+            },
+            null,
+            2
+          ) + "\n"
+        );
+        return;
+      }
+      const lines = [
+        `ultradoc: overview ${r.cached ? "reused (commit unchanged)" : "generated"} for ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
+        ...ctx.index.packages.length ? [`  packages: ${ctx.index.packages.length} workspace package(s) \u2014 scope questions with --package`] : [],
+        `  file:     ${r.path}`,
+        `  next:     read it to navigate the repo; ground answers via 'ultradoc ask'.`
+      ];
+      process.stderr.write(lines.join("\n") + "\n");
+      return;
+    }
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
       const ctx = buildContext(opts);
@@ -2530,6 +2846,7 @@ async function main() {
               configFiles: ctx.index.configFiles.length,
               docsRoot: ctx.index.docsRoot,
               docsUrl: ctx.index.docsUrl,
+              packages: ctx.index.packages,
               languages: ctx.index.languages
             },
             null,
@@ -2544,7 +2861,10 @@ async function main() {
         `  files:    ${ctx.index.fileCount} \xB7 symbols: ${ctx.index.symbols.length} \xB7 docs: ${ctx.index.docFiles.length} \xB7 config: ${ctx.index.configFiles.length}`,
         `  langs:    ${langs.join(" \xB7 ")}`,
         ...ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : [],
-        ...ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : []
+        ...ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : [],
+        ...ctx.index.packages.length ? [
+          `  packages: ${ctx.index.packages.slice(0, 8).map((x) => x.name).join(" \xB7 ")}${ctx.index.packages.length > 8 ? ` \xB7 +${ctx.index.packages.length - 8} more` : ""}`
+        ] : []
       ];
       process.stderr.write(lines.join("\n") + "\n");
       return;

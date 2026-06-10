@@ -9,6 +9,7 @@ import { checkRun, formatCheckReport } from "./check.js";
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl } from "./index/semantic.js";
+import { ensureOverview } from "./overview.js";
 
 const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -18,6 +19,7 @@ Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
   ultradoc code|issues|prs|docs|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
+  ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir>
   ultradoc semantic up|down|status
@@ -28,6 +30,9 @@ Commands:
   issues     Drill into related issues.       prs   Drill into related PRs.
   docs       Drill into documentation.        so    Drill into StackOverflow.
   web        Discover + fetch web pages (keyless: SearXNG → DuckDuckGo → WebSearch).
+  overview   Generate (once) a cached markdown digest of the repo — packages,
+             layout, public API, docs map — to answer follow-up questions
+             without re-indexing. Reused while the commit is unchanged.
   index      Build/refresh the structural index for a repo and print stats.
   check      Validate ANSWER.md citations against a dossier's evidence.json.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
@@ -37,6 +42,8 @@ Options:
   --q, --question <s>  The question to answer                       (required for ask/drill)
   --sources <list>     code,issues,prs,docs,web,so   (default: code,issues,prs,docs)
   --ref <branch>       Branch/tag/commit to clone                   (default: default branch)
+  --package <p>        Monorepo: scope code/docs retrieval to one workspace
+                       package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
@@ -58,11 +65,11 @@ Grounding:
 `;
 
 const COMMANDS = new Set([
-  "ask", "code", "issues", "prs", "docs", "so", "web", "index", "check", "semantic",
+  "ask", "code", "issues", "prs", "docs", "so", "web", "overview", "index", "check", "semantic",
 ]);
 const VALUE_FLAGS = new Set([
   "repo", "q", "question", "sources", "ref", "docs-url", "web-engine", "url", "per-source",
-  "out", "run",
+  "out", "run", "package",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh"]);
 
@@ -192,6 +199,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
     sources,
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
+    pkg: p.values.package,
     out: p.values.out ? resolve(p.values.out) : undefined,
     semantic: p.bools.has("semantic"),
     webEngine,
@@ -281,6 +289,38 @@ async function main(): Promise<void> {
       return;
     }
 
+    case "overview": {
+      const opts = buildAskOptions(p, { requireQuestion: false });
+      const ctx = buildContext(opts);
+      const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, {
+        refresh: opts.refresh,
+        out: opts.out,
+      });
+      if (opts.json) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              path: r.path, cached: r.cached, commit: ctx.index.commit,
+              packages: ctx.index.packages, fileCount: ctx.index.fileCount,
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+        return;
+      }
+      const lines = [
+        `ultradoc: overview ${r.cached ? "reused (commit unchanged)" : "generated"} for ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
+        ...(ctx.index.packages.length
+          ? [`  packages: ${ctx.index.packages.length} workspace package(s) — scope questions with --package`]
+          : []),
+        `  file:     ${r.path}`,
+        `  next:     read it to navigate the repo; ground answers via 'ultradoc ask'.`,
+      ];
+      process.stderr.write(lines.join("\n") + "\n");
+      return;
+    }
+
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
       const ctx = buildContext(opts);
@@ -296,6 +336,7 @@ async function main(): Promise<void> {
               fileCount: ctx.index.fileCount, symbols: ctx.index.symbols.length,
               docFiles: ctx.index.docFiles.length, configFiles: ctx.index.configFiles.length,
               docsRoot: ctx.index.docsRoot, docsUrl: ctx.index.docsUrl,
+              packages: ctx.index.packages,
               languages: ctx.index.languages,
             },
             null,
@@ -311,6 +352,14 @@ async function main(): Promise<void> {
         `  langs:    ${langs.join(" · ")}`,
         ...(ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : []),
         ...(ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : []),
+        ...(ctx.index.packages.length
+          ? [
+              `  packages: ${ctx.index.packages
+                .slice(0, 8)
+                .map((x) => x.name)
+                .join(" · ")}${ctx.index.packages.length > 8 ? ` · +${ctx.index.packages.length - 8} more` : ""}`,
+            ]
+          : []),
       ];
       process.stderr.write(lines.join("\n") + "\n");
       return;

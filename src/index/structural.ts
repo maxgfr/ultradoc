@@ -5,8 +5,9 @@ import { walk, readText } from "../walk.js";
 import { extractSymbols, languageOf } from "../lang/registry.js";
 import { headCommit } from "../clone.js";
 import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
+import { discoverWorkspaces } from "./workspaces.js";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // Files that are documentation: conventional top-level docs, anything under a
 // docs tree, and prose extensions. Used to feed the `docs` source and to weight
@@ -83,6 +84,9 @@ export function buildIndex(
     // repo's own README/manifests, and cache them so questions cost no extra work.
     docsRoot: discoverDocsRoot(sortedDocs),
     docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
+    // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
+    // questions can be scoped to one package with --package.
+    packages: discoverWorkspaces(root),
     schemaVersion: SCHEMA_VERSION,
   };
 

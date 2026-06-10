@@ -25,7 +25,7 @@ const CONTEXT = 3; // lines of context shown around a region
 
 // Lexical search via ripgrep (`rg --json`), one call with several literal
 // patterns OR-ed together. Returns per-file matched keywords + hit lines.
-function rgSearch(root: string, kws: string[]): Map<string, FileHits> {
+function rgSearch(root: string, kws: string[], scope?: string): Map<string, FileHits> {
   const args = [
     "--json", "-i", "-F", "--max-count", "40", "--max-filesize", "1M",
     "-g", "!**/.ultradoc/**", "-g", "!**/node_modules/**", "-g", "!**/{dist,build,vendor}/**",
@@ -34,6 +34,7 @@ function rgSearch(root: string, kws: string[]): Map<string, FileHits> {
     "-g", "!**/*.lock", "-g", "!**/package-lock.json", "-g", "!**/npm-shrinkwrap.json",
     "-g", "!**/pnpm-lock.yaml", "-g", "!**/yarn.lock", "-g", "!**/go.sum",
   ];
+  if (scope) args.push("-g", `${scope}/**`);
   for (const kw of kws) args.push("-e", kw);
   args.push(root);
 
@@ -172,8 +173,10 @@ export function searchCode(
   index: StructuralIndex,
   question: string,
   perSource: number,
+  scope?: string, // repo-relative dir (a workspace package) to restrict to
 ): { items: RawItem[]; notes: string[] } {
   const notes: string[] = [];
+  const inScope = (rel: string) => !scope || rel.startsWith(scope + "/");
   let kws = extractKeywords(question).slice(0, MAX_KEYWORDS);
   if (kws.length === 0) {
     notes.push("No distinctive keywords in the question; code search may be weak.");
@@ -183,11 +186,13 @@ export function searchCode(
 
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found — used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, kws) : jsSearch(root, kws);
+  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws);
   const symbols = symbolScores(index, kws);
 
-  // Combined per-file score: lexical coverage + density + symbol bonus.
-  const files = new Set<string>([...lexical.keys(), ...symbols.keys()]);
+  // Combined per-file score: lexical coverage + density + symbol bonus. The
+  // scope filter applies here so symbol-only hits respect it too (the rg glob
+  // is just an optimization).
+  const files = new Set<string>([...lexical.keys(), ...symbols.keys()].filter(inScope));
   // Files better served by the `docs` source (README, changelog, docs/**, *.md)
   // — down-weight them in CODE search so a keyword-dense changelog can't
   // out-rank the actual implementation. (Without this, e.g. express's

@@ -43,6 +43,14 @@ alone can't answer it. Use `--docs-url` when official docs live off-repo.
 - **Prefer specific keywords.** Identifiers, error strings, and numbers (status
   codes, option names) retrieve far better than generic words. The engine already
   ranks these higher, but a sharper `--q` helps.
+- **Scope monorepos.** When `index`/`ask`/`overview` lists workspace packages,
+  add `--package <name|dir>` so code/docs hits come from the right package
+  instead of the whole tree (e.g. `--package modeles-social` in
+  `socialgouv/code-du-travail-numerique`).
+- **Reuse across questions.** `overview --repo <url>` writes a cached markdown
+  digest (packages, layout, public API, docs map) next to the clone. Read it
+  once to orient and pick drill targets — but never cite it; answers cite
+  dossier evidence only.
 - **Local repos work too.** `--repo <path>` indexes a checkout you already have;
   its `origin` remote is used for issues/PRs.
 - **Refresh** with `--refresh` if the cached clone is stale.

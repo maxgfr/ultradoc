@@ -27,8 +27,10 @@ types.ts          shared types + VERSION (synced on release)
 clone.ts          resolveRepo (any git URL) + ensureClone (/tmp cache) + origin
 walk.ts           ignore-aware file walk + safe text reader
 util.ts           sh/have, keywords + rankedKeywords, slugify, RRF
+overview.ts       cached markdown digest of a repo (packages, layout, API, docs)
 index/
   structural.ts   build/load the deterministic index (languages, symbols, docs)
+  workspaces.ts   monorepo package discovery (yarn/npm/pnpm/lerna/Cargo/go.work)
   search.ts       ripgrep (+ JS fallback) fused with symbol ranking → excerpts
   semantic.ts     optional Qdrant + local-embeddings client; Docker control
 lang/             per-language symbol extractors (registry by extension)
@@ -43,8 +45,10 @@ check.ts          parse + validate ANSWER.md citations (the grounding guarantee)
 ```
 AskOptions
   → buildContext: resolveRepo → ensureClone → ensureIndex (StructuralIndex)
+      --package resolves against the index's workspace packages → scopeDir
   → runSources (concurrent): code | docs | issue | pr | so | web → SourceResult[]
-      each capped to --per-source, best-scored first
+      each capped to --per-source, best-scored first; code/docs/semantic
+      restricted to scopeDir when --package was given
   → assignIds: flatten → E1,E2,… in canonical source order
   → writeDossier: EVIDENCE.md + evidence.json + meta.json
 [model] reads EVIDENCE.md → writes ANSWER.md citing ids
@@ -85,6 +89,28 @@ per-repo Qdrant collection (cached by commit), and vector-searches the question.
 Results fuse with lexical via RRF in `sources/code.ts`. Unreachable stack →
 `available: false` → transparent Tier-1 fallback. See
 `references/semantic-setup.md`.
+
+## Monorepos (`index/workspaces.ts`)
+
+Workspace packages are discovered deterministically at index time from the
+repo's own manifests — `package.json` `workspaces` (array or object form),
+`pnpm-workspace.yaml`, `lerna.json`, Cargo `[workspace] members`, `go.work` —
+with glob expansion (`packages/*`, `apps/**`) and per-package name/description
+read from each package's manifest. They are cached in the `StructuralIndex`
+(`packages`). `--package <name|dir>` resolves (full name → dir → short name →
+unique substring) and scopes code, docs and semantic retrieval to that subtree;
+an unresolvable name throws, listing the packages that exist.
+
+## The repo overview (`overview.ts`)
+
+`ultradoc overview` renders a deterministic markdown digest of the repo —
+About (README prose), workspace packages, layout, exported API surface grouped
+per package, documentation map — and caches it at
+`<repoDir>/.ultradoc/OVERVIEW.md`, keyed by commit (a marker comment in the
+file). Repeated questions about the same repo reuse the clone, the index *and*
+the overview; the model reads one file to orient instead of re-retrieving. The
+overview is navigation, not evidence: `check` still requires citations to
+resolve to a dossier.
 
 ## The grounding guarantee (`check.ts`)
 

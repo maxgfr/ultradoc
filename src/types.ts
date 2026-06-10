@@ -58,6 +58,15 @@ export interface CodeSymbol {
   lang: string;
 }
 
+// One package of a workspace monorepo (yarn/npm/pnpm/lerna workspaces, Cargo
+// workspace, go.work). Discovered deterministically at index time so questions
+// can be scoped to a package with --package.
+export interface WorkspacePackage {
+  name: string; // manifest name (e.g. "@scope/web"), else the dir basename
+  dir: string; // package root, posix path relative to the repo root
+  description?: string;
+}
+
 // The deterministic, zero-dep index built from a clone. Persisted to
 // <repoDir>/.ultradoc/index.json and reused across questions about the repo.
 export interface StructuralIndex {
@@ -72,6 +81,7 @@ export interface StructuralIndex {
   configFiles: string[]; // package.json, pyproject.toml, go.mod …
   docsRoot?: string; // canonical in-repo docs folder, e.g. "docs" (discovered)
   docsUrl?: string; // official external docs URL discovered from README/manifests
+  packages: WorkspacePackage[]; // workspace packages ([] for a single-package repo)
   schemaVersion: number;
 }
 
@@ -85,6 +95,7 @@ export interface AskOptions {
   sources: SourceKind[];
   ref?: string;
   docsUrl?: string;
+  pkg?: string; // scope retrieval to one workspace package (name or dir)
   out?: string;
   semantic: boolean;
   webEngine: WebEngine;
@@ -108,6 +119,8 @@ export interface RunContext {
   repoDir: string; // absolute path to the clone (or local repo)
   index: StructuralIndex;
   options: AskOptions;
+  scopePkg?: WorkspacePackage; // resolved --package, when given
+  scopeDir?: string; // its dir, repo-relative — sources restrict to this subtree
 }
 
 export interface DossierMeta {
@@ -116,6 +129,7 @@ export interface DossierMeta {
   host: string;
   ref?: string;
   commit?: string;
+  pkg?: string; // resolved workspace package name when the run was scoped
   sources: SourceKind[];
   semantic: boolean;
   evidenceCount: number;
