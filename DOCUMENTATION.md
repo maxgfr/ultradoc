@@ -30,7 +30,7 @@ util.ts           sh/have, keywords + rankedKeywords, slugify, RRF
 overview.ts       cached markdown digest of a repo (packages, layout, API, docs)
 index/
   structural.ts   build/load the deterministic index (languages, symbols, docs)
-  workspaces.ts   monorepo package discovery (yarn/npm/pnpm/lerna/Cargo/go.work)
+  workspaces.ts   monorepo package discovery (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle)
   search.ts       ripgrep (+ JS fallback) fused with symbol ranking → excerpts
   semantic.ts     optional Qdrant + local-embeddings client; Docker control
 lang/             per-language symbol extractors (registry by extension)
@@ -94,8 +94,11 @@ Results fuse with lexical via RRF in `sources/code.ts`. Unreachable stack →
 
 Workspace packages are discovered deterministically at index time from the
 repo's own manifests — `package.json` `workspaces` (array or object form),
-`pnpm-workspace.yaml`, `lerna.json`, Cargo `[workspace] members`, `go.work` —
-with glob expansion (`packages/*`, `apps/**`) and per-package name/description
+`pnpm-workspace.yaml`, `lerna.json`, Cargo `[workspace] members`/`exclude`,
+`go.work`, `pyproject.toml` `[tool.uv.workspace]`, Composer path repositories,
+Maven `<modules>`, Gradle `settings.gradle(.kts)` includes — with glob
+expansion (`packages/*`, `apps/**`, nested `packages/*/plugins/*`, partial
+`libs-*`) and per-package name/description
 read from each package's manifest. They are cached in the `StructuralIndex`
 (`packages`). `--package <name|dir>` resolves (full name → dir → short name →
 unique substring) and scopes code, docs and semantic retrieval to that subtree;

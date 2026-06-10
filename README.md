@@ -146,8 +146,10 @@ code,issues,prs,docs,web,so`, `--ref <branch>` (pin a version), `--package
 ## Monorepos
 
 Workspace monorepos (yarn/npm/pnpm workspaces, lerna, Cargo workspaces,
-`go.work`) are detected at index time — each package's name, path and
-description land in the index. Scope any question to one package:
+`go.work`, uv workspaces, Composer path repositories, Maven `<modules>`,
+Gradle `include`) are detected at index time — each package's name, path and
+description land in the index. Nested globs like `packages/*/plugins/*` work
+too. Scope any question to one package:
 
 ```bash
 node scripts/ultradoc.mjs ask \

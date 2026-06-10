@@ -900,7 +900,61 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
 // src/index/workspaces.ts
 import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
 import { join as join4 } from "path";
-var PKG_MANIFESTS = ["package.json", "Cargo.toml", "go.mod", "composer.json", "pyproject.toml"];
+var PKG_MANIFESTS = [
+  "package.json",
+  "Cargo.toml",
+  "go.mod",
+  "composer.json",
+  "pyproject.toml",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts"
+];
+function tomlArrayInSection(text, section, key) {
+  const out = [];
+  let table = "";
+  let buf;
+  const keyRe = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*\\[`);
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/#.*$/, "");
+    if (buf !== void 0) {
+      buf += " " + line;
+      if (line.includes("]")) {
+        for (const m of buf.matchAll(/["']([^"']+)["']/g)) out.push(m[1]);
+        buf = void 0;
+      }
+      continue;
+    }
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+    if (header) {
+      table = header[1].trim();
+      continue;
+    }
+    if (table !== section || !keyRe.test(line)) continue;
+    const tail = line.slice(line.indexOf("["));
+    if (tail.includes("]")) {
+      for (const m of tail.matchAll(/["']([^"']+)["']/g)) out.push(m[1]);
+    } else {
+      buf = tail;
+    }
+  }
+  return out;
+}
+function tomlStringInSection(text, section, key) {
+  let table = "";
+  const keyRe = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*["']([^"']+)["']`);
+  for (const raw of text.split(/\r?\n/)) {
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(raw);
+    if (header) {
+      table = header[1].trim();
+      continue;
+    }
+    if (table !== section) continue;
+    const m = keyRe.exec(raw);
+    if (m) return m[1];
+  }
+  return void 0;
+}
 function parseJson(text) {
   try {
     return JSON.parse(text);
@@ -926,12 +980,28 @@ function subDirs(root, rel) {
   return entries.filter((n) => !n.startsWith(".") && n !== "node_modules" && isDir(join4(abs, n))).map((n) => rel ? `${rel}/${n}` : n);
 }
 function expandOne(root, pat) {
-  if (!pat.includes("*")) return isDir(join4(root, pat)) ? [pat] : [];
-  const prefix = pat.slice(0, pat.indexOf("*")).replace(/\/$/, "");
-  if (prefix.includes("*")) return [];
-  const level1 = subDirs(root, prefix);
-  if (!pat.includes("**")) return level1;
-  return [...level1, ...level1.flatMap((d) => subDirs(root, d))];
+  const segs = pat.split("/").filter((s) => s && s !== ".");
+  let dirs = [""];
+  for (const seg of segs) {
+    const next = [];
+    for (const d of dirs) {
+      if (seg === "**") {
+        const level1 = subDirs(root, d);
+        next.push(...level1, ...level1.flatMap((x) => subDirs(root, x)));
+      } else if (seg === "*") {
+        next.push(...subDirs(root, d));
+      } else if (seg.includes("*")) {
+        const re = new RegExp("^" + seg.split("*").map(escapeRegExp).join(".*") + "$");
+        next.push(...subDirs(root, d).filter((x) => re.test(x.split("/").pop())));
+      } else {
+        const cand = d ? `${d}/${seg}` : seg;
+        if (isDir(join4(root, cand))) next.push(cand);
+      }
+    }
+    dirs = next;
+    if (dirs.length === 0) return [];
+  }
+  return dirs.filter(Boolean);
 }
 function expand(root, patterns) {
   const include = [];
@@ -962,6 +1032,18 @@ function describePackage(root, dir) {
     const mod = /^module\s+(\S+)/m.exec(gomod)?.[1];
     if (mod) return { name: mod, dir, description: void 0 };
   }
+  const py = readText(join4(root, dir, "pyproject.toml"));
+  if (py) {
+    const name = tomlStringInSection(py, "project", "name") ?? tomlStringInSection(py, "tool.poetry", "name");
+    const description = tomlStringInSection(py, "project", "description") ?? tomlStringInSection(py, "tool.poetry", "description");
+    if (name) return { name, dir, description };
+  }
+  const pom = readText(join4(root, dir, "pom.xml"));
+  if (pom) {
+    const own = pom.replace(/<parent>[\s\S]*?<\/parent>/, "");
+    const name = /<artifactId>\s*([^<]+?)\s*<\/artifactId>/.exec(own)?.[1];
+    if (name) return { name, dir, description: void 0 };
+  }
   return { name: base, dir, description: void 0 };
 }
 function workspacePatterns(root) {
@@ -991,16 +1073,42 @@ function workspacePatterns(root) {
   }
   const cargo = readText(join4(root, "Cargo.toml"));
   if (cargo) {
-    const members = /\[workspace\][^[]*?members\s*=\s*\[([^\]]*)\]/.exec(cargo)?.[1];
-    if (members) {
-      for (const m of members.matchAll(/["']([^"']+)["']/g)) patterns.push(m[1]);
-    }
+    patterns.push(...tomlArrayInSection(cargo, "workspace", "members"));
+    patterns.push(...tomlArrayInSection(cargo, "workspace", "exclude").map((p) => `!${p}`));
   }
   const gowork = readText(join4(root, "go.work"));
   if (gowork) {
     const block = /^use\s*\(([\s\S]*?)\)/m.exec(gowork)?.[1];
     const uses = block ? block.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("//")) : [...gowork.matchAll(/^use\s+(\S+)/gm)].map((m) => m[1]);
     patterns.push(...uses);
+  }
+  const py = readText(join4(root, "pyproject.toml"));
+  if (py) {
+    patterns.push(...tomlArrayInSection(py, "tool.uv.workspace", "members"));
+    patterns.push(...tomlArrayInSection(py, "tool.uv.workspace", "exclude").map((p) => `!${p}`));
+  }
+  const composer = parseJson(readText(join4(root, "composer.json")));
+  if (composer && Array.isArray(composer.repositories)) {
+    for (const r of composer.repositories) {
+      if (r && r.type === "path" && typeof r.url === "string") patterns.push(r.url);
+    }
+  }
+  const pom = readText(join4(root, "pom.xml"));
+  if (pom) {
+    const block = /<modules>([\s\S]*?)<\/modules>/.exec(pom)?.[1];
+    if (block) {
+      for (const m of block.matchAll(/<module>\s*([^<]+?)\s*<\/module>/g)) patterns.push(m[1]);
+    }
+  }
+  for (const f of ["settings.gradle", "settings.gradle.kts"]) {
+    const gradle = readText(join4(root, f));
+    if (!gradle) continue;
+    for (const line of gradle.split(/\r?\n/)) {
+      if (!/^\s*include[\s(]/.test(line)) continue;
+      for (const m of line.matchAll(/["']([^"']+)["']/g)) {
+        patterns.push(m[1].replace(/^:/, "").replace(/:/g, "/"));
+      }
+    }
   }
   return patterns;
 }
