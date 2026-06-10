@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.3.0](https://github.com/maxgfr/ultradoc/compare/v1.2.0...v1.3.0) (2026-06-10)
+
+
+### Features
+
+* add monorepo workspace discovery and --package scoping ([b658e6f](https://github.com/maxgfr/ultradoc/commit/b658e6f0b886e560ec7ec1a4a82972ecb1e184ec))
+
 # [1.2.0](https://github.com/maxgfr/ultradoc/compare/v1.1.1...v1.2.0) (2026-06-08)
 
 
