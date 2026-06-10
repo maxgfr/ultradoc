@@ -1244,7 +1244,28 @@ function ensureIndex(root, slug, opts = {}) {
 }
 
 // src/index/search.ts
+import { statSync as statSync4 } from "fs";
 import { join as join6, relative as relative2, sep as sep2 } from "path";
+
+// src/index/bm25.ts
+function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
+  const scores = /* @__PURE__ */ new Map();
+  const avgLen = docs.length ? docs.reduce((s, d) => s + d.len, 0) / docs.length : 1;
+  for (const d of docs) {
+    let s = 0;
+    for (const t of terms) {
+      const f = d.tf.get(t) ?? 0;
+      if (f === 0) continue;
+      const n = df.get(t) ?? 0;
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
+      s += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (d.len / (avgLen || 1)))));
+    }
+    if (s > 0) scores.set(d.key, s);
+  }
+  return scores;
+}
+
+// src/index/search.ts
 var MAX_KEYWORDS = 8;
 var CONTEXT = 3;
 function rgSearch(root, kws, scope) {
@@ -1300,12 +1321,15 @@ function rgSearch(root, kws, scope) {
     const text = (evt.data?.lines?.text ?? "").replace(/\n$/, "");
     let fh = byFile.get(rel);
     if (!fh) {
-      fh = { rel, matchedKw: /* @__PURE__ */ new Set(), lines: [] };
+      fh = { rel, matchedKw: /* @__PURE__ */ new Set(), kwCounts: /* @__PURE__ */ new Map(), lines: [] };
       byFile.set(rel, fh);
     }
     for (const sm of evt.data?.submatches ?? []) {
       const m = (sm.match?.text ?? "").toLowerCase();
-      if (m) fh.matchedKw.add(m);
+      if (m) {
+        fh.matchedKw.add(m);
+        fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
+      }
     }
     fh.lines.push({ line: lineNo, text: text.slice(0, 400) });
   }
@@ -1327,10 +1351,13 @@ function jsSearch(root, kws, scope) {
       for (let k = 0; k < kws.length; k++) if (res[k].test(line)) matched.push(kws[k].toLowerCase());
       if (matched.length) {
         if (!fh) {
-          fh = { rel, matchedKw: /* @__PURE__ */ new Set(), lines: [] };
+          fh = { rel, matchedKw: /* @__PURE__ */ new Set(), kwCounts: /* @__PURE__ */ new Map(), lines: [] };
           byFile.set(rel, fh);
         }
-        for (const m of matched) fh.matchedKw.add(m);
+        for (const m of matched) {
+          fh.matchedKw.add(m);
+          fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
+        }
         if (fh.lines.length < 40) fh.lines.push({ line: i + 1, text: line.slice(0, 400) });
       }
     }
@@ -1403,18 +1430,31 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws, scope);
   const symbols = symbolScores(index, kws);
   const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
+  const lowered = kws.map((k) => k.toLowerCase());
+  const df = /* @__PURE__ */ new Map();
+  for (const fh of lexical.values()) {
+    for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+  }
+  const candidates = [...files].filter((rel) => lexical.has(rel)).map((rel) => {
+    let len = 1e3;
+    try {
+      len = Math.max(1, statSync4(join6(root, rel)).size / 5);
+    } catch {
+    }
+    return { key: rel, tf: lexical.get(rel).kwCounts, len };
+  });
+  const lexScores = bm25(candidates, lowered, Math.max(index.fileCount, lexical.size), df, 1.2, 0.3);
+  const lexRank = [...lexScores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([rel]) => rel);
+  const symRank = [...symbols.entries()].filter(([rel]) => files.has(rel)).sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0])).map(([rel]) => rel);
+  const fused = rrf([lexRank, symRank], (rel) => rel);
   const docSet = new Set(index.docFiles);
   const scored = [];
   for (const rel of files) {
-    const fh = lexical.get(rel);
-    const sym = symbols.get(rel);
-    const lexScore = fh ? fh.matchedKw.size * 3 + Math.min(fh.lines.length, 10) * 0.4 : 0;
-    const symScore = sym ? sym.score : 0;
+    const base = fused.get(rel) ?? 0;
+    if (base <= 0) continue;
     const lowSignal = /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel) || docSet.has(rel);
-    const weight = lowSignal ? 0.45 : 1;
-    const score = (lexScore + symScore) * weight;
-    if (score <= 0) continue;
-    scored.push({ rel, score, fh, sym: sym?.sym });
+    const score = base * 1e3 * (lowSignal ? 0.45 : 1);
+    scored.push({ rel, score, fh: lexical.get(rel), sym: symbols.get(rel)?.sym });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
   const items = [];

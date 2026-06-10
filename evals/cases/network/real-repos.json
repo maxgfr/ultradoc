@@ -18,7 +18,7 @@
     "repo": "https://github.com/matomo-org/matomo",
     "question": "how does the JavaScript tracker decide when to send a heartbeat ping?",
     "args": { "sources": "code", "perSource": 8 },
-    "expect": [{ "source": "code", "refPattern": "(piwik|matomo|tracker)", "topN": 8 }]
+    "expect": [{ "source": "code", "refPattern": "(piwik\\.js|heartbeat)", "topN": 4 }]
   },
   {
     "id": "cdtn-package-scoped",

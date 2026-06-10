@@ -30,7 +30,8 @@ Cases live in `evals/cases/<suite>/*.json` (a file holds one case or an array):
 
 - `args` maps to CLI flags (`sources`, `package`, `perSource`, `docsUrl`, `ref`).
 - `expect[]` — each entry must surface in the dossier:
-  - `refIncludes` (substring of the evidence `ref`) or `refPattern` (regex);
+  - `refIncludes` (substring of the evidence `ref`) or `refPattern`
+    (case-insensitive regex);
   - `source` restricts the pool to one source's items;
   - `topN` requires the match within the first N items of that pool (items are
     already ranked by score).

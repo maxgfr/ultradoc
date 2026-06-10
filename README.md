@@ -107,10 +107,11 @@ question + repo URL
 
 Two retrieval tiers:
 
-- **Tier 1 — deterministic (default).** ripgrep + a structural symbol index
-  (functions, classes, exports, …) across **15 languages** — JS/TS, Python, Go,
-  Ruby, Java, Rust, C#, PHP, Swift, Kotlin, C/C++, Lua, Shell, Elixir, Scala.
-  Zero dependencies, no keys, offline, reproducible.
+- **Tier 1 — deterministic (default).** ripgrep ranked with BM25, fused (RRF)
+  with a structural symbol index (functions, classes, exports, …) across
+  **15 languages** — JS/TS, Python, Go, Ruby, Java, Rust, C#, PHP, Swift,
+  Kotlin, C/C++, Lua, Shell, Elixir, Scala. Zero dependencies, no keys,
+  offline, reproducible.
 - **Tier 2 — semantic (optional).** Fully-local vector search — Qdrant + a local
   embedding model (`nomic-embed-text`) — started with `ultradoc semantic up`. No
   key, nothing leaves your machine. Fuses with Tier 1 via Reciprocal Rank Fusion,

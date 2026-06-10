@@ -1,13 +1,16 @@
+import { statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import { sh, have, keywords as extractKeywords, escapeRegExp } from "../util.js";
+import { sh, have, keywords as extractKeywords, escapeRegExp, rrf } from "../util.js";
 import { walk, readText } from "../walk.js";
+import { bm25 } from "./bm25.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
 interface FileHits {
   rel: string;
   matchedKw: Set<string>;
+  kwCounts: Map<string, number>; // keyword -> hit count in this file (tf for BM25)
   lines: { line: number; text: string }[];
 }
 
@@ -62,12 +65,15 @@ function rgSearch(root: string, kws: string[], scope?: string): Map<string, File
     const text: string = (evt.data?.lines?.text ?? "").replace(/\n$/, "");
     let fh = byFile.get(rel);
     if (!fh) {
-      fh = { rel, matchedKw: new Set(), lines: [] };
+      fh = { rel, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
       byFile.set(rel, fh);
     }
     for (const sm of evt.data?.submatches ?? []) {
       const m = (sm.match?.text ?? "").toLowerCase();
-      if (m) fh.matchedKw.add(m);
+      if (m) {
+        fh.matchedKw.add(m);
+        fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
+      }
     }
     fh.lines.push({ line: lineNo, text: text.slice(0, 400) });
   }
@@ -95,10 +101,13 @@ function jsSearch(root: string, kws: string[], scope?: string): Map<string, File
       for (let k = 0; k < kws.length; k++) if (res[k]!.test(line)) matched.push(kws[k]!.toLowerCase());
       if (matched.length) {
         if (!fh) {
-          fh = { rel, matchedKw: new Set(), lines: [] };
+          fh = { rel, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
           byFile.set(rel, fh);
         }
-        for (const m of matched) fh.matchedKw.add(m);
+        for (const m of matched) {
+          fh.matchedKw.add(m);
+          fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
+        }
         if (fh.lines.length < 40) fh.lines.push({ line: i + 1, text: line.slice(0, 400) });
       }
     }
@@ -194,31 +203,65 @@ export function searchCode(
   const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws, scope);
   const symbols = symbolScores(index, kws);
 
-  // Combined per-file score: lexical coverage + density + symbol bonus. The
-  // scope filter applies here so symbol-only hits respect it too (the rg glob
-  // is just an optimization).
+  // The scope filter applies here so symbol-only hits respect it too (the rg
+  // glob is just an optimization).
   const files = new Set<string>([...lexical.keys(), ...symbols.keys()].filter(inScope));
+
+  // Lexical ranking is BM25. ripgrep already provides everything it needs with
+  // no stored term index: per-file term counts (kwCounts) and exact document
+  // frequencies — rg returns every file matching any keyword, so df is the
+  // corpus df. Doc length uses file size / 5 as a token proxy, computed only
+  // for the candidates (a few hundred stat calls at most).
+  const lowered = kws.map((k) => k.toLowerCase());
+  const df = new Map<string, number>();
+  for (const fh of lexical.values()) {
+    for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+  }
+  const candidates = [...files]
+    .filter((rel) => lexical.has(rel))
+    .map((rel) => {
+      let len = 1000;
+      try {
+        len = Math.max(1, statSync(join(root, rel)).size / 5);
+      } catch {
+        /* keep the default */
+      }
+      return { key: rel, tf: lexical.get(rel)!.kwCounts, len };
+    });
+  // b=0.3: code corpora mix tiny config files with huge implementation files,
+  // and the full-strength length normalization (b=0.75) buries exactly the big
+  // files where the answer lives (e.g. matomo's js/piwik.js).
+  const lexScores = bm25(candidates, lowered, Math.max(index.fileCount, lexical.size), df, 1.2, 0.3);
+
+  // Fuse the BM25 ranking with the symbol-index ranking via RRF — the same
+  // scale-free fusion the semantic tier uses — then apply the low-signal
+  // penalty on the fused score.
+  const lexRank = [...lexScores.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([rel]) => rel);
+  const symRank = [...symbols.entries()]
+    .filter(([rel]) => files.has(rel))
+    .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]))
+    .map(([rel]) => rel);
+  const fused = rrf([lexRank, symRank], (rel) => rel);
+
   // Files better served by the `docs` source (README, changelog, docs/**, *.md)
   // — down-weight them in CODE search so a keyword-dense changelog can't
   // out-rank the actual implementation. (Without this, e.g. express's
-  // History.md beat lib/router on a routing question.)
+  // History.md beat lib/router on a routing question.) Same for tests,
+  // fixtures, examples and benchmarks: they still surface, just below real
+  // implementation code.
   const docSet = new Set(index.docFiles);
   const scored: { rel: string; score: number; fh?: FileHits; sym?: CodeSymbol }[] = [];
   for (const rel of files) {
-    const fh = lexical.get(rel);
-    const sym = symbols.get(rel);
-    const lexScore = fh ? fh.matchedKw.size * 3 + Math.min(fh.lines.length, 10) * 0.4 : 0;
-    const symScore = sym ? sym.score : 0;
-    // Penalize low-signal locations for a code question: tests, fixtures,
-    // examples, benchmarks, and doc files. They still surface, just ranked below
-    // real implementation code.
+    const base = fused.get(rel) ?? 0;
+    if (base <= 0) continue;
     const lowSignal =
       /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel) ||
       docSet.has(rel);
-    const weight = lowSignal ? 0.45 : 1;
-    const score = (lexScore + symScore) * weight;
-    if (score <= 0) continue;
-    scored.push({ rel, score, fh, sym: sym?.sym });
+    // ×1000 only for readability of the reported score; ordering is unchanged.
+    const score = base * 1000 * (lowSignal ? 0.45 : 1);
+    scored.push({ rel, score, fh: lexical.get(rel), sym: symbols.get(rel)?.sym });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
 

@@ -78,7 +78,7 @@ function runCase(c, outRoot) {
     const pool = ex.source ? evidence.filter((i) => i.source === ex.source) : evidence;
     const matches = (i) =>
       (ex.refIncludes && i.ref.includes(ex.refIncludes)) ||
-      (ex.refPattern && new RegExp(ex.refPattern).test(i.ref));
+      (ex.refPattern && new RegExp(ex.refPattern, "i").test(i.ref));
     const rank = pool.findIndex(matches);
     const found = rank >= 0;
     const inTopN = found && (ex.topN === undefined || rank < ex.topN);

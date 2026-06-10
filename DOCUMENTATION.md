@@ -59,14 +59,17 @@ AskOptions
 
 ### Tier 1 — deterministic code search (`index/search.ts`)
 - **Lexical:** one `rg --json` call with the question's keywords as literal
-  patterns (pure-JS scan if ripgrep is absent). Per-file matched-keyword sets and
-  hit lines are collected and merged into regions.
+  patterns (pure-JS scan if ripgrep is absent). Per-file term counts and hit
+  lines are collected; files are ranked with **BM25** (`index/bm25.ts`) — rg
+  returns every matching file, so document frequencies are exact and no term
+  index has to be stored. `b=0.3` softens length normalization, since the
+  answer in a code corpus often lives in the biggest file.
 - **Structural:** the symbol index (`index/structural.ts` + `lang/*`) is ranked
   by name similarity to the keywords; exported symbols weigh more.
-- **Fusion:** a combined per-file score (lexical coverage + density + symbol
-  bonus, with a small penalty for test/fixture paths) picks top files; each
-  excerpt is anchored at the matching symbol's definition when there is one, else
-  the densest region. Output: `file:line-range` snippets with GitHub blob URLs.
+- **Fusion:** the BM25 and symbol rankings fuse via RRF (same fusion as the
+  semantic tier), with a penalty for test/fixture/doc paths; each excerpt is
+  anchored at the matching symbol's definition when there is one, else the
+  densest region. Output: `file:line-range` snippets with GitHub blob URLs.
 
 ### Keyword selection (`util.ts`)
 `keywords()` strips stopwords; `rankedKeywords()` orders by distinctiveness
