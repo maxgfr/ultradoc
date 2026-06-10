@@ -99,7 +99,7 @@ question + repo URL
   → clone any git URL into /tmp (cached, shallow)
   → index deterministically: ripgrep + a per-language symbol index
       (optional Tier 2: local vector search — Qdrant + Ollama, in Docker, no key)
-  → retrieve evidence: code · issues · PRs · docs · StackOverflow · web
+  → retrieve evidence: code · issues · PRs · docs · releases · git history · discussions · StackOverflow · web
   → write an evidence dossier (EVIDENCE.md + evidence.json)
   → the model writes a CITED answer (ANSWER.md)
   → `ultradoc check` verifies every citation resolves   ← the grounding guarantee
@@ -133,7 +133,7 @@ Two retrieval tiers:
 | Command | What it does |
 |---------|--------------|
 | `ask` | Retrieve from all selected sources → write an evidence dossier |
-| `code` / `issues` / `prs` / `docs` / `so` | Drill into one source (prints evidence) |
+| `code` / `issues` / `prs` / `docs` / `releases` / `history` / `discussions` / `so` | Drill into one source (prints evidence) |
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
 | `overview` | Generate a cached markdown digest of the repo (packages, layout, public API, docs map) |
 | `check --run <dir>` | Validate ANSWER.md citations against the dossier |
@@ -141,8 +141,9 @@ Two retrieval tiers:
 | `semantic up\|down\|status` | Manage the optional local Docker stack |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
-code,issues,prs,docs,web,so`, `--ref <branch>` (pin a version), `--package
-<name|dir>` (scope a monorepo), `--docs-url <url>`, `--semantic`.
+code,issues,prs,docs,releases,history,discussions,web,so`, `--ref <branch>`
+(pin a version), `--package <name|dir>` (scope a monorepo), `--docs-url <url>`,
+`--semantic`.
 
 ## Monorepos
 

@@ -267,6 +267,45 @@ ${(res.stderr || fallback.stderr).trim()}`
   }
   return dir;
 }
+var deepened = /* @__PURE__ */ new Map();
+function ensureHistoryDepth(dir) {
+  const cached = deepened.get(dir);
+  if (cached) return cached;
+  let out;
+  const probe = sh("git", ["-C", dir, "rev-parse", "--is-shallow-repository"]);
+  const filter = sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter"]);
+  const shallow = probe.ok && probe.stdout.trim() === "true";
+  const partial = filter.ok && filter.stdout.trim() !== "";
+  if (!probe.ok) {
+    out = { ok: false, note: "Not a git working tree \u2014 no commit history available." };
+  } else if (!shallow && !partial) {
+    out = { ok: true };
+  } else {
+    if (partial) sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
+    const args = [
+      "-C",
+      dir,
+      "fetch",
+      "--quiet",
+      ...partial ? ["--refetch"] : [],
+      ...shallow ? ["--unshallow"] : [],
+      "origin"
+    ];
+    const full = sh("git", args, { timeoutMs: 3e5 });
+    if (full.ok) {
+      out = { ok: true };
+    } else if (shallow && !partial) {
+      const deepen = sh("git", ["-C", dir, "fetch", "--quiet", "--deepen=500", "origin"], {
+        timeoutMs: 18e4
+      });
+      out = deepen.ok ? { ok: true, note: "History deepened to ~500 commits (full unshallow failed); older changes may be missing." } : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
+    } else {
+      out = { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
+    }
+  }
+  deepened.set(dir, out);
+  return out;
+}
 function headCommit(dir) {
   const res = sh("git", ["-C", dir, "rev-parse", "--short", "HEAD"]);
   return res.ok ? res.stdout.trim() : void 0;
@@ -1914,6 +1953,196 @@ async function docsSource(ctx) {
   return { source: "docs", items, notes };
 }
 
+// src/sources/releases.ts
+import { join as join9 } from "path";
+var CHANGELOG_RE = /(^|\/)(changelog|changes|history|news|releases?)(\.[a-z0-9]+)?$/i;
+var VERSION_HEADING_RE = /^(#{1,4}\s*\[?v?\d+\.\d+|v?\d+\.\d+(\.\d+)?\s*[/(—-])/;
+function changelogSections(file, content) {
+  const lines = content.split(/\r?\n/);
+  const sections = [];
+  let cur;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (VERSION_HEADING_RE.test(line)) {
+      if (cur) sections.push(cur);
+      const version = /v?(\d+\.\d+[^\s\])/(—-]*)/.exec(line)?.[1] ?? line.trim().slice(0, 20);
+      cur = { file, version, start: i + 1, lines: [line] };
+    } else if (cur) {
+      cur.lines.push(line);
+    }
+  }
+  if (cur) sections.push(cur);
+  return sections;
+}
+function coverage(text, kws) {
+  const low = text.toLowerCase();
+  let c2 = 0;
+  for (const kw of kws) if (low.includes(kw)) c2++;
+  return c2;
+}
+async function githubReleases(ctx, kws) {
+  const ref = ctx.repoRef;
+  const notes = [];
+  if (!/github/i.test(ref.host) || !ref.owner || !ref.repo) {
+    notes.push("Releases API: only GitHub is supported keylessly; used the changelog only.");
+    return { items: [], notes };
+  }
+  let body;
+  if (have("gh")) {
+    const res = sh("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=20`]);
+    if (res.ok) body = res.stdout;
+  }
+  if (!body) {
+    const r = await httpGet(
+      `https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`,
+      { accept: "application/vnd.github+json" }
+    );
+    if (!r.ok) {
+      notes.push(`GitHub releases API unavailable (status ${r.status}); used the changelog only.`);
+      return { items: [], notes };
+    }
+    body = r.body;
+  }
+  let releases;
+  try {
+    releases = JSON.parse(body);
+  } catch {
+    notes.push("GitHub releases API returned an unparseable response.");
+    return { items: [], notes };
+  }
+  if (!Array.isArray(releases) || releases.length === 0) {
+    notes.push("The repo has no GitHub releases; used the changelog only.");
+    return { items: [], notes };
+  }
+  const items = githubReleaseItems(releases, kws);
+  if (items.length === 0) notes.push("No GitHub release notes matched the question's keywords.");
+  return { items, notes };
+}
+function githubReleaseItems(releases, kws) {
+  const items = [];
+  for (const rel of releases ?? []) {
+    const text = `${rel.name ?? ""}
+${rel.body ?? ""}`;
+    const cov = coverage(text, kws);
+    if (cov === 0) continue;
+    const tag = String(rel.tag_name ?? rel.name ?? "");
+    items.push({
+      source: "release",
+      title: `Release ${rel.name || tag}${rel.published_at ? ` (${String(rel.published_at).slice(0, 10)})` : ""}`,
+      ref: `release:${tag}`,
+      location: rel.html_url,
+      score: cov * 3,
+      snippet: String(rel.body ?? "(no release notes)").replace(/\r/g, "").trim().slice(0, 1200),
+      url: rel.html_url,
+      meta: { tag, publishedAt: rel.published_at }
+    });
+  }
+  return items;
+}
+async function releasesSource(ctx) {
+  const notes = [];
+  const kws = keywords(ctx.options.question).map((k) => k.toLowerCase());
+  const items = [];
+  const changelogs = ctx.index.docFiles.filter(
+    (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel)
+  );
+  for (const rel of changelogs) {
+    const content = readText(join9(ctx.repoDir, rel));
+    if (!content) continue;
+    const scored = changelogSections(rel, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
+    for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
+      const end = s.start + Math.min(s.lines.length, 30) - 1;
+      items.push({
+        source: "release",
+        title: `${rel} \u2014 version ${s.version}`,
+        ref: `release:${s.version}`,
+        location: `${rel}:${s.start}-${s.start + s.lines.length - 1}`,
+        score: cov * 3,
+        snippet: s.lines.slice(0, 30).join("\n"),
+        url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${rel}#L${s.start}-L${end}`
+      });
+    }
+  }
+  if (changelogs.length === 0) notes.push("No changelog file found in the repo.");
+  else if (items.length === 0) notes.push("No changelog section matched the question's keywords.");
+  if (!ctx.repoRef.isLocal) {
+    const gh = await githubReleases(ctx, kws);
+    items.push(...gh.items);
+    notes.push(...gh.notes);
+  }
+  return { source: "release", items, notes };
+}
+
+// src/sources/history.ts
+function looksLikeIdentifier(kw) {
+  return /[A-Z_.]/.test(kw.slice(1)) || /^[a-z]+[A-Z]/.test(kw);
+}
+async function historySource(ctx) {
+  const notes = [];
+  const depth = ensureHistoryDepth(ctx.repoDir);
+  if (depth.note) notes.push(depth.note);
+  if (!depth.ok && /not a git/i.test(depth.note ?? "")) {
+    return { source: "history", items: [], notes };
+  }
+  const ranked = rankedKeywords(ctx.options.question).slice(0, 3);
+  if (ranked.length === 0) {
+    return { source: "history", items: [], notes: [...notes, "No keywords to search the history for."] };
+  }
+  const hits = /* @__PURE__ */ new Map();
+  for (const kw of ranked) {
+    const pickaxe = looksLikeIdentifier(kw) ? `-G${kw}` : `-S${kw}`;
+    const res = sh(
+      "git",
+      [
+        "-C",
+        ctx.repoDir,
+        "log",
+        pickaxe,
+        "--format=%h%x09%ad%x09%an%x09%s",
+        "--date=short",
+        "--max-count=5",
+        "--no-merges",
+        ...ctx.scopeDir ? ["--", ctx.scopeDir] : []
+      ],
+      { timeoutMs: 12e4 }
+    );
+    if (!res.ok) {
+      notes.push(`git log ${pickaxe.slice(0, 2)} "${kw}" failed or timed out.`);
+      continue;
+    }
+    for (const line of res.stdout.split("\n")) {
+      if (!line.trim()) continue;
+      const [sha, date, author, ...rest] = line.split("	");
+      if (!sha || !date) continue;
+      const hit = hits.get(sha) ?? { sha, date, author: author ?? "?", subject: rest.join("	"), kws: /* @__PURE__ */ new Set() };
+      hit.kws.add(kw);
+      hits.set(sha, hit);
+    }
+  }
+  const top = [...hits.values()].sort((a, b) => b.kws.size - a.kws.size || b.date.localeCompare(a.date)).slice(0, ctx.options.perSource);
+  const items = [];
+  for (const c2 of top) {
+    const show = sh("git", ["-C", ctx.repoDir, "show", "--stat", "-s", "--format=%B", c2.sha], {
+      timeoutMs: 3e4
+    });
+    const body = show.ok ? show.stdout.replace(/\r/g, "").trim().slice(0, 1200) : c2.subject;
+    items.push({
+      source: "history",
+      title: `${c2.sha} ${c2.subject} (${c2.date})`,
+      ref: `commit:${c2.sha}`,
+      location: c2.sha,
+      score: c2.kws.size * 3,
+      snippet: `${c2.date} \xB7 ${c2.author} \xB7 matched: ${[...c2.kws].join(", ")}
+
+${body}`,
+      url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/commit/${c2.sha}`,
+      meta: { sha: c2.sha, date: c2.date, matchedKeywords: [...c2.kws] }
+    });
+  }
+  if (items.length === 0) notes.push("No commit history matched the question's keywords.");
+  return { source: "history", items, notes };
+}
+
 // src/providers/github.ts
 function toItems(raw, kind) {
   return (raw ?? []).map((it) => {
@@ -2000,13 +2229,13 @@ var github = {
 };
 function rerank(items, ranked) {
   const terms = ranked.map((t) => t.toLowerCase());
-  const coverage = (it) => {
+  const coverage2 = (it) => {
     const hay = `${it.title} ${it.snippet}`.toLowerCase();
     let c2 = 0;
     for (const t of terms) if (hay.includes(t)) c2++;
     return c2;
   };
-  return items.map((it) => ({ it, c: coverage(it), s: it.score })).sort((a, b) => b.c - a.c || b.s - a.s).map((x) => x.it);
+  return items.map((it) => ({ it, c: coverage2(it), s: it.score })).sort((a, b) => b.c - a.c || b.s - a.s).map((x) => x.it);
 }
 function uniqueAttempts(lists) {
   const seen = /* @__PURE__ */ new Set();
@@ -2031,8 +2260,8 @@ var gitlab = {
     }
     const proj = encodeURIComponent(`${ref.owner}/${ref.repo}`);
     const path = kind === "issue" ? "issues" : "merge_requests";
-    const search = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
-    const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search}&per_page=${perSource}&order_by=updated_at&sort=desc`;
+    const search2 = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
+    const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search2}&per_page=${perSource}&order_by=updated_at&sort=desc`;
     const r = await httpGet(url, { accept: "application/json" });
     if (!r.ok) {
       return { items: [], notes: [`GitLab ${kind} search unavailable (status ${r.status}).`] };
@@ -2111,6 +2340,108 @@ async function prsSource(ctx) {
   const provider = providerFor(ref.host);
   const { items, notes } = await provider.search(ref, ctx.options.question, "pr", ctx.options.perSource);
   return { source: "pr", items, notes };
+}
+
+// src/sources/discussions.ts
+var QUERY = `query($q: String!, $n: Int!) {
+  search(query: $q, type: DISCUSSION, first: $n) {
+    nodes {
+      ... on Discussion {
+        number title url bodyText updatedAt
+        category { name }
+        answer { bodyText }
+      }
+    }
+  }
+}`;
+function discussionItems(nodes) {
+  const items = [];
+  for (const d of nodes ?? []) {
+    if (!d || typeof d.number !== "number") continue;
+    const body = String(d.bodyText ?? "").replace(/\r/g, "").trim().slice(0, 800);
+    const answer = String(d.answer?.bodyText ?? "").replace(/\r/g, "").trim().slice(0, 600);
+    items.push({
+      source: "discussion",
+      title: `#${d.number} ${d.title}${d.category?.name ? ` [${d.category.name}]` : ""}`,
+      ref: `discussion#${d.number}`,
+      location: d.url,
+      score: 0,
+      // reranked by keyword coverage below
+      snippet: `updated: ${d.updatedAt ?? "?"}
+
+${body || "(no description)"}` + (answer ? `
+
+--- accepted answer ---
+${answer}` : ""),
+      url: d.url,
+      meta: { number: d.number, category: d.category?.name, answered: !!d.answer }
+    });
+  }
+  return items;
+}
+function search(owner, repo, terms, n) {
+  const res = sh("gh", [
+    "api",
+    "graphql",
+    "-f",
+    `query=${QUERY}`,
+    "-f",
+    `q=repo:${owner}/${repo} ${terms.join(" ")}`,
+    "-F",
+    `n=${n}`
+  ]);
+  if (!res.ok) return void 0;
+  try {
+    return discussionItems(JSON.parse(res.stdout)?.data?.search?.nodes ?? []);
+  } catch {
+    return void 0;
+  }
+}
+async function discussionsSource(ctx) {
+  const ref = ctx.repoRef;
+  if (!/github/i.test(ref.host) || !ref.owner || !ref.repo) {
+    return {
+      source: "discussion",
+      items: [],
+      notes: ["Discussions are only available for GitHub repos (none resolved here)."]
+    };
+  }
+  if (!have("gh")) {
+    return {
+      source: "discussion",
+      items: [],
+      notes: ["GitHub Discussions need the gh CLI (the GraphQL API has no keyless access); skipped. Run `gh auth login` to enable."]
+    };
+  }
+  const ranked = rankedKeywords(ctx.options.question);
+  if (ranked.length === 0) {
+    return { source: "discussion", items: [], notes: ["No keywords to search discussions."] };
+  }
+  const per = ctx.options.perSource;
+  for (const terms of [ranked.slice(0, 3), ranked.slice(0, 2)]) {
+    if (terms.length === 0) continue;
+    const items = search(ref.owner, ref.repo, terms, per * 2);
+    if (items === void 0) {
+      return { source: "discussion", items: [], notes: ["GitHub Discussions search failed (gh api graphql)."] };
+    }
+    if (items.length) {
+      return { source: "discussion", items: withRankScores(rerank(items, ranked).slice(0, per)), notes: [] };
+    }
+  }
+  const seen = /* @__PURE__ */ new Map();
+  for (const t of ranked.slice(0, 3)) {
+    const items = search(ref.owner, ref.repo, [t], per * 2) ?? [];
+    for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
+  }
+  const merged = withRankScores(rerank([...seen.values()], ranked).slice(0, per));
+  return {
+    source: "discussion",
+    items: merged,
+    notes: merged.length ? [] : ["No discussions matched the question (or the repo has none)."]
+  };
+}
+function withRankScores(items) {
+  return items.map((it, i) => ({ ...it, score: items.length - i }));
 }
 
 // src/sources/stackoverflow.ts
@@ -2244,8 +2575,11 @@ async function webSource(ctx) {
 var HANDLERS = {
   code: codeSource,
   docs: docsSource,
+  release: releasesSource,
+  history: historySource,
   issue: issuesSource,
   pr: prsSource,
+  discussion: discussionsSource,
   so: stackoverflowSource,
   web: webSource
 };
@@ -2267,13 +2601,26 @@ async function runSources(ctx) {
 
 // src/dossier.ts
 import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync4 } from "fs";
-import { join as join9 } from "path";
-var SOURCE_ORDER = ["code", "docs", "issue", "pr", "so", "web"];
+import { join as join10 } from "path";
+var SOURCE_ORDER = [
+  "code",
+  "docs",
+  "release",
+  "history",
+  "issue",
+  "pr",
+  "discussion",
+  "so",
+  "web"
+];
 var SOURCE_LABEL = {
   code: "Code",
   docs: "Documentation",
+  release: "Releases & Changelog",
+  history: "Git History",
   issue: "Issues",
   pr: "Pull / Merge Requests",
+  discussion: "Discussions",
   so: "StackOverflow",
   web: "Web"
 };
@@ -2288,7 +2635,7 @@ function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(slug, d) {
-  return join9(cacheRoot(), slug, "runs", runId(d));
+  return join10(cacheRoot(), slug, "runs", runId(d));
 }
 function assignIds(results) {
   const flat = results.flatMap((r) => r.items);
@@ -2345,9 +2692,9 @@ function renderEvidenceMarkdown(evidence, meta) {
 }
 function writeDossier(dir, evidence, meta) {
   mkdirSync5(dir, { recursive: true });
-  const evidenceJson = join9(dir, "evidence.json");
-  const evidenceMd = join9(dir, "EVIDENCE.md");
-  const metaJson = join9(dir, "meta.json");
+  const evidenceJson = join10(dir, "evidence.json");
+  const evidenceMd = join10(dir, "EVIDENCE.md");
+  const metaJson = join10(dir, "meta.json");
   writeFileSync4(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync4(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync4(metaJson, JSON.stringify(meta, null, 2));
@@ -2399,37 +2746,37 @@ async function runSingleSource(options, kind) {
 
 // src/check.ts
 import { existsSync as existsSync6, readFileSync as readFileSync5 } from "fs";
-import { join as join10 } from "path";
+import { join as join11 } from "path";
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
-  numbered: /^(issue|pr)#\d+$/,
+  numbered: /^(issue|pr|discussion)#\d+$/,
   soref: /^so:\S+$/,
-  typed: /^(code|docs|web|so):\S+$/
+  typed: /^(code|docs|web|so|release|commit|history|discussion):\S+$/
 };
+var TYPED_SOURCE = { commit: "history" };
 function isCitation(tok) {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
 }
 function resolves(tok, evidence, ids, refs) {
   if (SHAPE.id.test(tok)) return ids.has(tok);
-  if (SHAPE.numbered.test(tok) || SHAPE.soref.test(tok)) {
-    if (refs.has(tok)) return true;
-  }
+  if (refs.has(tok)) return true;
   const colon = tok.indexOf(":");
   if (colon > 0) {
     const prefix = tok.slice(0, colon);
     const payload = tok.slice(colon + 1);
+    const source = TYPED_SOURCE[prefix] ?? prefix;
     return evidence.some(
-      (e) => e.source === prefix && (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))
+      (e) => e.source === source && (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))
     );
   }
-  return refs.has(tok);
+  return false;
 }
 function checkRun(dir) {
   const errors = [];
   const warnings = [];
-  const answerPath = join10(dir, "ANSWER.md");
-  const evidencePath = join10(dir, "evidence.json");
+  const answerPath = join11(dir, "ANSWER.md");
+  const evidencePath = join11(dir, "evidence.json");
   if (!existsSync6(evidencePath)) {
     return {
       ok: false,
@@ -2520,15 +2867,15 @@ function formatCheckReport(r, dir) {
 
 // src/overview.ts
 import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync6, writeFileSync as writeFileSync5 } from "fs";
-import { basename as basename2, dirname as dirname2, join as join11 } from "path";
+import { basename as basename2, dirname as dirname2, join as join12 } from "path";
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join11(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join12(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join11(repoDir, readme));
+  const text = readText(join12(repoDir, readme));
   const out = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -2651,7 +2998,7 @@ code, issues, PRs, docs and the web \u2014 grounded retrieval, not the model's m
 
 Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
-  ultradoc code|issues|prs|docs|so --repo <url|path> --q "<question>" [options]
+  ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
@@ -2663,6 +3010,9 @@ Commands:
   code       Drill into code search only (prints evidence, writes nothing).
   issues     Drill into related issues.       prs   Drill into related PRs.
   docs       Drill into documentation.        so    Drill into StackOverflow.
+  releases   Drill into release notes + changelog ("when was X added?").
+  history    Drill into git history (pickaxe: "when/why did X change?").
+  discussions  Drill into GitHub Discussions (needs the gh CLI).
   web        Discover + fetch web pages (keyless: SearXNG \u2192 DuckDuckGo \u2192 WebSearch).
   overview   Generate (once) a cached markdown digest of the repo \u2014 packages,
              layout, public API, docs map \u2014 to answer follow-up questions
@@ -2674,7 +3024,8 @@ Commands:
 Options:
   --repo <url|path>    Any git URL or a local checkout              (required)
   --q, --question <s>  The question to answer                       (required for ask/drill)
-  --sources <list>     code,issues,prs,docs,web,so   (default: code,issues,prs,docs)
+  --sources <list>     code,issues,prs,docs,releases,history,discussions,web,so
+                                                     (default: code,issues,prs,docs)
   --ref <branch>       Branch/tag/commit to clone                   (default: default branch)
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
@@ -2703,6 +3054,9 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "issues",
   "prs",
   "docs",
+  "releases",
+  "history",
+  "discussions",
   "so",
   "web",
   "overview",
@@ -2805,6 +3159,11 @@ var SOURCE_TOKENS = {
   "merge-requests": "pr",
   doc: "docs",
   docs: "docs",
+  release: "release",
+  releases: "release",
+  history: "history",
+  discussion: "discussion",
+  discussions: "discussion",
   web: "web",
   so: "so",
   stackoverflow: "so"
@@ -2814,7 +3173,7 @@ function parseSources(s) {
   const out = [];
   for (const t of s.split(",").map((x) => x.trim()).filter(Boolean)) {
     const k = SOURCE_TOKENS[t.toLowerCase()];
-    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,web,so)`);
+    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,releases,history,discussions,web,so)`);
     if (!out.includes(k)) out.push(k);
   }
   if (out.length === 0) fail("--sources resolved to nothing");
@@ -2885,12 +3244,18 @@ async function main() {
     case "issues":
     case "prs":
     case "docs":
+    case "releases":
+    case "history":
+    case "discussions":
     case "so": {
       const kindMap = {
         code: "code",
         issues: "issue",
         prs: "pr",
         docs: "docs",
+        releases: "release",
+        history: "history",
+        discussions: "discussion",
         so: "so"
       };
       const kind = kindMap[p.command];

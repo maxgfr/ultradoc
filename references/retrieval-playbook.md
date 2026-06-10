@@ -15,6 +15,9 @@ behavior, error, or change). Then choose sources:
 | whether behavior is intended / documented | `docs`, `code` |
 | a bug, a known limitation, a discussion | `issues` |
 | an in-progress or proposed change | `prs` |
+| when something was added / released, version differences | `releases` |
+| when/why a piece of code changed, who changed it | `history` |
+| community Q&A, design rationale threads on the repo | `discussions` (needs `gh`) |
 | a "how do I" / conceptual / cross-library topic | `web`, `so` (+ `docs`) |
 | anything version-sensitive | add `--ref <branch|tag>` and pin to the commit |
 
@@ -30,6 +33,10 @@ alone can't answer it. Use `--docs-url` when official docs live off-repo.
    - `code --q "<symbol/behavior>"` — pull more/other code regions. Search by the
      exact identifier when you know it; the symbol index ranks definitions first.
    - `issues --q "..."` / `prs --q "..."` — read the discussion and diffs.
+   - `releases --q "..."` — changelog sections + release notes ("when was X
+     added?"). `history --q "<identifier>"` — git pickaxe: the commits that
+     introduced or changed the symbol (first run on a remote repo fetches full
+     history once). `discussions --q "..."` — GitHub Discussions via `gh`.
    - `web --q "..."` or, after your own WebSearch, `web --url <u>` to ground a
      specific page.
 4. Repeat until you can answer every part of the question from evidence.

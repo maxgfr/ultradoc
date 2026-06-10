@@ -21,6 +21,13 @@
     "expect": [{ "source": "code", "refPattern": "(piwik\\.js|heartbeat)", "topN": 4 }]
   },
   {
+    "id": "express-history-mergeparams",
+    "repo": "https://github.com/expressjs/express",
+    "question": "when was the mergeParams router option introduced?",
+    "args": { "sources": "history,releases" },
+    "expect": [{ "source": "history", "refPattern": "^commit:[0-9a-f]+", "topN": 6 }]
+  },
+  {
     "id": "cdtn-package-scoped",
     "repo": "https://github.com/socialgouv/code-du-travail-numerique",
     "question": "comment l'indemnité de licenciement est-elle calculée ?",

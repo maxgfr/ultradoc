@@ -17,7 +17,7 @@ code, issues, PRs, docs and the web — grounded retrieval, not the model's memo
 
 Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
-  ultradoc code|issues|prs|docs|so --repo <url|path> --q "<question>" [options]
+  ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
@@ -29,6 +29,9 @@ Commands:
   code       Drill into code search only (prints evidence, writes nothing).
   issues     Drill into related issues.       prs   Drill into related PRs.
   docs       Drill into documentation.        so    Drill into StackOverflow.
+  releases   Drill into release notes + changelog ("when was X added?").
+  history    Drill into git history (pickaxe: "when/why did X change?").
+  discussions  Drill into GitHub Discussions (needs the gh CLI).
   web        Discover + fetch web pages (keyless: SearXNG → DuckDuckGo → WebSearch).
   overview   Generate (once) a cached markdown digest of the repo — packages,
              layout, public API, docs map — to answer follow-up questions
@@ -40,7 +43,8 @@ Commands:
 Options:
   --repo <url|path>    Any git URL or a local checkout              (required)
   --q, --question <s>  The question to answer                       (required for ask/drill)
-  --sources <list>     code,issues,prs,docs,web,so   (default: code,issues,prs,docs)
+  --sources <list>     code,issues,prs,docs,releases,history,discussions,web,so
+                                                     (default: code,issues,prs,docs)
   --ref <branch>       Branch/tag/commit to clone                   (default: default branch)
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
@@ -65,7 +69,8 @@ Grounding:
 `;
 
 const COMMANDS = new Set([
-  "ask", "code", "issues", "prs", "docs", "so", "web", "overview", "index", "check", "semantic",
+  "ask", "code", "issues", "prs", "docs", "releases", "history", "discussions",
+  "so", "web", "overview", "index", "check", "semantic",
 ]);
 const VALUE_FLAGS = new Set([
   "repo", "q", "question", "sources", "ref", "docs-url", "web-engine", "url", "per-source",
@@ -164,6 +169,9 @@ const SOURCE_TOKENS: Record<string, SourceKind> = {
   issue: "issue", issues: "issue",
   pr: "pr", prs: "pr", "pull-requests": "pr", "merge-requests": "pr",
   doc: "docs", docs: "docs",
+  release: "release", releases: "release",
+  history: "history",
+  discussion: "discussion", discussions: "discussion",
   web: "web",
   so: "so", stackoverflow: "so",
 };
@@ -173,7 +181,7 @@ function parseSources(s: string): SourceKind[] {
   const out: SourceKind[] = [];
   for (const t of s.split(",").map((x) => x.trim()).filter(Boolean)) {
     const k = SOURCE_TOKENS[t.toLowerCase()];
-    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,web,so)`);
+    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,releases,history,discussions,web,so)`);
     if (!out.includes(k)) out.push(k);
   }
   if (out.length === 0) fail("--sources resolved to nothing");
@@ -249,9 +257,13 @@ async function main(): Promise<void> {
     case "issues":
     case "prs":
     case "docs":
+    case "releases":
+    case "history":
+    case "discussions":
     case "so": {
       const kindMap: Record<string, SourceKind> = {
-        code: "code", issues: "issue", prs: "pr", docs: "docs", so: "so",
+        code: "code", issues: "issue", prs: "pr", docs: "docs",
+        releases: "release", history: "history", discussions: "discussion", so: "so",
       };
       const kind = kindMap[p.command]!;
       const opts = buildAskOptions(p);

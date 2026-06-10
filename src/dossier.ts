@@ -5,12 +5,17 @@ import { cacheRoot } from "./clone.js";
 
 // Canonical ordering so evidence ids are stable and grouped predictably,
 // regardless of which order the sources finished in.
-const SOURCE_ORDER: SourceKind[] = ["code", "docs", "issue", "pr", "so", "web"];
+const SOURCE_ORDER: SourceKind[] = [
+  "code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web",
+];
 const SOURCE_LABEL: Record<SourceKind, string> = {
   code: "Code",
   docs: "Documentation",
+  release: "Releases & Changelog",
+  history: "Git History",
   issue: "Issues",
   pr: "Pull / Merge Requests",
+  discussion: "Discussions",
   so: "StackOverflow",
   web: "Web",
 };

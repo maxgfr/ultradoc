@@ -81,7 +81,13 @@ zero — see `providers/github.ts`.
 ### Sources (`sources/*`)
 - `code` — Tier 1 (+ optional semantic fusion via RRF).
 - `docs` — in-repo README/docs/** keyword search + optional `--docs-url` fetch.
+- `release` — version sections of the repo's CHANGELOG (offline) + GitHub
+  releases API (keyless) — "when was X added/changed".
+- `history` — `git log -S/-G` (pickaxe) on the clone; the first call on a
+  remote repo converts the shallow partial clone to full history once.
 - `issue` / `pr` — provider APIs (keyless), with progressive relaxation.
+- `discussion` — GitHub Discussions via `gh api graphql` (skips honestly
+  without the gh CLI).
 - `so` — keyless StackExchange API.
 - `web` — layered keyless discovery (SearXNG → DuckDuckGo → WebSearch hint) then
   fetch + HTML→text extraction.

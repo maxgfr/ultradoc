@@ -122,6 +122,53 @@ export function ensureClone(
   return dir;
 }
 
+// Make a clone usable for `git log -S/-G`. ensureClone uses --depth 1 with
+// --filter=blob:none: pickaxe has no history to dig through AND no blob
+// content to diff (per-blob promisor fetches are pathologically slow and break
+// once the commit graph outruns the object db). So this both unshallows and
+// drops the partial-clone filter (--refetch) — a one-time fetch for remote
+// repos, a no-op for full clones. Returns ok=false with an honest note when
+// that is impossible (offline, server refuses). Cached per process so repeated
+// drill calls don't re-probe.
+const deepened = new Map<string, { ok: boolean; note?: string }>();
+export function ensureHistoryDepth(dir: string): { ok: boolean; note?: string } {
+  const cached = deepened.get(dir);
+  if (cached) return cached;
+  let out: { ok: boolean; note?: string };
+  const probe = sh("git", ["-C", dir, "rev-parse", "--is-shallow-repository"]);
+  const filter = sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter"]);
+  const shallow = probe.ok && probe.stdout.trim() === "true";
+  const partial = filter.ok && filter.stdout.trim() !== "";
+  if (!probe.ok) {
+    out = { ok: false, note: "Not a git working tree — no commit history available." };
+  } else if (!shallow && !partial) {
+    out = { ok: true };
+  } else {
+    if (partial) sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
+    const args = [
+      "-C", dir, "fetch", "--quiet",
+      ...(partial ? ["--refetch"] : []),
+      ...(shallow ? ["--unshallow"] : []),
+      "origin",
+    ];
+    const full = sh("git", args, { timeoutMs: 300_000 });
+    if (full.ok) {
+      out = { ok: true };
+    } else if (shallow && !partial) {
+      const deepen = sh("git", ["-C", dir, "fetch", "--quiet", "--deepen=500", "origin"], {
+        timeoutMs: 180_000,
+      });
+      out = deepen.ok
+        ? { ok: true, note: "History deepened to ~500 commits (full unshallow failed); older changes may be missing." }
+        : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
+    } else {
+      out = { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
+    }
+  }
+  deepened.set(dir, out);
+  return out;
+}
+
 // The short HEAD commit of a working tree, when it is a git repo. Recorded in
 // the dossier so an answer is pinned to an exact revision.
 export function headCommit(dir: string): string | undefined {

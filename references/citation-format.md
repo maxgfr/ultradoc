@@ -27,9 +27,12 @@ When it reads more naturally you may cite the underlying reference directly:
 |-------|------------------|---------|
 | `[issue#123]` | an evidence item with `ref` `issue#123` | `…as reported [issue#123].` |
 | `[pr#456]` | an evidence item with `ref` `pr#456` | `…being changed [pr#456].` |
+| `[discussion#42]` | a GitHub Discussions evidence item | `…per the maintainer [discussion#42].` |
 | `[so:11227809]` | a StackOverflow evidence item | `…per the accepted answer [so:11227809].` |
 | `[code:path]` | a code item whose ref/location contains `path` | `…in [code:src/retry.ts].` |
 | `[docs:x]` `[web:x]` | a docs/web item whose ref/url contains `x` | `…[docs:retry-backoff].` |
+| `[release:v1.2.0]` | a release/changelog evidence item | `…added in [release:v1.2.0].` |
+| `[commit:abc1234]` | a git-history evidence item | `…introduced by [commit:abc1234].` |
 
 Prefer evidence ids — they are unambiguous and let `check` confirm coverage.
 

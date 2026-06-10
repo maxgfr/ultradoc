@@ -1,6 +1,6 @@
 ---
 name: ultradoc
-description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
+description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/releases/git-history/discussions/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
 license: MIT
 metadata:
   version: 1.3.0
@@ -29,11 +29,15 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   Clone (any git URL, cached in `/tmp/ultradoc/<slug>`), index, retrieve from all
   selected sources, and write an **evidence dossier** (`EVIDENCE.md`,
   `evidence.json`, `meta.json`) to a run folder. Default sources:
-  `code,issues,prs,docs` (add `web,so` when the repo alone won't answer it).
+  `code,issues,prs,docs` (add `web,so` when the repo alone won't answer it;
+  add `releases,history` for "when was X added/changed" questions, and
+  `discussions` for community Q&A — needs the gh CLI).
   In a monorepo, `--package <name|dir>` scopes code/docs retrieval to one
   workspace package.
-- `code|issues|prs|docs|so --repo <...> --q "..."` — drill into ONE source, print
-  evidence to stdout (no dossier). Use these to expand a thin area.
+- `code|issues|prs|docs|releases|history|discussions|so --repo <...> --q "..."` —
+  drill into ONE source, print evidence to stdout (no dossier). Use these to
+  expand a thin area. `history` runs git pickaxe (`log -S/-G`) on the clone —
+  the first call on a remote repo fetches full history once.
 - `web --repo <...> [--q "..."] [--url <u,...>]` — keyless web discovery
   (SearXNG → DuckDuckGo → your WebSearch) + fetch/extract. Pass `--url` to ground
   a specific page you found with your own WebSearch.
@@ -86,6 +90,9 @@ hand control back mid-retrieval.
 4. **Drill down on gaps.** If a thread is thin, expand it:
    - `code --repo <...> --q "<symbol or behavior>"` to pull more code regions.
    - `issues`/`prs` to read related discussion and in-progress changes.
+   - `releases` (changelog + release notes) and `history` (git pickaxe) when
+     the question is *when/why/which version* something changed.
+   - `discussions` for community Q&A and design threads (needs the gh CLI).
    - `web` (or your WebSearch → `web --url <u>`) for external references.
    Follow `references/retrieval-playbook.md` for how to iterate.
 

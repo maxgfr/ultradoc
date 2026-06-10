@@ -1,7 +1,10 @@
 import type { RunContext, SourceResult, SourceKind } from "../types.js";
 import { codeSource } from "./code.js";
 import { docsSource } from "./docs.js";
+import { releasesSource } from "./releases.js";
+import { historySource } from "./history.js";
 import { issuesSource, prsSource } from "./issues.js";
+import { discussionsSource } from "./discussions.js";
 import { stackoverflowSource } from "./stackoverflow.js";
 import { webSource } from "./web.js";
 
@@ -14,8 +17,11 @@ type Handler = (ctx: RunContext) => Promise<SourceResult>;
 const HANDLERS: Record<SourceKind, Handler> = {
   code: codeSource,
   docs: docsSource,
+  release: releasesSource,
+  history: historySource,
   issue: issuesSource,
   pr: prsSource,
+  discussion: discussionsSource,
   so: stackoverflowSource,
   web: webSource,
 };

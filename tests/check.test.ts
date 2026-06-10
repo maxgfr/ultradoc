@@ -8,6 +8,9 @@ import type { EvidenceItem } from "../src/types.js";
 const EVIDENCE: EvidenceItem[] = [
   { id: "E1", source: "code", title: "retry", ref: "src/retry.ts", location: "src/retry.ts:1-10", score: 1, snippet: "..." },
   { id: "E2", source: "pr", title: "pr", ref: "pr#5", score: 1, snippet: "..." },
+  { id: "E3", source: "release", title: "rel", ref: "release:v1.2.0", score: 1, snippet: "..." },
+  { id: "E4", source: "history", title: "commit", ref: "commit:abc1234", location: "abc1234", score: 1, snippet: "..." },
+  { id: "E5", source: "discussion", title: "disc", ref: "discussion#42", score: 1, snippet: "..." },
 ];
 
 let dir: string;
@@ -68,6 +71,24 @@ describe("checkRun", () => {
     const r = checkRun(dir);
     expect(r.citations).not.toContain("code:src/retry.ts and also magic");
     expect(r.ok).toBe(false); // no valid citation remains → ungrounded
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("resolves release, commit and discussion aliases", () => {
+    answer("Added in [release:v1.2.0] by [commit:abc1234], discussed in [discussion#42].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    expect(r.resolved).toEqual(
+      expect.arrayContaining(["release:v1.2.0", "commit:abc1234", "discussion#42"]),
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails on a dangling discussion citation", () => {
+    answer("Someone said so [discussion#999].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(false);
+    expect(r.dangling).toContain("discussion#999");
     rmSync(dir, { recursive: true, force: true });
   });
 

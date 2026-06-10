@@ -6,13 +6,25 @@ export const VERSION = "1.3.0";
 // Every retrieval source the dossier can draw from. The model cites evidence by
 // id; `source` lets the dossier group items and lets `check` validate citation
 // kinds.
-export type SourceKind = "code" | "issue" | "pr" | "docs" | "so" | "web";
+export type SourceKind =
+  | "code"
+  | "docs"
+  | "release"
+  | "history"
+  | "issue"
+  | "pr"
+  | "discussion"
+  | "so"
+  | "web";
 
 export const ALL_SOURCES: readonly SourceKind[] = [
   "code",
+  "docs",
+  "release",
+  "history",
   "issue",
   "pr",
-  "docs",
+  "discussion",
   "so",
   "web",
 ];

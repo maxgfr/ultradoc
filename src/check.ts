@@ -5,16 +5,20 @@ import type { CheckResult, EvidenceItem } from "./types.js";
 // A bracketed token is a citation when it is NOT a markdown link ("](" after
 // it) and matches one of the citation shapes:
 //   [E12]                 canonical evidence id
-//   [issue#123] [pr#45]   typed issue / PR alias
+//   [issue#123] [pr#45] [discussion#7]   typed issue / PR / discussion alias
 //   [so:678]              StackOverflow question alias
-//   [code:path] [docs:x] [web:x]   typed source aliases
+//   [code:path] [docs:x] [web:x] [release:v1.2] [commit:abc123]   typed aliases
 const TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 const SHAPE = {
   id: /^E\d+$/,
-  numbered: /^(issue|pr)#\d+$/,
+  numbered: /^(issue|pr|discussion)#\d+$/,
   soref: /^so:\S+$/,
-  typed: /^(code|docs|web|so):\S+$/,
+  typed: /^(code|docs|web|so|release|commit|history|discussion):\S+$/,
 };
+
+// Typed-alias prefixes that differ from the SourceKind they cite: history
+// items carry refs like "commit:<sha>".
+const TYPED_SOURCE: Record<string, string> = { commit: "history" };
 
 function isCitation(tok: string): boolean {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
@@ -22,24 +26,25 @@ function isCitation(tok: string): boolean {
 
 function resolves(tok: string, evidence: EvidenceItem[], ids: Set<string>, refs: Set<string>): boolean {
   if (SHAPE.id.test(tok)) return ids.has(tok);
-  if (SHAPE.numbered.test(tok) || SHAPE.soref.test(tok)) {
-    if (refs.has(tok)) return true;
-  }
+  // An exact ref match resolves regardless of shape ("issue#123", "so:678",
+  // "release:v1.2", "commit:abc123" …).
+  if (refs.has(tok)) return true;
   // Typed alias: match the payload against an item of the same source.
   const colon = tok.indexOf(":");
   if (colon > 0) {
     const prefix = tok.slice(0, colon);
     const payload = tok.slice(colon + 1);
+    const source = TYPED_SOURCE[prefix] ?? prefix;
     return evidence.some(
       (e) =>
-        e.source === prefix &&
+        e.source === source &&
         (e.ref.includes(payload) ||
           payload.includes(e.ref) ||
           (e.location?.includes(payload) ?? false) ||
           (e.url?.includes(payload) ?? false)),
     );
   }
-  return refs.has(tok);
+  return false;
 }
 
 // Validate that an answer is grounded: every citation in ANSWER.md must resolve

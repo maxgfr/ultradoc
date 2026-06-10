@@ -21,6 +21,28 @@ honestly (the dossier says so) rather than pretending a search happened.
   first non-empty result. (A very specific term like `429` may have zero PRs
   while `retry` matches — the fallbacks catch that.)
 
+## GitHub Releases (`releases` source)
+
+- Keyless REST: `GET /repos/{owner}/{repo}/releases?per_page=20` (60 req/h
+  unauthenticated; one request per ask). `gh api` is preferred when logged in.
+- Release notes are filtered by the question's keywords; the repo's own
+  CHANGELOG is parsed offline regardless of host, so non-GitHub repos still get
+  version evidence.
+
+## GitHub Discussions (`discussions` source)
+
+- GraphQL only — **no keyless access**, so this source requires the `gh` CLI
+  (`gh auth login`). Without it, the source skips with an honest note.
+- `search(type: DISCUSSION)` with the same progressive keyword relaxation as
+  issues/PRs; the accepted answer (when any) is included in the snippet.
+
+## Git history (`history` source)
+
+- Not an API at all: `git log -S/-G` (pickaxe) on the local clone — zero
+  network for local repos. Remote clones are `--depth 1 --filter=blob:none`,
+  which pickaxe can't use, so the first `history` call fetches full history
+  once (`fetch --refetch --unshallow`); on failure it degrades with a note.
+
 ## GitLab (`gitlab.com`, self-managed)
 
 - Public REST v4, unauthenticated read of public projects.
