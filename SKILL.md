@@ -73,21 +73,35 @@ hand control back mid-retrieval.
    add `--package <name|dir>` so retrieval doesn't drown in the other packages.
    An unknown package name fails loudly and lists what exists.
 
-2. **Retrieve.** Run `ask` with the question and the sources that fit:
+2. **Retrieve.** First, think like a developer and derive 2–3 **query
+   variants** for the question — the engine searches literally, so phrasing
+   matters:
+   - the natural-language phrasing ("retry backoff"),
+   - the identifier forms the codebase probably uses (`retryBackoff`,
+     `retry_backoff`, `MAX_RETRIES`),
+   - the literal error message, option or flag name if the user quoted one.
+
+   Run `ask` with the best variant and the sources that fit:
    ```
    node scripts/ultradoc.mjs ask --repo <url> --q "<precise question>" --sources code,issues,prs,docs
    ```
    ultradoc auto-discovers the project's **official docs URL** from its own
    README/manifests (and prioritizes the canonical in-repo `docs/` tree), then
    grounds against it — pass `--docs-url <url>` only to override. Add `web,so`
-   when the question is conceptual or the repo is sparse. The command prints the
-   dossier path.
+   when the question is conceptual or the repo is sparse; add
+   `releases,history` when it is about *when/why/which version* something
+   changed. The command prints the dossier path. Keep the other query variants
+   for step 4.
 
 3. **Read the dossier.** Open `EVIDENCE.md` in the run folder. Each item has an
    id (`[E1]`, `[E2]`, …), a provenance `ref`, and a snippet. This is your
    evidence — read the actual code/issue/PR/doc text.
 
-4. **Drill down on gaps.** If a thread is thin, expand it:
+4. **Drill down on gaps.** The dossier is *thin* when it has fewer than ~3
+   on-topic code items, or no item actually contains the symbol/behavior asked
+   about. Before concluding evidence is missing, run `code --q "<variant>"`
+   for each remaining query variant from step 2 (drills are near-free — the
+   clone and index are cached). Then expand sideways:
    - `code --repo <...> --q "<symbol or behavior>"` to pull more code regions.
    - `issues`/`prs` to read related discussion and in-progress changes.
    - `releases` (changelog + release notes) and `history` (git pickaxe) when
@@ -95,6 +109,12 @@ hand control back mid-retrieval.
    - `discussions` for community Q&A and design threads (needs the gh CLI).
    - `web` (or your WebSearch → `web --url <u>`) for external references.
    Follow `references/retrieval-playbook.md` for how to iterate.
+
+   **Triage before writing.** Retrieval is recall-oriented, so the dossier
+   will contain off-topic items that merely share keywords. List which
+   evidence ids genuinely bear on the question and ignore the rest — an
+   off-topic item must not be cited just because it exists. If after triage
+   fewer than ~2 items support the core claim, go back and retrieve more.
 
 5. **Write the answer.** Create `ANSWER.md` in the same run folder. Be precise
    and concise. **Cite every factual claim** with the evidence id it rests on,

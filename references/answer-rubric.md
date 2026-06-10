@@ -15,6 +15,8 @@ real; this proves the answer is actually *good*.
 - Is **every** factual claim tied to evidence, not to prior knowledge of the
   library? A sentence with a fact and no citation is a red flag.
 - Do the cited snippets actually say what the sentence claims? Re-read them.
+- Did you triage — is every cited item genuinely load-bearing for its claim,
+  not just a keyword match that happened to be in the dossier?
 - Did you avoid asserting anything the evidence doesn't show?
 
 ## 3. Precision
