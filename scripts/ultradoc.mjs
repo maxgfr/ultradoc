@@ -1203,10 +1203,12 @@ function rgSearch(root, kws, scope) {
   }
   return byFile;
 }
-function jsSearch(root, kws) {
+function jsSearch(root, kws, scope) {
   const byFile = /* @__PURE__ */ new Map();
   const res = kws.map((k) => new RegExp(escapeRegExp(k), "i"));
-  for (const f of walk(root, { maxFiles: 8e3 })) {
+  const base = scope ? join6(root, scope) : root;
+  for (const f of walk(base, { maxFiles: 8e3 })) {
+    const rel = scope ? `${scope}/${f.rel}` : f.rel;
     const content = readText(f.abs);
     if (!content) continue;
     const lines = content.split(/\r?\n/);
@@ -1217,8 +1219,8 @@ function jsSearch(root, kws) {
       for (let k = 0; k < kws.length; k++) if (res[k].test(line)) matched.push(kws[k].toLowerCase());
       if (matched.length) {
         if (!fh) {
-          fh = { rel: f.rel, matchedKw: /* @__PURE__ */ new Set(), lines: [] };
-          byFile.set(f.rel, fh);
+          fh = { rel, matchedKw: /* @__PURE__ */ new Set(), lines: [] };
+          byFile.set(rel, fh);
         }
         for (const m of matched) fh.matchedKw.add(m);
         if (fh.lines.length < 40) fh.lines.push({ line: i + 1, text: line.slice(0, 400) });
@@ -1290,7 +1292,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   if (kws.length === 0) return { items: [], notes };
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found \u2014 used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws);
+  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws, scope);
   const symbols = symbolScores(index, kws);
   const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
   const docSet = new Set(index.docFiles);

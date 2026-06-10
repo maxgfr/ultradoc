@@ -76,10 +76,15 @@ function rgSearch(root: string, kws: string[], scope?: string): Map<string, File
 
 // Pure-JS fallback when ripgrep isn't installed: scan walked files for the
 // keywords. Slower on huge repos but keeps the tool functional everywhere.
-function jsSearch(root: string, kws: string[]): Map<string, FileHits> {
+// The scope matters here even though searchCode filters afterwards: walk caps
+// at 8000 files, so an unscoped walk of a big monorepo could exhaust the cap
+// before ever reaching the requested package.
+function jsSearch(root: string, kws: string[], scope?: string): Map<string, FileHits> {
   const byFile = new Map<string, FileHits>();
   const res = kws.map((k) => new RegExp(escapeRegExp(k), "i"));
-  for (const f of walk(root, { maxFiles: 8000 })) {
+  const base = scope ? join(root, scope) : root;
+  for (const f of walk(base, { maxFiles: 8000 })) {
+    const rel = scope ? `${scope}/${f.rel}` : f.rel;
     const content = readText(f.abs);
     if (!content) continue;
     const lines = content.split(/\r?\n/);
@@ -90,8 +95,8 @@ function jsSearch(root: string, kws: string[]): Map<string, FileHits> {
       for (let k = 0; k < kws.length; k++) if (res[k]!.test(line)) matched.push(kws[k]!.toLowerCase());
       if (matched.length) {
         if (!fh) {
-          fh = { rel: f.rel, matchedKw: new Set(), lines: [] };
-          byFile.set(f.rel, fh);
+          fh = { rel, matchedKw: new Set(), lines: [] };
+          byFile.set(rel, fh);
         }
         for (const m of matched) fh.matchedKw.add(m);
         if (fh.lines.length < 40) fh.lines.push({ line: i + 1, text: line.slice(0, 400) });
@@ -186,7 +191,7 @@ export function searchCode(
 
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found — used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws);
+  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws, scope);
   const symbols = symbolScores(index, kws);
 
   // Combined per-file score: lexical coverage + density + symbol bonus. The
