@@ -1,0 +1,28 @@
+[
+  {
+    "id": "lib-retry-backoff-code",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "how does the retry backoff work?",
+    "args": { "sources": "code,docs" },
+    "expect": [
+      { "source": "code", "refIncludes": "src/retry.ts", "topN": 3 },
+      { "source": "docs", "refIncludes": "README.md", "topN": 6 }
+    ],
+    "minItems": 2
+  },
+  {
+    "id": "lib-client-symbol",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "what does the client do when a request fails?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "src/client.ts", "topN": 3 }]
+  },
+  {
+    "id": "lib-no-keywords-graceful",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "what is it and how do I do the thing?",
+    "args": { "sources": "code,docs" },
+    "expect": [],
+    "minItems": 0
+  }
+]

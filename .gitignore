@@ -8,3 +8,4 @@ coverage/
 *.tgz
 .ultradoc/
 **/.ultradoc/
+evals/last-run.json

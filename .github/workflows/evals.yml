@@ -1,0 +1,30 @@
+name: Network evals
+
+# Real-repo retrieval evals. They depend on the network and on upstream repos
+# that drift, so they run on demand / weekly and never block PRs — read the
+# report to spot ranking regressions on real-world questions.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  eval-network:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Run network eval suite (report-only)
+        run: node evals/run.mjs --suite network
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-network-report
+          path: evals/last-run.json

@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mono-renderpage-unscoped",
+    "repo": "tests/fixtures/sample-mono",
+    "question": "how is a page rendered (renderPage)?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "packages/", "topN": 1 }]
+  },
+  {
+    "id": "mono-renderpage-scoped-api",
+    "repo": "tests/fixtures/sample-mono",
+    "question": "how is a page rendered (renderPage)?",
+    "args": { "sources": "code", "package": "@sample/api" },
+    "expect": [{ "source": "code", "refIncludes": "packages/api/", "topN": 1 }]
+  },
+  {
+    "id": "mono-docs-readme",
+    "repo": "tests/fixtures/sample-mono",
+    "question": "what packages does this monorepo contain?",
+    "args": { "sources": "docs" },
+    "expect": [{ "source": "docs", "refIncludes": "README.md", "topN": 3 }]
+  }
+]

@@ -41,6 +41,9 @@ jobs:
       - name: Assert dossier was produced
         run: test -f /tmp/ultradoc-demo/evidence.json && test -f /tmp/ultradoc-demo/EVIDENCE.md
 
+      - name: Retrieval evals (offline, deterministic)
+        run: pnpm run eval
+
   # The shipped scripts/ultradoc.mjs is a dependency-free bundle that declares
   # engines.node ">=18", but the dev toolchain (vitest 4) needs Node >=20.19 —
   # so build-test above can't prove the floor. This job runs ONLY the committed

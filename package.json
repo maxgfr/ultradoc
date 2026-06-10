@@ -26,6 +26,8 @@
     "typecheck": "tsc --noEmit",
     "check:build": "tsup && git diff --exit-code -- scripts/ultradoc.mjs",
     "demo": "node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib --q \"how does the retry backoff work?\" --sources code,docs --out /tmp/ultradoc-demo",
+    "eval": "node evals/run.mjs --suite offline",
+    "eval:network": "node evals/run.mjs --suite network",
     "release": "semantic-release"
   },
   "keywords": [

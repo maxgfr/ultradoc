@@ -10,6 +10,7 @@ pnpm run typecheck
 pnpm test
 pnpm run build        # bundles src/ → scripts/ultradoc.mjs
 pnpm run check:build  # asserts the committed bundle matches source
+pnpm run eval         # offline retrieval evals (fixtures, deterministic)
 ```
 
 Node ≥ 18. The published `scripts/ultradoc.mjs` is a **zero-runtime-dependency**
@@ -25,6 +26,9 @@ belongs in `docker-compose.yml` and is reached over HTTP, never imported.
   (`check:build`).
 - **Add a test** for new behavior (`vitest`, in `tests/`). Network-dependent
   sources should be exercised offline or with mocked HTTP.
+- **Ranking changes need eval evidence.** Run `pnpm run eval` (must stay 100%)
+  and `pnpm run eval:network` before/after, and report the recall/MRR delta
+  (see `evals/README.md`).
 - Match the surrounding style: focused modules, comments that explain *why*.
 
 ## Where things live

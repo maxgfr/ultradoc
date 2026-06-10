@@ -1,0 +1,30 @@
+[
+  {
+    "id": "express-router-code",
+    "repo": "https://github.com/expressjs/express",
+    "question": "how does express match a route path to a handler?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refPattern": "^lib/", "topN": 4 }]
+  },
+  {
+    "id": "express-issues-presence",
+    "repo": "https://github.com/expressjs/express",
+    "question": "router params merging behavior",
+    "args": { "sources": "code,issues" },
+    "expect": [{ "source": "issue", "refPattern": "issue#\\d+", "topN": 6 }]
+  },
+  {
+    "id": "matomo-tracker-code",
+    "repo": "https://github.com/matomo-org/matomo",
+    "question": "how does the JavaScript tracker decide when to send a heartbeat ping?",
+    "args": { "sources": "code", "perSource": 8 },
+    "expect": [{ "source": "code", "refPattern": "(piwik|matomo|tracker)", "topN": 8 }]
+  },
+  {
+    "id": "cdtn-package-scoped",
+    "repo": "https://github.com/socialgouv/code-du-travail-numerique",
+    "question": "comment l'indemnité de licenciement est-elle calculée ?",
+    "args": { "sources": "code", "package": "modeles-social", "perSource": 8 },
+    "expect": [{ "source": "code", "refIncludes": "packages/code-du-travail-modeles/", "topN": 1 }]
+  }
+]
