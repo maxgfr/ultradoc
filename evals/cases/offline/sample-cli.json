@@ -1,0 +1,16 @@
+[
+  {
+    "id": "cli-filename-boost",
+    "repo": "tests/fixtures/sample-cli",
+    "question": "how is the config loaded?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "src/config.ts", "topN": 1 }]
+  },
+  {
+    "id": "cli-plural-fold",
+    "repo": "tests/fixtures/sample-cli",
+    "question": "how are signals handled?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "src/signal.ts", "topN": 2 }]
+  }
+]

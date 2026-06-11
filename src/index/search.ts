@@ -1,7 +1,10 @@
 import { statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import { sh, have, keywords as extractKeywords, escapeRegExp, rrf } from "../util.js";
+import {
+  sh, have, rrf, foldTerm, subtokens, buildMatcher, matcherFromTokens,
+  type KeywordMatcher,
+} from "../util.js";
 import { walk, readText } from "../walk.js";
 import { bm25 } from "./bm25.js";
 
@@ -24,13 +27,16 @@ interface Region {
 }
 
 const MAX_KEYWORDS = 8;
-const CONTEXT = 3; // lines of context shown around a region
+const MAX_EXCERPT_LINES = 30; // hard cap on one excerpt
+const EXCERPT_PAD = 8; // how far an excerpt may grow past the hit region
 
-// Lexical search via ripgrep (`rg --json`), one call with several literal
-// patterns OR-ed together. Returns per-file matched keywords + hit lines.
-function rgSearch(root: string, kws: string[], scope?: string): Map<string, FileHits> {
+// Lexical search via ripgrep (`rg --json`), one call with the matcher's
+// patterns OR-ed together (accent-insensitive classes over escaped literals —
+// hence no -F). Hits are attributed back to canonical keywords, so "Réessais"
+// and "retry" in the text both count toward the keyword the user typed.
+function rgSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
   const args = [
-    "--json", "-i", "-F", "--max-count", "40", "--max-filesize", "1M",
+    "--json", "-i", "--max-count", "40", "--max-filesize", "1M",
     "-g", "!**/.ultradoc/**", "-g", "!**/node_modules/**", "-g", "!**/{dist,build,vendor}/**",
     // Lockfiles are machine-generated noise (walk skips them for the index, but
     // ripgrep scans the tree directly, so exclude them here too).
@@ -38,7 +44,7 @@ function rgSearch(root: string, kws: string[], scope?: string): Map<string, File
     "-g", "!**/pnpm-lock.yaml", "-g", "!**/yarn.lock", "-g", "!**/go.sum",
   ];
   if (scope) args.push("-g", `${scope}/**`);
-  for (const kw of kws) args.push("-e", kw);
+  for (const p of matcher.patterns) args.push("-e", p.source);
   args.push(root);
 
   const res = sh("rg", args, { timeoutMs: 60_000 });
@@ -69,10 +75,10 @@ function rgSearch(root: string, kws: string[], scope?: string): Map<string, File
       byFile.set(rel, fh);
     }
     for (const sm of evt.data?.submatches ?? []) {
-      const m = (sm.match?.text ?? "").toLowerCase();
-      if (m) {
-        fh.matchedKw.add(m);
-        fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
+      const canonical = matcher.canonicalOf(sm.match?.text ?? "");
+      if (canonical) {
+        fh.matchedKw.add(canonical);
+        fh.kwCounts.set(canonical, (fh.kwCounts.get(canonical) ?? 0) + 1);
       }
     }
     fh.lines.push({ line: lineNo, text: text.slice(0, 400) });
@@ -85,9 +91,9 @@ function rgSearch(root: string, kws: string[], scope?: string): Map<string, File
 // The scope matters here even though searchCode filters afterwards: walk caps
 // at 8000 files, so an unscoped walk of a big monorepo could exhaust the cap
 // before ever reaching the requested package.
-function jsSearch(root: string, kws: string[], scope?: string): Map<string, FileHits> {
+function jsSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
   const byFile = new Map<string, FileHits>();
-  const res = kws.map((k) => new RegExp(escapeRegExp(k), "i"));
+  const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "i"), canonical: p.canonical }));
   const base = scope ? join(root, scope) : root;
   for (const f of walk(base, { maxFiles: 8000 })) {
     const rel = scope ? `${scope}/${f.rel}` : f.rel;
@@ -98,7 +104,7 @@ function jsSearch(root: string, kws: string[], scope?: string): Map<string, File
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       const matched: string[] = [];
-      for (let k = 0; k < kws.length; k++) if (res[k]!.test(line)) matched.push(kws[k]!.toLowerCase());
+      for (const p of res) if (p.re.test(line)) matched.push(p.canonical);
       if (matched.length) {
         if (!fh) {
           fh = { rel, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
@@ -117,7 +123,7 @@ function jsSearch(root: string, kws: string[], scope?: string): Map<string, File
 
 // Merge nearby hit lines (within `gap`) into regions and score each region by
 // how many distinct keywords it covers.
-function regionsFor(fh: FileHits, kws: string[], gap = 8): Region[] {
+function regionsFor(fh: FileHits, matcher: KeywordMatcher, gap = 8): Region[] {
   const sorted = [...fh.lines].sort((a, b) => a.line - b.line);
   const regions: Region[] = [];
   let cur: { start: number; end: number; lines: { line: number; text: string }[] } | null = null;
@@ -126,48 +132,82 @@ function regionsFor(fh: FileHits, kws: string[], gap = 8): Region[] {
       cur.end = h.line;
       cur.lines.push(h);
     } else {
-      if (cur) regions.push(scoreRegion(cur, kws));
+      if (cur) regions.push(scoreRegion(cur, matcher));
       cur = { start: h.line, end: h.line, lines: [h] };
     }
   }
-  if (cur) regions.push(scoreRegion(cur, kws));
+  if (cur) regions.push(scoreRegion(cur, matcher));
   return regions;
 }
 
 function scoreRegion(
   cur: { start: number; end: number; lines: { line: number; text: string }[] },
-  kws: string[],
+  matcher: KeywordMatcher,
 ): Region {
   const covered = new Set<string>();
   let anchor = cur.start;
   let best = -1;
   for (const h of cur.lines) {
-    let here = 0;
-    for (const kw of kws) if (h.text.toLowerCase().includes(kw.toLowerCase())) {
-      covered.add(kw.toLowerCase());
-      here++;
-    }
-    if (here > best) {
-      best = here;
+    const here = matcher.matchLine(h.text);
+    for (const c of here) covered.add(c);
+    if (here.size > best) {
+      best = here.size;
       anchor = h.line;
     }
   }
   return { start: cur.start, end: cur.end, anchor, kwCount: covered.size };
 }
 
+// Grow an excerpt window to natural boundaries: extend each side until a blank
+// line (paragraph/function boundary) or EXCERPT_PAD lines, never shrinking the
+// seed region; then cap at MAX_EXCERPT_LINES, keeping the anchor in view.
+// start/end/anchor are 1-based inclusive line numbers.
+export function expandWindow(
+  lines: string[],
+  start: number,
+  end: number,
+  anchor: number,
+): { start: number; end: number } {
+  const blank = (n: number) => /^\s*$/.test(lines[n - 1] ?? "");
+  let s = Math.max(1, start);
+  let e = Math.min(lines.length, end);
+  while (s > 1 && start - s < EXCERPT_PAD && !blank(s - 1)) s--;
+  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
+  if (e - s + 1 > MAX_EXCERPT_LINES) {
+    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
+    let ne = ns + MAX_EXCERPT_LINES - 1;
+    if (ne > e) {
+      ne = e;
+      ns = ne - MAX_EXCERPT_LINES + 1;
+    }
+    s = ns;
+    e = ne;
+  }
+  return { start: s, end: e };
+}
+
 // Rank declared symbols by name similarity to the query keywords. Exact name
 // matches and exported symbols score highest — this is what lets "what does
 // retryRequest do?" jump straight to the definition.
-function symbolScores(index: StructuralIndex, kws: string[]): Map<string, { score: number; sym: CodeSymbol }> {
-  const lowered = kws.map((k) => k.toLowerCase());
+function symbolScores(index: StructuralIndex, matcher: KeywordMatcher): Map<string, { score: number; sym: CodeSymbol }> {
   const byFile = new Map<string, { score: number; sym: CodeSymbol }>();
   for (const sym of index.symbols) {
-    const name = sym.name.toLowerCase();
+    const name = foldTerm(sym.name);
     let s = 0;
-    for (const kw of lowered) {
-      if (name === kw) s += 6;
-      else if (name.startsWith(kw) || kw.startsWith(name)) s += 3;
-      else if (name.includes(kw) || kw.includes(name)) s += 1.5;
+    for (const ek of matcher.expanded) {
+      // Best variant wins per keyword. Subtokens count at half weight so a
+      // generic identifier part ("get", "page") can't dominate the typed term.
+      let best = 0;
+      for (const v of ek.variants) {
+        const vt = foldTerm(v.text);
+        let vs = 0;
+        if (name === vt) vs = 6;
+        else if (name.startsWith(vt) || vt.startsWith(name)) vs = 3;
+        else if (name.includes(vt) || vt.includes(name)) vs = 1.5;
+        if (v.kind === "subtoken") vs *= 0.5;
+        if (vs > best) best = vs;
+      }
+      s += best;
     }
     if (s === 0) continue;
     if (sym.exported) s *= 1.5;
@@ -188,31 +228,31 @@ export function searchCode(
   question: string,
   perSource: number,
   scope?: string, // repo-relative dir (a workspace package) to restrict to
-): { items: RawItem[]; notes: string[] } {
+): { items: RawItem[]; notes: string[]; fallback?: "js-scan" } {
   const notes: string[] = [];
   const inScope = (rel: string) => !scope || rel.startsWith(scope + "/");
-  let kws = extractKeywords(question).slice(0, MAX_KEYWORDS);
-  if (kws.length === 0) {
+  let matcher = buildMatcher(question, MAX_KEYWORDS);
+  if (matcher.expanded.length === 0) {
     notes.push("No distinctive keywords in the question; code search may be weak.");
-    kws = question.split(/\s+/).filter(Boolean).slice(0, MAX_KEYWORDS);
+    matcher = matcherFromTokens(question.split(/\s+/), MAX_KEYWORDS);
   }
-  if (kws.length === 0) return { items: [], notes };
+  if (matcher.expanded.length === 0) return { items: [], notes };
 
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found — used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, kws, scope) : jsSearch(root, kws, scope);
-  const symbols = symbolScores(index, kws);
+  const lexical = usedRg ? rgSearch(root, matcher, scope) : jsSearch(root, matcher, scope);
+  const symbols = symbolScores(index, matcher);
 
   // The scope filter applies here so symbol-only hits respect it too (the rg
   // glob is just an optimization).
   const files = new Set<string>([...lexical.keys(), ...symbols.keys()].filter(inScope));
 
-  // Lexical ranking is BM25. ripgrep already provides everything it needs with
-  // no stored term index: per-file term counts (kwCounts) and exact document
-  // frequencies — rg returns every file matching any keyword, so df is the
-  // corpus df. Doc length uses file size / 5 as a token proxy, computed only
-  // for the candidates (a few hundred stat calls at most).
-  const lowered = kws.map((k) => k.toLowerCase());
+  // Lexical ranking is BM25 over canonical keywords. ripgrep already provides
+  // everything it needs with no stored term index: per-file term counts
+  // (kwCounts) and exact document frequencies — rg returns every file matching
+  // any keyword, so df is the corpus df. Doc length uses file size / 5 as a
+  // token proxy, computed only for the candidates (a few hundred stat calls).
+  const canonicals = matcher.canonicals;
   const df = new Map<string, number>();
   for (const fh of lexical.values()) {
     for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
@@ -231,7 +271,7 @@ export function searchCode(
   // b=0.3: code corpora mix tiny config files with huge implementation files,
   // and the full-strength length normalization (b=0.75) buries exactly the big
   // files where the answer lives (e.g. matomo's js/piwik.js).
-  const lexScores = bm25(candidates, lowered, Math.max(index.fileCount, lexical.size), df, 1.2, 0.3);
+  const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, 1.2, 0.3);
 
   // Fuse the BM25 ranking with the symbol-index ranking via RRF — the same
   // scale-free fusion the semantic tier uses — then apply the low-signal
@@ -252,6 +292,7 @@ export function searchCode(
   // fixtures, examples and benchmarks: they still surface, just below real
   // implementation code.
   const docSet = new Set(index.docFiles);
+  const canonSet = new Set(canonicals);
   const scored: { rel: string; score: number; fh?: FileHits; sym?: CodeSymbol }[] = [];
   for (const rel of files) {
     const base = fused.get(rel) ?? 0;
@@ -259,8 +300,15 @@ export function searchCode(
     const lowSignal =
       /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel) ||
       docSet.has(rel);
+    // A file literally named after a query keyword (retry.ts for "retry") is a
+    // strong relevance signal BM25 can't see. Applied after the low-signal
+    // penalty so tests/retry.test.ts still ranks below src/retry.ts
+    // (0.45 × 1.3 < 1).
+    const stem = (rel.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+    const stemParts = [foldTerm(stem), ...subtokens(stem).map(foldTerm)];
+    const nameBoost = canonSet.has(stemParts[0]!) ? 1.3 : stemParts.some((p) => canonSet.has(p)) ? 1.15 : 1;
     // ×1000 only for readability of the reported score; ordering is unchanged.
-    const score = base * 1000 * (lowSignal ? 0.45 : 1);
+    const score = base * 1000 * (lowSignal ? 0.45 : 1) * nameBoost;
     scored.push({ rel, score, fh: lexical.get(rel), sym: symbols.get(rel)?.sym });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
@@ -273,18 +321,21 @@ export function searchCode(
     const lines = content.split(/\r?\n/);
 
     // Pick the excerpt anchor: a matching symbol definition wins; else the
-    // densest lexical region; else the first line.
+    // densest lexical region; else the first line. The seed window then grows
+    // to natural boundaries (blank lines) instead of a fixed margin.
     let start: number;
     let end: number;
     let label: string;
     if (f.sym) {
-      start = Math.max(1, f.sym.line - 1);
-      end = Math.min(lines.length, f.sym.line + 18);
+      const w = expandWindow(lines, Math.max(1, f.sym.line - 1), Math.min(lines.length, f.sym.line + 18), f.sym.line);
+      start = w.start;
+      end = w.end;
       label = `${f.sym.kind} ${f.sym.name}`;
     } else if (f.fh) {
-      const region = regionsFor(f.fh, kws).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
-      start = Math.max(1, region.start - CONTEXT);
-      end = Math.min(lines.length, region.end + CONTEXT);
+      const region = regionsFor(f.fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
+      const w = expandWindow(lines, region.start, region.end, region.anchor);
+      start = w.start;
+      end = w.end;
       label = "match";
     } else {
       start = 1;
@@ -308,5 +359,5 @@ export function searchCode(
     });
   }
 
-  return { items, notes };
+  return { items, notes, fallback: usedRg ? undefined : "js-scan" };
 }
