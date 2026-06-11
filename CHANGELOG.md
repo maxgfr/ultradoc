@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.5.0](https://github.com/maxgfr/ultradoc/compare/v1.4.0...v1.5.0) (2026-06-11)
+
+
+### Features
+
+* **search:** accent-, plural- and subtoken-aware retrieval with filename boost and adaptive excerpts ([0cbb8e7](https://github.com/maxgfr/ultradoc/commit/0cbb8e7c6d5a204bc1847af002c2317a1ed3c056))
+* **sources:** heading-aware doc excerpts, cross-source dedup and per-phase timings ([c274731](https://github.com/maxgfr/ultradoc/commit/c274731c86fbb0ee3a6dffa920ae6189a916cf8d))
+
 # [1.4.0](https://github.com/maxgfr/ultradoc/compare/v1.3.0...v1.4.0) (2026-06-10)
 
 

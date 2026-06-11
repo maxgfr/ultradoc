@@ -3,7 +3,7 @@ name: ultradoc
 description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/releases/git-history/discussions/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
 license: MIT
 metadata:
-  version: 1.4.0
+  version: 1.5.0
 ---
 
 # ultradoc — answer questions from the source, not from memory
