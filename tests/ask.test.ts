@@ -37,6 +37,13 @@ describe("runAsk (offline integration)", () => {
     const code = r.evidence.filter((e) => e.source === "code");
     expect(code[0]!.ref).toBe("src/retry.ts");
 
+    // Observability: per-phase timings and (here, none) fallback notes.
+    expect(r.meta.timings).toBeDefined();
+    expect(r.meta.timings!.cloneMs).toBeGreaterThanOrEqual(0);
+    expect(r.meta.timings!.totalMs).toBeGreaterThanOrEqual(0);
+    expect(r.meta.timings!.sources.code).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(r.meta.fallbacks)).toBe(true);
+
     // A grounded answer citing real ids must pass the check.
     const cited = code[0]!.id;
     writeFileSync(join(out, "ANSWER.md"), `Backoff doubles each attempt [${cited}].`);
@@ -84,7 +91,7 @@ describe("runAsk (offline integration)", () => {
     const cacheDir = join(repo, ".ultradoc", "extdocs");
     mkdirSync(cacheDir, { recursive: true });
     writeFileSync(
-      join(cacheDir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt"),
+      join(cacheDir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt"),
       "External docs: renderPage takes a layout option.",
     );
 

@@ -1,5 +1,5 @@
 import type { EvidenceItem } from "../types.js";
-import { keywords as extractKeywords } from "../util.js";
+import { buildMatcher } from "../util.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -88,6 +88,9 @@ export function htmlToText(html: string): string {
   let s = html;
   s = s.replace(/<!--[\s\S]*?-->/g, " ");
   s = s.replace(/<(script|style|noscript|head|nav|footer|svg)[\s\S]*?<\/\1>/gi, " ");
+  // Keep heading structure as markdown markers so excerpts can carry their
+  // section title ("§ Configuration") instead of an anonymous text window.
+  s = s.replace(/<h([1-6])(?:\s[^>]*)?>/gi, (_m, n) => "\n" + "#".repeat(Number(n)) + " ");
   s = s.replace(/<\/(p|div|section|article|li|tr|h[1-6]|pre|blockquote|br)>/gi, "\n");
   s = s.replace(/<(br|hr)\s*\/?>/gi, "\n");
   s = s.replace(/<[^>]+>/g, " ");
@@ -119,6 +122,24 @@ export async function fetchAndExtract(url: string): Promise<{ text: string; note
   return { text };
 }
 
+// The markdown section heading an anchor line sits under, ignoring
+// heading-lookalikes inside fenced code blocks. `anchor` is a 0-based index.
+export function nearestHeading(lines: string[], anchor: number): string | undefined {
+  let heading: string | undefined;
+  let inFence = false;
+  for (let i = 0; i <= anchor && i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (m) heading = m[1]!.trim();
+  }
+  return heading;
+}
+
 // Turn fetched page text into ranked evidence excerpts around the question's
 // keywords. Returned as `docs` evidence (the external official documentation).
 export function excerptsFromText(
@@ -130,12 +151,10 @@ export function excerptsFromText(
   perSource: number,
 ): RawItem[] {
   const lines = text.split("\n");
-  const kws = extractKeywords(question).map((k) => k.toLowerCase());
+  const matcher = buildMatcher(question);
   const hits: { idx: number; cov: number }[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const low = lines[i]!.toLowerCase();
-    let cov = 0;
-    for (const kw of kws) if (low.includes(kw)) cov++;
+    const cov = matcher.matchLine(lines[i]!).size;
     if (cov > 0) hits.push({ idx: i, cov });
   }
   hits.sort((a, b) => b.cov - a.cov || a.idx - b.idx);
@@ -155,14 +174,16 @@ export function excerptsFromText(
     const end = Math.min(lines.length, h.idx + 12);
     const snippet = lines.slice(start, end).join("\n").slice(0, 1500);
     if (!snippet.trim()) continue;
+    const heading = nearestHeading(lines, h.idx);
     items.push({
       source,
-      title,
+      title: heading ? `${title} § ${heading}` : title,
       ref: url,
       location: `${url}#~${start + 1}`,
       score: Number((h.cov + 1).toFixed(3)),
       snippet,
       url,
+      meta: heading ? { heading } : undefined,
     });
   }
   return items;

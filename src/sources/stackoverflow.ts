@@ -31,7 +31,9 @@ export async function stackoverflowSource(ctx: RunContext): Promise<SourceResult
       const accepted = it.is_answered ? "answered" : "unanswered";
       return {
         source: "so",
-        title: htmlToText(String(it.title ?? "(question)")).slice(0, 160),
+        // htmlToText keeps headings as markdown "#" markers — strip them from
+        // one-line titles where they'd just be noise.
+        title: htmlToText(String(it.title ?? "(question)")).replace(/^#{1,6}\s+/, "").slice(0, 160),
         ref: `so:${it.question_id}`,
         location: it.link,
         score: Number(it.score ?? 0),

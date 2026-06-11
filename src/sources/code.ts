@@ -16,16 +16,27 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
     ctx.scopeDir,
   );
 
-  if (!ctx.options.semantic) return { source: "code", items: lexical.items, notes: lexical.notes };
+  // Typed fallback signals so meta.json can say *why* a run was slow or
+  // lexical-only, without string-sniffing the notes.
+  const fallbacks: string[] = [];
+  if (lexical.fallback === "js-scan") {
+    fallbacks.push("code: ripgrep missing — used the built-in JS scanner");
+  }
+
+  if (!ctx.options.semantic) {
+    return { source: "code", items: lexical.items, notes: lexical.notes, fallbacks };
+  }
 
   const sem = await semanticSearch(ctx);
   // Semantic chunks cover the whole repo; honor a --package scope here too.
   if (ctx.scopeDir) sem.items = sem.items.filter((it) => it.ref.startsWith(ctx.scopeDir + "/"));
   if (!sem.available) {
+    fallbacks.push("code: semantic backend unavailable — lexical only");
     return {
       source: "code",
       items: lexical.items,
       notes: [...lexical.notes, ...sem.notes],
+      fallbacks,
     };
   }
 
@@ -47,5 +58,6 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
     source: "code",
     items: ranked,
     notes: [...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
+    fallbacks,
   };
 }

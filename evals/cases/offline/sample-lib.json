@@ -31,5 +31,19 @@
     "args": { "sources": "code,docs" },
     "expect": [],
     "minItems": 0
+  },
+  {
+    "id": "lib-accent-doc-accented-query",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "quelle est la stratégie de réessai ?",
+    "args": { "sources": "docs" },
+    "expect": [{ "source": "docs", "refIncludes": "guide-fr.md", "topN": 2 }]
+  },
+  {
+    "id": "lib-accent-doc-plain-query",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "quel est le delai entre les reessais ?",
+    "args": { "sources": "docs" },
+    "expect": [{ "source": "docs", "refIncludes": "guide-fr.md", "topN": 2 }]
   }
 ]

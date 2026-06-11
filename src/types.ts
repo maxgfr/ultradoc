@@ -123,6 +123,8 @@ export interface SourceResult {
   source: SourceKind;
   items: Omit<EvidenceItem, "id">[];
   notes: string[];
+  ms?: number; // wall-clock spent in this source (set by the registry)
+  fallbacks?: string[]; // degraded paths taken, e.g. "code: ripgrep missing — used the built-in JS scanner"
 }
 
 // Context handed to every source module for a run.
@@ -133,6 +135,16 @@ export interface RunContext {
   options: AskOptions;
   scopePkg?: WorkspacePackage; // resolved --package, when given
   scopeDir?: string; // its dir, repo-relative — sources restrict to this subtree
+  setupTimings?: { cloneMs: number; indexMs: number }; // measured by buildContext
+}
+
+// Per-phase wall-clock for a run. ~0ms clone/index means the cache was warm —
+// that's signal (the agent can tell a 30s JS-fallback scan from a 1s rg run).
+export interface PhaseTimings {
+  cloneMs: number;
+  indexMs: number;
+  totalMs: number;
+  sources: Partial<Record<SourceKind, number>>;
 }
 
 export interface DossierMeta {
@@ -147,6 +159,8 @@ export interface DossierMeta {
   evidenceCount: number;
   builtAt: string;
   notes: string[];
+  timings?: PhaseTimings;
+  fallbacks?: string[]; // degraded paths taken during retrieval ([] when none)
 }
 
 export interface CheckResult {

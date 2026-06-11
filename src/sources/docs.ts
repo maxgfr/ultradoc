@@ -2,8 +2,8 @@ import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import type { RunContext, SourceResult, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
-import { keywords as extractKeywords } from "../util.js";
-import { fetchAndExtract, excerptsFromText } from "./fetch.js";
+import { buildMatcher } from "../util.js";
+import { fetchAndExtract, excerptsFromText, nearestHeading } from "./fetch.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -13,7 +13,9 @@ type RawItem = Omit<EvidenceItem, "id">;
 // network fetch — the excerpting still runs per-question on the cached text.
 async function getDocText(repoDir: string, url: string): Promise<{ text: string; note?: string }> {
   const dir = join(repoDir, ".ultradoc", "extdocs");
-  const file = join(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt");
+  // .v2: the extraction format changed (heading markers) — older cached text
+  // would silently lack section context.
+  const file = join(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
   try {
     if (existsSync(file)) return { text: readFileSync(file, "utf8") };
   } catch {
@@ -37,7 +39,7 @@ async function getDocText(repoDir: string, url: string): Promise<{ text: string;
 // too — so the answer quotes the real documentation, not a memorized API.
 export async function docsSource(ctx: RunContext): Promise<SourceResult> {
   const notes: string[] = [];
-  const kws = extractKeywords(ctx.options.question).map((k) => k.toLowerCase());
+  const matcher = buildMatcher(ctx.options.question);
   const items: RawItem[] = [];
 
   const scored: { rel: string; score: number; anchor: number; lines: string[] }[] = [];
@@ -55,14 +57,10 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
     let bestHits = 0;
     const covered = new Set<string>();
     for (let i = 0; i < lines.length; i++) {
-      const low = lines[i]!.toLowerCase();
-      let here = 0;
-      for (const kw of kws) if (low.includes(kw)) {
-        here++;
-        covered.add(kw);
-      }
-      if (here > bestHits) {
-        bestHits = here;
+      const here = matcher.matchLine(lines[i]!);
+      for (const c of here) covered.add(c);
+      if (here.size > bestHits) {
+        bestHits = here.size;
         bestLine = i;
       }
     }
@@ -78,14 +76,18 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
   for (const d of scored.slice(0, ctx.options.perSource)) {
     const start = Math.max(0, d.anchor - 4);
     const end = Math.min(d.lines.length, d.anchor + 14);
+    // Carry the section title so the agent sees which part of the doc the
+    // excerpt comes from ("README.md § Retry behaviour"), markdown files only.
+    const heading = /\.(md|mdx)$/i.test(d.rel) ? nearestHeading(d.lines, d.anchor) : undefined;
     items.push({
       source: "docs",
-      title: `${d.rel} (in-repo docs)`,
+      title: heading ? `${d.rel} § ${heading} (in-repo docs)` : `${d.rel} (in-repo docs)`,
       ref: d.rel,
       location: `${d.rel}:${start + 1}-${end}`,
       score: Number(d.score.toFixed(3)),
       snippet: d.lines.slice(start, end).join("\n"),
       url: ctx.repoRef.isLocal ? undefined : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${d.rel}`,
+      meta: heading ? { heading } : undefined,
     });
   }
 

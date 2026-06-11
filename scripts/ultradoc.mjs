@@ -1469,9 +1469,111 @@ function ensureIndex(root, slug, opts = {}) {
   return buildIndex(root, slug, { maxFiles: opts.maxFiles, project: opts.project });
 }
 
+// src/dossier.ts
+import { mkdirSync as mkdirSync3, writeFileSync as writeFileSync2 } from "fs";
+import { join as join6 } from "path";
+var SOURCE_ORDER = [
+  "code",
+  "docs",
+  "release",
+  "history",
+  "issue",
+  "pr",
+  "discussion",
+  "so",
+  "web"
+];
+var SOURCE_LABEL = {
+  code: "Code",
+  docs: "Documentation",
+  release: "Releases & Changelog",
+  history: "Git History",
+  issue: "Issues",
+  pr: "Pull / Merge Requests",
+  discussion: "Discussions",
+  so: "StackOverflow",
+  web: "Web"
+};
+function rank(s) {
+  const i = SOURCE_ORDER.indexOf(s);
+  return i < 0 ? 99 : i;
+}
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+function runId(d = /* @__PURE__ */ new Date()) {
+  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function defaultRunDir(slug, d) {
+  return join6(cacheRoot(), slug, "runs", runId(d));
+}
+function assignIds(results) {
+  const flat = results.flatMap((r) => r.items);
+  flat.sort(
+    (a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref)
+  );
+  return flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
+}
+function renderEvidenceMarkdown(evidence, meta) {
+  const out = [];
+  out.push(`# Evidence dossier`);
+  out.push("");
+  out.push(`**Question:** ${meta.question}`);
+  out.push(
+    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}${meta.pkg ? ` \xB7 **package:** ${meta.pkg}` : ""}`
+  );
+  out.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
+  out.push("");
+  out.push(
+    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
+  );
+  out.push("");
+  if (evidence.length === 0) {
+    out.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
+  }
+  for (const source of SOURCE_ORDER) {
+    const items = evidence.filter((e) => e.source === source);
+    if (items.length === 0) continue;
+    out.push(`## ${SOURCE_LABEL[source]}`);
+    out.push("");
+    for (const it of items) {
+      out.push(`### [${it.id}] ${it.title}`);
+      const meta1 = [
+        `ref: \`${it.ref}\``,
+        it.location ? `loc: \`${it.location}\`` : "",
+        `score: ${it.score}`
+      ].filter(Boolean).join(" \xB7 ");
+      out.push(meta1);
+      if (it.url) out.push(`url: ${it.url}`);
+      out.push("");
+      out.push("```");
+      out.push(it.snippet);
+      out.push("```");
+      out.push("");
+    }
+  }
+  if (meta.notes.length) {
+    out.push(`## Retrieval notes`);
+    out.push("");
+    for (const n of meta.notes) out.push(`- ${n}`);
+    out.push("");
+  }
+  return out.join("\n");
+}
+function writeDossier(dir, evidence, meta) {
+  mkdirSync3(dir, { recursive: true });
+  const evidenceJson = join6(dir, "evidence.json");
+  const evidenceMd = join6(dir, "EVIDENCE.md");
+  const metaJson = join6(dir, "meta.json");
+  writeFileSync2(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync2(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync2(metaJson, JSON.stringify(meta, null, 2));
+  return { dir, evidenceJson, evidenceMd, metaJson };
+}
+
 // src/index/search.ts
 import { statSync as statSync4 } from "fs";
-import { join as join6, relative as relative2, sep as sep2 } from "path";
+import { join as join7, relative as relative2, sep as sep2 } from "path";
 
 // src/index/bm25.ts
 function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
@@ -1564,7 +1666,7 @@ function rgSearch(root, matcher, scope) {
 function jsSearch(root, matcher, scope) {
   const byFile = /* @__PURE__ */ new Map();
   const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "i"), canonical: p.canonical }));
-  const base = scope ? join6(root, scope) : root;
+  const base = scope ? join7(root, scope) : root;
   for (const f of walk(base, { maxFiles: 8e3 })) {
     const rel = scope ? `${scope}/${f.rel}` : f.rel;
     const content = readText(f.abs);
@@ -1686,7 +1788,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const candidates = [...files].filter((rel) => lexical.has(rel)).map((rel) => {
     let len = 1e3;
     try {
-      len = Math.max(1, statSync4(join6(root, rel)).size / 5);
+      len = Math.max(1, statSync4(join7(root, rel)).size / 5);
     } catch {
     }
     return { key: rel, tf: lexical.get(rel).kwCounts, len };
@@ -1712,7 +1814,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const items = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
-    const content = readText(join6(root, f.rel));
+    const content = readText(join7(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let start;
@@ -1751,8 +1853,8 @@ function searchCode(root, ref, index, question, perSource, scope) {
 }
 
 // src/index/semantic.ts
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
-import { join as join7, dirname } from "path";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
+import { join as join8, dirname } from "path";
 import { fileURLToPath } from "url";
 
 // src/sources/fetch.ts
@@ -1821,6 +1923,7 @@ function htmlToText(html) {
   let s = html;
   s = s.replace(/<!--[\s\S]*?-->/g, " ");
   s = s.replace(/<(script|style|noscript|head|nav|footer|svg)[\s\S]*?<\/\1>/gi, " ");
+  s = s.replace(/<h([1-6])(?:\s[^>]*)?>/gi, (_m, n) => "\n" + "#".repeat(Number(n)) + " ");
   s = s.replace(/<\/(p|div|section|article|li|tr|h[1-6]|pre|blockquote|br)>/gi, "\n");
   s = s.replace(/<(br|hr)\s*\/?>/gi, "\n");
   s = s.replace(/<[^>]+>/g, " ");
@@ -1844,14 +1947,27 @@ async function fetchAndExtract(url) {
   const text = isHtml ? htmlToText(res.body) : res.body;
   return { text };
 }
+function nearestHeading(lines, anchor) {
+  let heading;
+  let inFence = false;
+  for (let i = 0; i <= anchor && i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (m) heading = m[1].trim();
+  }
+  return heading;
+}
 function excerptsFromText(text, url, title, source, question, perSource) {
   const lines = text.split("\n");
-  const kws = keywords(question).map((k) => k.toLowerCase());
+  const matcher = buildMatcher(question);
   const hits = [];
   for (let i = 0; i < lines.length; i++) {
-    const low = lines[i].toLowerCase();
-    let cov = 0;
-    for (const kw of kws) if (low.includes(kw)) cov++;
+    const cov = matcher.matchLine(lines[i]).size;
     if (cov > 0) hits.push({ idx: i, cov });
   }
   hits.sort((a, b) => b.cov - a.cov || a.idx - b.idx);
@@ -1868,14 +1984,16 @@ function excerptsFromText(text, url, title, source, question, perSource) {
     const end = Math.min(lines.length, h.idx + 12);
     const snippet = lines.slice(start, end).join("\n").slice(0, 1500);
     if (!snippet.trim()) continue;
+    const heading = nearestHeading(lines, h.idx);
     items.push({
       source,
-      title,
+      title: heading ? `${title} \xA7 ${heading}` : title,
       ref: url,
       location: `${url}#~${start + 1}`,
       score: Number((h.cov + 1).toFixed(3)),
       snippet,
-      url
+      url,
+      meta: heading ? { heading } : void 0
     });
   }
   return items;
@@ -1914,7 +2032,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join7(repoDir, ".ultradoc", "semantic.json");
+  return join8(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name}`);
@@ -1938,7 +2056,7 @@ async function buildIfNeeded(ctx) {
   const chunks = [];
   for (const rel of files) {
     if (chunks.length >= MAX_CHUNKS) break;
-    const content = readText(join7(ctx.repoDir, rel));
+    const content = readText(join8(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
     for (const c2 of chunkText(rel, content, isDoc2)) {
@@ -1975,8 +2093,8 @@ async function buildIfNeeded(ctx) {
   }
   if (!await flush()) return { error: "failed to upsert vectors to Qdrant" };
   try {
-    mkdirSync3(dirname(marker), { recursive: true });
-    writeFileSync2(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
+    mkdirSync4(dirname(marker), { recursive: true });
+    writeFileSync3(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
   } catch {
   }
   return { name };
@@ -2017,10 +2135,10 @@ async function semanticSearch(ctx) {
 }
 function composeFile() {
   const here = dirname(fileURLToPath(import.meta.url));
-  for (const cand of [join7(here, "..", "docker-compose.yml"), join7(here, "docker-compose.yml")]) {
+  for (const cand of [join8(here, "..", "docker-compose.yml"), join8(here, "docker-compose.yml")]) {
     if (existsSync4(cand)) return cand;
   }
-  return join7(here, "..", "docker-compose.yml");
+  return join8(here, "..", "docker-compose.yml");
 }
 function semanticControl(action) {
   if (!["up", "down", "status"].includes(action)) {
@@ -2062,14 +2180,22 @@ async function codeSource(ctx) {
     ctx.options.perSource,
     ctx.scopeDir
   );
-  if (!ctx.options.semantic) return { source: "code", items: lexical.items, notes: lexical.notes };
+  const fallbacks = [];
+  if (lexical.fallback === "js-scan") {
+    fallbacks.push("code: ripgrep missing \u2014 used the built-in JS scanner");
+  }
+  if (!ctx.options.semantic) {
+    return { source: "code", items: lexical.items, notes: lexical.notes, fallbacks };
+  }
   const sem = await semanticSearch(ctx);
   if (ctx.scopeDir) sem.items = sem.items.filter((it) => it.ref.startsWith(ctx.scopeDir + "/"));
   if (!sem.available) {
+    fallbacks.push("code: semantic backend unavailable \u2014 lexical only");
     return {
       source: "code",
       items: lexical.items,
-      notes: [...lexical.notes, ...sem.notes]
+      notes: [...lexical.notes, ...sem.notes],
+      fallbacks
     };
   }
   const byKey = /* @__PURE__ */ new Map();
@@ -2082,16 +2208,17 @@ async function codeSource(ctx) {
   return {
     source: "code",
     items: ranked,
-    notes: [...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."]
+    notes: [...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
+    fallbacks
   };
 }
 
 // src/sources/docs.ts
-import { join as join8 } from "path";
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
+import { join as join9 } from "path";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync4, mkdirSync as mkdirSync5 } from "fs";
 async function getDocText(repoDir, url) {
-  const dir = join8(repoDir, ".ultradoc", "extdocs");
-  const file = join8(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".txt");
+  const dir = join9(repoDir, ".ultradoc", "extdocs");
+  const file = join9(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
   try {
     if (existsSync5(file)) return { text: readFileSync4(file, "utf8") };
   } catch {
@@ -2099,8 +2226,8 @@ async function getDocText(repoDir, url) {
   const res = await fetchAndExtract(url);
   if (res.text) {
     try {
-      mkdirSync4(dir, { recursive: true });
-      writeFileSync3(file, res.text);
+      mkdirSync5(dir, { recursive: true });
+      writeFileSync4(file, res.text);
     } catch {
     }
   }
@@ -2108,27 +2235,23 @@ async function getDocText(repoDir, url) {
 }
 async function docsSource(ctx) {
   const notes = [];
-  const kws = keywords(ctx.options.question).map((k) => k.toLowerCase());
+  const matcher = buildMatcher(ctx.options.question);
   const items = [];
   const scored = [];
   for (const rel of ctx.index.docFiles) {
     if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join8(ctx.repoDir, rel));
+    const content = readText(join9(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
     let bestHits = 0;
     const covered = /* @__PURE__ */ new Set();
     for (let i = 0; i < lines.length; i++) {
-      const low = lines[i].toLowerCase();
-      let here = 0;
-      for (const kw of kws) if (low.includes(kw)) {
-        here++;
-        covered.add(kw);
-      }
-      if (here > bestHits) {
-        bestHits = here;
+      const here = matcher.matchLine(lines[i]);
+      for (const c2 of here) covered.add(c2);
+      if (here.size > bestHits) {
+        bestHits = here.size;
         bestLine = i;
       }
     }
@@ -2141,14 +2264,16 @@ async function docsSource(ctx) {
   for (const d of scored.slice(0, ctx.options.perSource)) {
     const start = Math.max(0, d.anchor - 4);
     const end = Math.min(d.lines.length, d.anchor + 14);
+    const heading = /\.(md|mdx)$/i.test(d.rel) ? nearestHeading(d.lines, d.anchor) : void 0;
     items.push({
       source: "docs",
-      title: `${d.rel} (in-repo docs)`,
+      title: heading ? `${d.rel} \xA7 ${heading} (in-repo docs)` : `${d.rel} (in-repo docs)`,
       ref: d.rel,
       location: `${d.rel}:${start + 1}-${end}`,
       score: Number(d.score.toFixed(3)),
       snippet: d.lines.slice(start, end).join("\n"),
-      url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${d.rel}`
+      url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${d.rel}`,
+      meta: heading ? { heading } : void 0
     });
   }
   const docsUrl = ctx.options.docsUrl ?? ctx.index.docsUrl;
@@ -2169,7 +2294,7 @@ async function docsSource(ctx) {
 }
 
 // src/sources/releases.ts
-import { join as join9 } from "path";
+import { join as join10 } from "path";
 var CHANGELOG_RE = /(^|\/)(changelog|changes|history|news|releases?)(\.[a-z0-9]+)?$/i;
 var VERSION_HEADING_RE = /^(#{1,4}\s*\[?v?\d+\.\d+|v?\d+\.\d+(\.\d+)?\s*[/(—-])/;
 function changelogSections(file, content) {
@@ -2262,7 +2387,7 @@ async function releasesSource(ctx) {
     (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel)
   );
   for (const rel of changelogs) {
-    const content = readText(join9(ctx.repoDir, rel));
+    const content = readText(join10(ctx.repoDir, rel));
     if (!content) continue;
     const scored = changelogSections(rel, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
     for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
@@ -2677,7 +2802,9 @@ async function stackoverflowSource(ctx) {
       const accepted = it.is_answered ? "answered" : "unanswered";
       return {
         source: "so",
-        title: htmlToText(String(it.title ?? "(question)")).slice(0, 160),
+        // htmlToText keeps headings as markdown "#" markers — strip them from
+        // one-line titles where they'd just be noise.
+        title: htmlToText(String(it.title ?? "(question)")).replace(/^#{1,6}\s+/, "").slice(0, 160),
         ref: `so:${it.question_id}`,
         location: it.link,
         score: Number(it.score ?? 0),
@@ -2798,130 +2925,109 @@ var HANDLERS = {
   so: stackoverflowSource,
   web: webSource
 };
+function srcRank(s) {
+  const i = SOURCE_ORDER.indexOf(s);
+  return i < 0 ? 99 : i;
+}
+function normSnippet(s) {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function lineRange(location) {
+  const m = location?.match(/:(\d+)-(\d+)$/);
+  if (!m) return void 0;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  return a <= b ? { a, b } : void 0;
+}
+function keeperOver(a, b, docFiles) {
+  const aDocs = a.source === "docs" && docFiles.has(a.ref);
+  const bDocs = b.source === "docs" && docFiles.has(b.ref);
+  if (aDocs !== bDocs) return aDocs;
+  if (srcRank(a.source) !== srcRank(b.source)) return srcRank(a.source) < srcRank(b.source);
+  if (a.score !== b.score) return a.score > b.score;
+  return a.ref.localeCompare(b.ref) <= 0;
+}
+function dedupeAcrossSources(results, docFiles) {
+  const all = results.flatMap((res) => res.items.map((item) => ({ res, item })));
+  const droppedItems = /* @__PURE__ */ new Set();
+  const bySnippet = /* @__PURE__ */ new Map();
+  for (const e of all) {
+    const key = normSnippet(e.item.snippet);
+    if (!key) continue;
+    const prev = bySnippet.get(key);
+    if (!prev) {
+      bySnippet.set(key, e);
+    } else if (keeperOver(e.item, prev.item, docFiles)) {
+      droppedItems.add(prev.item);
+      bySnippet.set(key, e);
+    } else {
+      droppedItems.add(e.item);
+    }
+  }
+  const byRef = /* @__PURE__ */ new Map();
+  for (const e of all) {
+    if (droppedItems.has(e.item)) continue;
+    const group = byRef.get(e.item.ref);
+    if (group) group.push(e);
+    else byRef.set(e.item.ref, [e]);
+  }
+  for (const group of byRef.values()) {
+    for (let i = 0; i < group.length; i++) {
+      const a = group[i];
+      if (droppedItems.has(a.item)) continue;
+      const ra = lineRange(a.item.location);
+      if (!ra) continue;
+      for (let j = i + 1; j < group.length; j++) {
+        const b = group[j];
+        if (droppedItems.has(b.item) || a.res.source === b.res.source) continue;
+        const rb = lineRange(b.item.location);
+        if (!rb) continue;
+        const inter = Math.min(ra.b, rb.b) - Math.max(ra.a, rb.a) + 1;
+        const union = Math.max(ra.b, rb.b) - Math.min(ra.a, rb.a) + 1;
+        if (inter > 0 && inter / union >= 0.6) {
+          droppedItems.add(keeperOver(a.item, b.item, docFiles) ? b.item : a.item);
+        }
+      }
+    }
+  }
+  return {
+    results: results.map((r) => ({ ...r, items: r.items.filter((it) => !droppedItems.has(it)) })),
+    dropped: droppedItems.size
+  };
+}
 async function runSources(ctx) {
   const cap = ctx.options.perSource;
   const tasks = ctx.options.sources.map(async (kind) => {
     const handler = HANDLERS[kind];
     if (!handler) return { source: kind, items: [], notes: [`Unknown source "${kind}".`] };
+    const t0 = Date.now();
     try {
       const res = await handler(ctx);
-      const items = [...res.items].sort((a, b) => b.score - a.score).slice(0, cap);
-      return { ...res, items };
+      return { ...res, ms: Date.now() - t0 };
     } catch (e) {
-      return { source: kind, items: [], notes: [`${kind} source failed: ${e.message}`] };
+      return { source: kind, items: [], notes: [`${kind} source failed: ${e.message}`], ms: Date.now() - t0 };
     }
   });
-  return Promise.all(tasks);
-}
-
-// src/dossier.ts
-import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync4 } from "fs";
-import { join as join10 } from "path";
-var SOURCE_ORDER = [
-  "code",
-  "docs",
-  "release",
-  "history",
-  "issue",
-  "pr",
-  "discussion",
-  "so",
-  "web"
-];
-var SOURCE_LABEL = {
-  code: "Code",
-  docs: "Documentation",
-  release: "Releases & Changelog",
-  history: "Git History",
-  issue: "Issues",
-  pr: "Pull / Merge Requests",
-  discussion: "Discussions",
-  so: "StackOverflow",
-  web: "Web"
-};
-function rank(s) {
-  const i = SOURCE_ORDER.indexOf(s);
-  return i < 0 ? 99 : i;
-}
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-function runId(d = /* @__PURE__ */ new Date()) {
-  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-function defaultRunDir(slug, d) {
-  return join10(cacheRoot(), slug, "runs", runId(d));
-}
-function assignIds(results) {
-  const flat = results.flatMap((r) => r.items);
-  flat.sort(
-    (a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref)
-  );
-  return flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
-}
-function renderEvidenceMarkdown(evidence, meta) {
-  const out = [];
-  out.push(`# Evidence dossier`);
-  out.push("");
-  out.push(`**Question:** ${meta.question}`);
-  out.push(
-    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}${meta.pkg ? ` \xB7 **package:** ${meta.pkg}` : ""}`
-  );
-  out.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
-  out.push("");
-  out.push(
-    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
-  );
-  out.push("");
-  if (evidence.length === 0) {
-    out.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
+  const raw = await Promise.all(tasks);
+  const { results, dropped } = dedupeAcrossSources(raw, new Set(ctx.index.docFiles));
+  if (dropped > 0 && results.length > 0) {
+    results[0].notes.push(`Dropped ${dropped} cross-source duplicate evidence item(s).`);
   }
-  for (const source of SOURCE_ORDER) {
-    const items = evidence.filter((e) => e.source === source);
-    if (items.length === 0) continue;
-    out.push(`## ${SOURCE_LABEL[source]}`);
-    out.push("");
-    for (const it of items) {
-      out.push(`### [${it.id}] ${it.title}`);
-      const meta1 = [
-        `ref: \`${it.ref}\``,
-        it.location ? `loc: \`${it.location}\`` : "",
-        `score: ${it.score}`
-      ].filter(Boolean).join(" \xB7 ");
-      out.push(meta1);
-      if (it.url) out.push(`url: ${it.url}`);
-      out.push("");
-      out.push("```");
-      out.push(it.snippet);
-      out.push("```");
-      out.push("");
-    }
-  }
-  if (meta.notes.length) {
-    out.push(`## Retrieval notes`);
-    out.push("");
-    for (const n of meta.notes) out.push(`- ${n}`);
-    out.push("");
-  }
-  return out.join("\n");
-}
-function writeDossier(dir, evidence, meta) {
-  mkdirSync5(dir, { recursive: true });
-  const evidenceJson = join10(dir, "evidence.json");
-  const evidenceMd = join10(dir, "EVIDENCE.md");
-  const metaJson = join10(dir, "meta.json");
-  writeFileSync4(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync4(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync4(metaJson, JSON.stringify(meta, null, 2));
-  return { dir, evidenceJson, evidenceMd, metaJson };
+  return results.map((r) => ({
+    ...r,
+    items: [...r.items].sort((a, b) => b.score - a.score).slice(0, cap)
+  }));
 }
 
 // src/ask.ts
 function buildContext(options) {
+  const t0 = Date.now();
   const repoRef = resolveRepo(options.repo);
   const repoDir = ensureClone(repoRef, { refresh: options.refresh, branch: options.ref });
+  const cloneMs = Date.now() - t0;
   const project = [repoRef.repo, repoRef.owner].filter((x) => !!x);
   const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
+  const indexMs = Date.now() - t0 - cloneMs;
   let scopePkg;
   if (options.pkg) {
     scopePkg = resolvePackage(index.packages, options.pkg);
@@ -2930,12 +3036,15 @@ function buildContext(options) {
       throw new Error(`--package "${options.pkg}" does not match one package \u2014 ${known}`);
     }
   }
-  return { repoRef, repoDir, index, options, scopePkg, scopeDir: scopePkg?.dir };
+  return { repoRef, repoDir, index, options, scopePkg, scopeDir: scopePkg?.dir, setupTimings: { cloneMs, indexMs } };
 }
 async function runAsk(options) {
+  const t0 = Date.now();
   const ctx = buildContext(options);
   const results = await runSources(ctx);
   const evidence = assignIds(results);
+  const sourceMs = {};
+  for (const r of results) if (r.ms !== void 0) sourceMs[r.source] = r.ms;
   const meta = {
     question: options.question,
     repo: ctx.repoRef.raw,
@@ -2947,7 +3056,14 @@ async function runAsk(options) {
     semantic: options.semantic,
     evidenceCount: evidence.length,
     builtAt: (/* @__PURE__ */ new Date()).toISOString(),
-    notes: results.flatMap((r) => r.notes)
+    notes: results.flatMap((r) => r.notes),
+    timings: {
+      cloneMs: ctx.setupTimings?.cloneMs ?? 0,
+      indexMs: ctx.setupTimings?.indexMs ?? 0,
+      totalMs: Date.now() - t0,
+      sources: sourceMs
+    },
+    fallbacks: results.flatMap((r) => r.fallbacks ?? [])
   };
   const dir = options.out ?? defaultRunDir(ctx.repoRef.slug);
   const paths = writeDossier(dir, evidence, meta);
