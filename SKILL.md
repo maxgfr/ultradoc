@@ -69,9 +69,12 @@ hand control back mid-retrieval.
 
    *Monorepo?* If `ask`/`index`/`overview` reports workspace packages (e.g.
    `socialgouv/code-du-travail-numerique` → `@cdt/frontend`,
-   `@socialgouv/modeles-social`, …), pick the package the question is about and
-   add `--package <name|dir>` so retrieval doesn't drown in the other packages.
-   An unknown package name fails loudly and lists what exists.
+   `@socialgouv/modeles-social`, …), pick the package whose name/dir matches the
+   subsystem the question is about and add `--package <name|dir>` so retrieval
+   doesn't drown in the other packages. If no package name obviously matches,
+   run one unscoped `ask` first, see which package the top hits cluster in, then
+   re-run scoped to it. An unknown package name fails loudly and lists what
+   exists.
 
 2. **Retrieve.** First, think like a developer and derive 2–3 **query
    variants** for the question — the engine searches literally, so phrasing
@@ -80,6 +83,15 @@ hand control back mid-retrieval.
    - the identifier forms the codebase probably uses (`retryBackoff`,
      `retry_backoff`, `MAX_RETRIES`),
    - the literal error message, option or flag name if the user quoted one.
+
+   The engine already folds plurals and accents ("retries"/"retry",
+   "délai"/"delai"), splits identifiers into subtokens, and boosts files named
+   after a keyword — so spend your variants on **synonyms and identifiers**
+   ("heartbeat" vs `ping`, "pool" vs `connectionLimit`), not on inflections of
+   the same word. And know when lexical search will be thin: it needs words
+   that literally appear in the repo. For conceptual or "why was it designed
+   this way" questions, lead with `docs`, `discussions`, `web` (or
+   `--semantic`) instead of expecting `code` to carry the answer.
 
    Run `ask` with the best variant and the sources that fit:
    ```
@@ -111,10 +123,17 @@ hand control back mid-retrieval.
    Follow `references/retrieval-playbook.md` for how to iterate.
 
    **Triage before writing.** Retrieval is recall-oriented, so the dossier
-   will contain off-topic items that merely share keywords. List which
-   evidence ids genuinely bear on the question and ignore the rest — an
-   off-topic item must not be cited just because it exists. If after triage
-   fewer than ~2 items support the core claim, go back and retrieve more.
+   will contain off-topic items that merely share keywords. The test: an item
+   bears on the question only if its snippet **names the symbol/behavior asked
+   about or describes the same mechanism** — sharing a keyword is not enough.
+   List which evidence ids pass that test and ignore the rest — an off-topic
+   item must not be cited just because it exists. If after triage fewer than
+   ~2 items support the core claim, go back and retrieve more.
+
+   **Re-query instead of re-reading.** If the top 3 code items are off-topic,
+   don't keep reading down the list — re-run `code --q` with the next
+   identifier-shaped variant from step 2. Two off-topic dossiers in a row mean
+   the wording is wrong, not that the repo lacks the answer.
 
 5. **Write the answer.** Create `ANSWER.md` in the same run folder. Be precise
    and concise. **Cite every factual claim** with the evidence id it rests on,

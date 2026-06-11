@@ -19,6 +19,7 @@ behavior, error, or change). Then choose sources:
 | when/why a piece of code changed, who changed it | `history` |
 | community Q&A, design rationale threads on the repo | `discussions` (needs `gh`) |
 | a "how do I" / conceptual / cross-library topic | `web`, `so` (+ `docs`) |
+| "why was it designed this way" / wording that won't appear in code | `docs`, `discussions`, `web` (or `--semantic`) — don't expect `code` to carry it |
 | anything version-sensitive | add `--ref <branch|tag>` and pin to the commit |
 
 Default `ask` sources are `code,issues,prs,docs`. Add `web,so` when the repo
@@ -42,11 +43,20 @@ camelCase / snake_case / SCREAMING_CASE forms of the same concept, exact error
 strings, config keys, and status codes are what the codebase actually contains;
 prose rarely is. One identifier-shaped variant usually beats three prose ones.
 
+The engine folds plurals and accents for you ("retries" finds `retry`,
+"delai" finds `délai`), splits identifiers into subtokens (`retryBackoff`
+also searches `retry` + `backoff`), and boosts files literally named after a
+keyword — so don't spend variants on inflections of the same word; spend them
+on **synonyms and identifiers** the codebase might use instead.
+
 ## Iterate
 
 1. Run `ask`. Read `EVIDENCE.md`.
 2. Find the gaps: a referenced symbol you haven't seen, an issue that hints at a
-   cause, a PR that changes the answer.
+   cause, a PR that changes the answer. If the **top 3 code items are
+   off-topic**, don't keep reading down the list — the wording is wrong:
+   re-run with the next identifier-shaped variant. Two off-topic dossiers in a
+   row mean re-phrase, not "the repo lacks the answer".
 3. Drill with single-source commands (they print, write nothing):
    - `code --q "<symbol/behavior>"` — pull more/other code regions. Search by the
      exact identifier when you know it; the symbol index ranks definitions first.
@@ -64,7 +74,9 @@ prose rarely is. One identifier-shaped variant usually beats three prose ones.
 Retrieval is recall-oriented: the dossier deliberately over-fetches, so some
 items will be on-keyword but off-topic. You are the precision layer. Before
 writing `ANSWER.md`, go through the evidence and decide which ids actually bear
-on the question. Discard:
+on the question — an item qualifies only if its snippet **names the
+symbol/behavior asked about or describes the same mechanism**; sharing a
+keyword is not enough. Discard:
 
 - **keyword coincidences** — an item that mentions the terms but talks about
   something else (a changelog entry for an unrelated module, a test that uses
@@ -90,7 +102,8 @@ answer-rubric review will ask you exactly that.
 - **Scope monorepos.** When `index`/`ask`/`overview` lists workspace packages,
   add `--package <name|dir>` so code/docs hits come from the right package
   instead of the whole tree (e.g. `--package modeles-social` in
-  `socialgouv/code-du-travail-numerique`).
+  `socialgouv/code-du-travail-numerique`). No obvious match? Run unscoped
+  once, see which package the top hits cluster in, then re-run scoped.
 - **Reuse across questions.** `overview --repo <url>` writes a cached markdown
   digest (packages, layout, public API, docs map) next to the clone. Read it
   once to orient and pick drill targets — but never cite it; answers cite
