@@ -146,9 +146,21 @@ hand control back mid-retrieval.
    - *Structural:* `node scripts/ultradoc.mjs check --run <dossier-dir>`. It
      fails on any citation that doesn't resolve to evidence, or on an answer with
      no citations. Fix and re-run until it passes.
-   - *Semantic:* self-review against `references/answer-rubric.md` — is the
-     question fully answered, is every claim grounded, are recency/version and
-     unknowns stated? If not, retrieve more (step 4) and rewrite.
+   - *Semantic (adversarial support-check):* `node scripts/ultradoc.mjs verify
+     --run <dossier-dir>` writes a claim↔evidence worklist (`VERIFY.todo.json` +
+     `VERIFY.md`). For each pair, open the cited evidence and judge whether it
+     actually **supports** the claim — set `verdict` to supported · partial ·
+     refuted · unsupported (+ a short note); use skeptic subagents in parallel if
+     available, else adjudicate inline. Save as `verdicts.json`, then:
+     ```
+     node scripts/ultradoc.mjs verify --apply verdicts.json --run <dossier-dir>
+     node scripts/ultradoc.mjs check  --semantic --run <dossier-dir>
+     ```
+     This fails on dangling/unsourced (structural) **and** on any refuted or
+     unsupported claim — closing the gap where a citation *resolves* but does not
+     actually back the claim. Fix the claim (re-cite, weaken, drop, or retrieve a
+     better item) and re-verify until it passes. Also self-review against
+     `references/answer-rubric.md` for completeness/recency/unknowns.
 
 7. **Present.** Give the user the grounded answer with its citations and links
    (file:line, issue/PR numbers, doc/SO/web URLs from the evidence), and the

@@ -6,6 +6,7 @@ import type { AskOptions, SourceKind, WebEngine, DossierMeta } from "./types.js"
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
 import { renderEvidenceMarkdown } from "./dossier.js";
 import { checkRun, formatCheckReport } from "./check.js";
+import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl } from "./index/semantic.js";
@@ -21,7 +22,8 @@ Usage:
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir>
+  ultradoc check --run <dossier-dir> [--semantic]
+  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>]
   ultradoc semantic up|down|status
 
 Commands:
@@ -38,6 +40,9 @@ Commands:
              without re-indexing. Reused while the commit is unchanged.
   index      Build/refresh the structural index for a repo and print stats.
   check      Validate ANSWER.md citations against a dossier's evidence.json.
+             --semantic also folds in verify's verdicts (fails on unsupported).
+  verify     Emit a claim↔evidence worklist for adversarial support-checking,
+             then (--apply <verdicts.json>) gate on refuted/unsupported claims.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
 
 Options:
@@ -70,11 +75,11 @@ Grounding:
 
 const COMMANDS = new Set([
   "ask", "code", "issues", "prs", "docs", "releases", "history", "discussions",
-  "so", "web", "overview", "index", "check", "semantic",
+  "so", "web", "overview", "index", "check", "verify", "semantic",
 ]);
 const VALUE_FLAGS = new Set([
   "repo", "q", "question", "sources", "ref", "docs-url", "web-engine", "url", "per-source",
-  "out", "run", "package",
+  "out", "run", "package", "apply", "max-verify",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh"]);
 
@@ -380,9 +385,34 @@ async function main(): Promise<void> {
     case "check": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const res = checkRun(resolve(dir));
+      const res = checkRun(resolve(dir), { semantic: p.bools.has("semantic") });
       process.stdout.write(formatCheckReport(res, resolve(dir)) + "\n");
       if (!res.ok) process.exit(1);
+      return;
+    }
+
+    case "verify": {
+      const dir = p.values.run ?? p.values.out;
+      if (!dir) fail("missing --run <dossier-dir>");
+      const rdir = resolve(dir);
+      if (p.values.apply) {
+        const result = applyVerdicts(rdir, resolve(p.values.apply));
+        if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        else process.stdout.write(formatVerifyReport(result) + "\n");
+        if (!result.ok) process.exit(1);
+        return;
+      }
+      const maxVerify = p.values["max-verify"] ? Number(p.values["max-verify"]) : VERIFY_MAX;
+      if (!Number.isFinite(maxVerify) || maxVerify <= 0) fail("invalid --max-verify");
+      const wl = runVerify(rdir, { maxVerify });
+      if (p.bools.has("json")) {
+        process.stdout.write(JSON.stringify(wl, null, 2) + "\n");
+        return;
+      }
+      process.stderr.write(
+        `ultradoc: ${wl.pairs.length} claim↔evidence pair(s) → ${rdir}/VERIFY.md & VERIFY.todo.json\n` +
+          `  adjudicate each verdict, save as verdicts.json, then: ultradoc verify --apply verdicts.json --run ${rdir}\n`,
+      );
       return;
     }
 

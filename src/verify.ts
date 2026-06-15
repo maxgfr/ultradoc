@@ -1,0 +1,183 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
+import { extractClaimUnits, citedEvidenceIds } from "./check.js";
+
+// Bounds the verification loop (claim↔evidence pairs adjudicated per run).
+export const VERIFY_MAX = 40;
+const VALID_VERDICTS: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
+
+export interface VerifyWorklist {
+  run: string;
+  pairs: ClaimEvidencePair[];
+}
+
+// Flatten ANSWER.md's claim units into individual claim strings: a text unit is
+// one claim; each list item is its own claim.
+function claimStrings(text: string): string[] {
+  const out: string[] = [];
+  for (const u of extractClaimUnits(text)) {
+    if (u.kind === "text") out.push(u.text);
+    else for (const it of u.items) out.push(it);
+  }
+  return out;
+}
+
+// Phase A — build the claim↔evidence verification worklist. For every claim in
+// ANSWER.md that cites a real evidence item, emit one pair per cited item with
+// the item's snippet as the digest, so a skeptic agent judges whether the source
+// actually SUPPORTS the claim. Deterministic; the JUDGEMENT is the agent's.
+// Capped at maxVerify (highest-score evidence first). Writes VERIFY.todo.json
+// (machine worklist) + VERIFY.md (human checklist).
+export function runVerify(dir: string, opts: { maxVerify?: number } = {}): VerifyWorklist {
+  const evidence: EvidenceItem[] = JSON.parse(readFileSync(join(dir, "evidence.json"), "utf8"));
+  const byId = new Map(evidence.map((e) => [e.id, e] as const));
+  const answer = readFileSync(join(dir, "ANSWER.md"), "utf8");
+
+  const pairs: (ClaimEvidencePair & { score: number })[] = [];
+  let claimNo = 0;
+  for (const claim of claimStrings(answer)) {
+    const ids = citedEvidenceIds(claim, evidence);
+    if (!ids.length) continue;
+    claimNo++;
+    const claimId = `C${claimNo}`;
+    for (const id of ids) {
+      const e = byId.get(id);
+      if (!e) continue;
+      pairs.push({
+        claimId,
+        claim: claim.trim().slice(0, 400),
+        evidenceId: id,
+        ref: e.ref,
+        source: e.source,
+        digest: (e.snippet || e.title || e.ref).slice(0, 600),
+        score: e.score,
+      });
+    }
+  }
+
+  // Cap deterministically: highest-score evidence first, stable by claim/id.
+  const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
+  const kept =
+    pairs.length > max
+      ? pairs
+          .slice()
+          .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId) || a.evidenceId.localeCompare(b.evidenceId))
+          .slice(0, max)
+      : pairs;
+  const worklist: VerifyWorklist = { run: dir, pairs: kept.map(({ score, ...rest }) => rest) };
+
+  const todo = {
+    run: dir,
+    pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "" })),
+  };
+  writeFileSync(join(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync(join(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  return worklist;
+}
+
+function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): string {
+  const out: string[] = [];
+  out.push(`# Verification worklist`);
+  out.push("");
+  out.push(
+    `For each pair, open the cited evidence and judge whether it **supports** the claim. ` +
+      `In \`VERIFY.todo.json\`, set each \`verdict\` to one of supported · partial · refuted · unsupported, ` +
+      `add a short \`note\`, save it (e.g. as \`verdicts.json\`), then run ` +
+      `\`ultradoc verify --apply verdicts.json --run <dir>\`.`,
+  );
+  if (kept < total) out.push(`\n_Showing ${kept} of ${total} pair(s) — capped at the highest-score evidence._`);
+  out.push("");
+  for (const p of wl.pairs) {
+    out.push(`## ${p.claimId} · ${p.evidenceId} (${p.source} · ${p.ref})`);
+    out.push(`**Claim:** ${p.claim}`);
+    out.push(`**Cited evidence:** ${p.digest}`);
+    out.push(`**Verdict:** _____ · **Note:** _____`);
+    out.push("");
+  }
+  return out.join("\n");
+}
+
+// Phase B — read an agent-filled verdicts file (a `{ pairs: Verdict[] }` object
+// or a bare `Verdict[]` array), validate it, reduce it to a VerifyResult, and
+// persist VERIFY.json (the gate result + the full list, which `check --semantic`
+// and `render` read).
+export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
+  const raw = JSON.parse(readFileSync(verdictsPath, "utf8"));
+  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const verdicts: Verdict[] = [];
+  for (const v of list) {
+    if (!v || typeof v.claimId !== "string" || typeof v.evidenceId !== "string") continue;
+    const verdict = VALID_VERDICTS.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
+    verdicts.push({
+      claimId: v.claimId,
+      claim: typeof v.claim === "string" ? v.claim : "",
+      evidenceId: v.evidenceId,
+      ref: typeof v.ref === "string" ? v.ref : "",
+      source: v.source,
+      digest: typeof v.digest === "string" ? v.digest : "",
+      verdict,
+      note: typeof v.note === "string" ? v.note : "",
+    });
+  }
+  const result = reduceVerdicts(verdicts);
+  writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  return result;
+}
+
+// Fold per-pair verdicts into a pass/fail. A claim FAILS if a cited evidence
+// item REFUTES it, or if every one of its fully-adjudicated cited items is
+// `unsupported` (nothing actually backs the claim). Pairs still missing a
+// verdict are reported as unadjudicated (a warning, not a failure).
+export function reduceVerdicts(verdicts: Verdict[]): VerifyResult {
+  const counts: Record<VerdictKind, number> = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
+  for (const v of verdicts) if (v.verdict && counts[v.verdict] !== undefined) counts[v.verdict]++;
+
+  const byClaim = new Map<string, Verdict[]>();
+  for (const v of verdicts) {
+    const group = byClaim.get(v.claimId) ?? [];
+    group.push(v);
+    byClaim.set(v.claimId, group);
+  }
+
+  const failures: VerifyResult["failures"] = [];
+  const unadjudicated: string[] = [];
+  for (const [claimId, group] of byClaim) {
+    const adjudicated = group.filter((g) => !!g.verdict);
+    if (adjudicated.length < group.length) unadjudicated.push(claimId);
+    const refuted = adjudicated.find((g) => g.verdict === "refuted");
+    const hasSupport = adjudicated.some((g) => g.verdict === "supported" || g.verdict === "partial");
+    if (refuted) {
+      failures.push({ claimId, evidenceId: refuted.evidenceId, verdict: "refuted", note: refuted.note });
+    } else if (adjudicated.length === group.length && adjudicated.length > 0 && !hasSupport) {
+      const u = adjudicated.find((g) => g.verdict === "unsupported") ?? adjudicated[0]!;
+      failures.push({ claimId, evidenceId: u.evidenceId, verdict: u.verdict, note: u.note });
+    }
+  }
+
+  return {
+    ok: failures.length === 0,
+    pairs: verdicts.length,
+    adjudicated: verdicts.filter((v) => !!v.verdict).length,
+    supported: counts.supported,
+    partial: counts.partial,
+    refuted: counts.refuted,
+    unsupported: counts.unsupported,
+    failures,
+    unadjudicated,
+  };
+}
+
+export function formatVerifyReport(r: VerifyResult): string {
+  const lines: string[] = [];
+  lines.push(`ultradoc verify: ${r.adjudicated}/${r.pairs} pair(s) adjudicated`);
+  lines.push(`  supported: ${r.supported} · partial: ${r.partial} · refuted: ${r.refuted} · unsupported: ${r.unsupported}`);
+  for (const f of r.failures.slice(0, 12)) {
+    lines.push(`  ✗ ${f.claimId} (${f.evidenceId}): ${f.verdict}${f.note ? " — " + f.note : ""}`);
+  }
+  if (r.unadjudicated.length) {
+    lines.push(`  ⚠ ${r.unadjudicated.length} claim(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
+  }
+  lines.push(r.ok ? `  ✓ every claim is backed by a cited evidence item` : `  ✗ some claims are refuted or unsupported`);
+  return lines.join("\n");
+}

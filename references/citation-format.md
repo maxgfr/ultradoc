@@ -44,6 +44,19 @@ Prefer evidence ids — they are unambiguous and let `check` confirm coverage.
 - Markdown links `[text](url)` are **not** citations and are ignored.
 - Uncited evidence is fine (informational warning only) — you needn't use it all.
 
+## Semantic verification (beyond resolution)
+
+`check` proves a citation *resolves* to an evidence item; it does not prove the
+item *supports* the claim. `verify` closes that gap:
+
+- `verify --run <dir>` pairs every (claim, cited evidence) with the item's
+  snippet (`VERIFY.todo.json` / `VERIFY.md`).
+- You adjudicate each: `supported` · `partial` · `unsupported` · `refuted`
+  (+ a short note), and save the filled file.
+- `verify --apply <verdicts.json>` then `check --semantic` **fail** when a
+  claim's cited evidence refutes it, or when every cited item is unsupported —
+  on top of the resolution gate, never relaxing it.
+
 ## Good practice
 
 - Pin version-sensitive claims to the commit in `meta.json`.
