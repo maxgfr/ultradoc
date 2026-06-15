@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.6.0](https://github.com/maxgfr/ultradoc/compare/v1.5.0...v1.6.0) (2026-06-15)
+
+
+### Features
+
+* semantic verify gate — verify + check --semantic ([#8](https://github.com/maxgfr/ultradoc/issues/8)) ([0215f9c](https://github.com/maxgfr/ultradoc/commit/0215f9c1a8a22af04ad99cc51c2594f848740674))
+
 # [1.5.0](https://github.com/maxgfr/ultradoc/compare/v1.4.0...v1.5.0) (2026-06-11)
 
 
