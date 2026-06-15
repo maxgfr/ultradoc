@@ -171,4 +171,48 @@ export interface CheckResult {
   uncited: string[]; // evidence ids never cited (informational)
   errors: string[];
   warnings: string[];
+  semantic?: VerifyResult; // populated only by `check --semantic` (folds VERIFY.json)
+}
+
+// ---------------------------------------------------------------------------
+// Semantic claim verification. The mechanical `check` proves a citation
+// RESOLVES to an evidence item; `verify` asks whether that item actually
+// SUPPORTS the claim. `verify` (Phase A) emits ClaimEvidencePair[] — a
+// deterministic worklist; an agent fills a Verdict per pair; `verify --apply` /
+// `check --semantic` (Phase B) then FAIL on a refuted/unsupported claim. This
+// extends the citation-resolution gate to a citation-support gate.
+// ---------------------------------------------------------------------------
+export type VerdictKind = "supported" | "partial" | "refuted" | "unsupported";
+
+// A claim-unit paired with one evidence item it cites + a claim-relevant digest
+// of that item, for an agent to adjudicate.
+export interface ClaimEvidencePair {
+  claimId: string; // "C1", "C2", …
+  claim: string; // the claim-unit text (capped)
+  evidenceId: string; // the cited [E#]
+  ref: string; // the evidence item's provenance token (src/foo.ts, issue#123…)
+  source: SourceKind;
+  digest: string; // the cited item's snippet (claim-relevant)
+}
+
+// A ClaimEvidencePair with the agent's judgement filled in.
+export interface Verdict extends ClaimEvidencePair {
+  verdict: VerdictKind;
+  note: string;
+}
+
+// Outcome of folding the adjudicated verdicts back in. `ok` is false when any
+// claim is refuted/unsupported. `unadjudicated` lists pairs still missing a
+// verdict (warn, not fail). `verdicts` carries the full list for `render`.
+export interface VerifyResult {
+  ok: boolean;
+  pairs: number;
+  adjudicated: number;
+  supported: number;
+  partial: number;
+  refuted: number;
+  unsupported: number;
+  failures: { claimId: string; evidenceId: string; verdict: VerdictKind; note: string }[];
+  unadjudicated: string[];
+  verdicts?: Verdict[];
 }
