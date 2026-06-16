@@ -100,9 +100,12 @@ question + repo URL
   → index deterministically: ripgrep + a per-language symbol index
       (optional Tier 2: local vector search — Qdrant + Ollama, in Docker, no key)
   → retrieve evidence: code · issues · PRs · docs · releases · git history · discussions · StackOverflow · web
-  → write an evidence dossier (EVIDENCE.md + evidence.json)
+  → write an evidence dossier (EVIDENCE.md + evidence.json), persisted under
+      <clone>/.ultradoc/runs/ — a stable, commit-pinned knowledge base
   → the model writes a CITED answer (ANSWER.md)
   → `ultradoc check` verifies every citation resolves   ← the grounding guarantee
+  → (optional) `ultradoc verify` + `check --semantic` adversarially confirm each
+      citation actually SUPPORTS its claim               ← the semantic gate
 ```
 
 Two retrieval tiers:
@@ -136,7 +139,9 @@ Two retrieval tiers:
 | `code` / `issues` / `prs` / `docs` / `releases` / `history` / `discussions` / `so` | Drill into one source (prints evidence) |
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
 | `overview` | Generate a cached markdown digest of the repo (packages, layout, public API, docs map) |
-| `check --run <dir>` | Validate ANSWER.md citations against the dossier |
+| `doc` | Generate a grounded **reference doc**: a section outline + a dossier per section + a `DOC.todo` worklist you fill into a cited `DOC.md` |
+| `check --run <dir>` | Validate `ANSWER.md` (or a `doc` run's `DOC.md`) citations against the dossier (`--semantic` also folds in `verify`'s verdicts) |
+| `verify --run <dir>` | Emit a claim↔evidence worklist for adversarial support-checking, then gate on refuted/unsupported claims |
 | `index` | Build/print the structural index for a repo |
 | `semantic up\|down\|status` | Manage the optional local Docker stack |
 
@@ -164,6 +169,24 @@ node scripts/ultradoc.mjs ask \
 `--package` accepts the full name (`@socialgouv/modeles-social`), a short name
 (`modeles-social`), or the directory. A wrong name fails loudly and lists the
 packages that exist.
+
+## Generate a whole-repo documentation
+
+Beyond one-off questions, `ultradoc doc` produces a **grounded reference document**
+for an entire repo (or one package) — the same retrieve → cite → verify loop,
+fanned out over a section outline:
+
+```bash
+node scripts/ultradoc.mjs doc --repo https://github.com/sindresorhus/p-retry
+# → builds an outline (overview · install · public API · configuration · architecture),
+#   grounds a dossier per section into one evidence.json, and writes a DOC.todo.md
+#   worklist under <clone>/.ultradoc/doc/.
+```
+
+The engine retrieves; you write each section into `DOC.md`, citing `[E#]` for every
+claim, then `ultradoc check --run <dir>` (and `verify`) validate it exactly like an
+answer — so the doc cannot drift into memory-based prose. In a monorepo,
+`--package <name|dir>` scopes the doc to one package.
 
 ## Ask many questions without re-indexing
 
@@ -196,7 +219,7 @@ from memory.
 
 ```bash
 pnpm install
-pnpm test            # vitest (43 tests)
+pnpm test            # vitest — unit + offline integration (149 tests)
 pnpm run typecheck
 pnpm run build       # bundles src/ → scripts/ultradoc.mjs (committed, zero-dep)
 pnpm run check:build # asserts the committed bundle is reproducible

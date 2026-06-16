@@ -1504,8 +1504,8 @@ function pad(n) {
 function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
-function defaultRunDir(slug, d) {
-  return join6(cacheRoot(), slug, "runs", runId(d));
+function defaultRunDir(repoDir, d) {
+  return join6(indexDir(repoDir), "runs", runId(d));
 }
 function assignIds(results) {
   const flat = results.flatMap((r) => r.items);
@@ -3065,7 +3065,7 @@ async function runAsk(options) {
     },
     fallbacks: results.flatMap((r) => r.fallbacks ?? [])
   };
-  const dir = options.out ?? defaultRunDir(ctx.repoRef.slug);
+  const dir = options.out ?? defaultRunDir(ctx.repoDir);
   const paths = writeDossier(dir, evidence, meta);
   return { dir, evidence, meta, paths };
 }
@@ -3075,9 +3075,315 @@ async function runSingleSource(options, kind) {
   return { ctx, evidence: assignIds(results), notes: results.flatMap((r) => r.notes) };
 }
 
+// src/doc.ts
+import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync6 } from "fs";
+import { basename as basename3, join as join12 } from "path";
+
+// src/overview.ts
+import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync5, writeFileSync as writeFileSync5 } from "fs";
+import { basename as basename2, dirname as dirname2, join as join11 } from "path";
+var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
+function overviewPath(repoDir) {
+  return join11(repoDir, ".ultradoc", "OVERVIEW.md");
+}
+function readmeAbout(repoDir, docFiles) {
+  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
+  if (!readme) return [];
+  const text = readText(join11(repoDir, readme));
+  const out = [];
+  let chars = 0;
+  for (const para of text.split(/\r?\n\s*\r?\n/)) {
+    const p = para.trim();
+    if (!p || p.startsWith("#") || p.startsWith("<") || p.startsWith("!") || p.startsWith("[![") || p.startsWith("```")) continue;
+    out.push(p.replace(/\s*\r?\n\s*/g, " "));
+    chars += p.length;
+    if (out.length >= 3 || chars > 700) break;
+  }
+  return out;
+}
+function layout(repoDir) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const f of walk(repoDir)) {
+    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
+    counts.set(top, (counts.get(top) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([dir, files]) => ({ dir, files })).sort((a, b) => b.files - a.files || a.dir.localeCompare(b.dir)).slice(0, 15);
+}
+function apiLines(symbols, prefix, maxFiles = 15, maxSyms = 8) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const s of symbols) {
+    if (!s.exported) continue;
+    if (prefix && !s.file.startsWith(prefix + "/")) continue;
+    const list = byFile.get(s.file) ?? [];
+    list.push(s);
+    byFile.set(s.file, list);
+  }
+  const files = [...byFile.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).slice(0, maxFiles);
+  return files.map(([file, syms]) => {
+    const shown = syms.sort((a, b) => a.line - b.line).slice(0, maxSyms).map((s) => `${s.kind} \`${s.name}\``).join(", ");
+    const more = syms.length > maxSyms ? ` (+${syms.length - maxSyms} more)` : "";
+    return `- \`${file}\` \u2014 ${shown}${more}`;
+  });
+}
+function renderOverview(index, ref, repoDir) {
+  const name = ref.repo ?? basename2(repoDir);
+  const out = [];
+  out.push(`<!-- ultradoc:overview commit=${index.commit ?? "unknown"} -->`);
+  out.push(`# ${name} \u2014 repository overview`);
+  out.push("");
+  out.push(`**Repo:** ${ref.raw}${index.commit ? ` @ ${index.commit}` : ""} \xB7 **host:** ${ref.host}`);
+  const langs = Object.entries(index.languages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`);
+  out.push(`**Files:** ${index.fileCount} \xB7 **symbols:** ${index.symbols.length} \xB7 **languages:** ${langs.join(", ")}`);
+  out.push(`**Generated:** ${index.builtAt} (regenerate with \`ultradoc overview --refresh\`)`);
+  out.push("");
+  out.push(
+    `> This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence \u2014 ground answers in a dossier from \`ultradoc ask\`.`
+  );
+  out.push("");
+  const about = readmeAbout(repoDir, index.docFiles);
+  if (about.length) {
+    out.push("## About");
+    out.push("");
+    for (const p of about) out.push(p, "");
+  }
+  if (index.packages.length) {
+    out.push("## Workspace packages");
+    out.push("");
+    out.push(`This is a monorepo with ${index.packages.length} packages. Scope any question with \`--package <name|dir>\`.`);
+    out.push("");
+    out.push("| package | path | description |");
+    out.push("|---------|------|-------------|");
+    for (const p of index.packages) {
+      out.push(`| ${p.name} | \`${p.dir}\` | ${p.description ?? ""} |`);
+    }
+    out.push("");
+  }
+  out.push("## Layout");
+  out.push("");
+  for (const l of layout(repoDir)) out.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
+  out.push("");
+  out.push("## Public API");
+  out.push("");
+  if (index.packages.length) {
+    for (const p of index.packages) {
+      const lines = apiLines(index.symbols, p.dir, 10, 8);
+      if (!lines.length) continue;
+      out.push(`### ${p.name} (\`${p.dir}\`)`);
+      out.push("");
+      out.push(...lines);
+      out.push("");
+    }
+  } else {
+    const lines = apiLines(index.symbols);
+    out.push(...lines.length ? lines : ["_No exported symbols were detected._"]);
+    out.push("");
+  }
+  out.push("## Documentation");
+  out.push("");
+  if (index.docsRoot) out.push(`- Canonical docs tree: \`${index.docsRoot}/\``);
+  if (index.docsUrl) out.push(`- Official docs site: ${index.docsUrl}`);
+  for (const d of index.docFiles.slice(0, 40)) out.push(`- \`${d}\``);
+  if (index.docFiles.length > 40) out.push(`- \u2026 ${index.docFiles.length - 40} more doc files`);
+  out.push("");
+  return out.join("\n");
+}
+function ensureOverview(index, ref, repoDir, opts = {}) {
+  const path = opts.out ?? overviewPath(repoDir);
+  if (!opts.refresh && existsSync6(path)) {
+    try {
+      const existing = readFileSync5(path, "utf8");
+      const commit = CACHE_MARK.exec(existing)?.[1];
+      if (commit && commit === (index.commit ?? "unknown")) {
+        return { path, markdown: existing, cached: true };
+      }
+    } catch {
+    }
+  }
+  const markdown = renderOverview(index, ref, repoDir);
+  mkdirSync6(dirname2(path), { recursive: true });
+  writeFileSync5(path, markdown);
+  return { path, markdown, cached: false };
+}
+
+// src/doc.ts
+function looksLikeTestFile(rel) {
+  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel)) return true;
+  const base = (rel.split("/").pop() ?? "").toLowerCase();
+  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
+}
+function topExportedSymbols(index, prefix, n) {
+  const byFile = /* @__PURE__ */ new Map();
+  const names = [];
+  const seen = /* @__PURE__ */ new Set();
+  const isApi = (s) => s.exported && !looksLikeTestFile(s.file) && !s.name.startsWith("_");
+  for (const s of index.symbols) {
+    if (!isApi(s)) continue;
+    if (prefix && !s.file.startsWith(prefix + "/")) continue;
+    byFile.set(s.file, (byFile.get(s.file) ?? 0) + 1);
+  }
+  const rankedFiles = [...byFile.keys()].sort(
+    (a, b) => (byFile.get(b) ?? 0) - (byFile.get(a) ?? 0) || a.localeCompare(b)
+  );
+  for (const file of rankedFiles) {
+    const syms = index.symbols.filter((s) => isApi(s) && s.file === file).sort((a, b) => a.line - b.line);
+    for (const s of syms) {
+      if (seen.has(s.name)) continue;
+      seen.add(s.name);
+      names.push(s.name);
+      if (names.length >= n) return names;
+    }
+  }
+  return names;
+}
+function buildOutline(index, name, scopePkg) {
+  const sections = [];
+  let n = 0;
+  const add = (title, query2, sources) => sections.push({ id: `S${++n}`, title, query: query2, sources });
+  add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
+  add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
+  if (index.packages.length && !scopePkg) {
+    for (const pkg of index.packages.slice(0, 6)) {
+      const syms = topExportedSymbols(index, pkg.dir, 5);
+      add(`Package: ${pkg.name}`, `${pkg.name} ${pkg.dir} ${syms.join(" ")}`.trim(), ["code", "docs"]);
+    }
+  } else {
+    const syms = topExportedSymbols(index, scopePkg?.dir, 6);
+    add("Public API", `${name} public API exports main entry ${syms.join(" ")}`.trim(), ["code", "docs"]);
+  }
+  add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
+  add("Architecture & internals", `${name} architecture design internals how it works module structure`, ["docs", "code"]);
+  return sections;
+}
+var dedupKey = (it) => `${it.source}|${it.ref}|${it.location ?? ""}|${(it.snippet ?? "").slice(0, 120)}`;
+var sourceRank = (s) => {
+  const i = SOURCE_ORDER.indexOf(s);
+  return i < 0 ? 99 : i;
+};
+function mergeEvidence(perSection) {
+  const best = /* @__PURE__ */ new Map();
+  for (const { items } of perSection) {
+    for (const it of items) {
+      const k = dedupKey(it);
+      const ex = best.get(k);
+      if (!ex || it.score > ex.score) best.set(k, it);
+    }
+  }
+  const flat = [...best.values()].sort(
+    (a, b) => sourceRank(a.source) - sourceRank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref)
+  );
+  const evidence = flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
+  const idByKey = new Map(evidence.map((e) => [dedupKey(e), e.id]));
+  const sectionIds = /* @__PURE__ */ new Map();
+  for (const { section, items } of perSection) {
+    const ids = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const it of [...items].sort((a, b) => b.score - a.score)) {
+      const id = idByKey.get(dedupKey(it));
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+    sectionIds.set(section.id, ids.slice(0, 10));
+  }
+  return { evidence, sectionIds };
+}
+function renderDocTodo(plan, evidence) {
+  const byId = new Map(evidence.map((e) => [e.id, e]));
+  const out = [];
+  out.push(`# Documentation worklist \u2014 ${plan.repo}${plan.commit ? ` @ ${plan.commit}` : ""}`);
+  if (plan.pkg) out.push(`**Package:** ${plan.pkg}`);
+  out.push("");
+  out.push(
+    `> Write the final document to \`DOC.md\` in this folder. Write each section below as grounded prose and **cite the evidence ids** ([E#]) \u2014 every factual claim needs a citation that resolves. Read \`EVIDENCE.md\` for the full snippets. If a section's evidence is thin, drill more (\`ultradoc code|docs --repo \u2026 --q \u2026\`) or state the gap explicitly \u2014 never write from memory. Then run \`ultradoc check --run <dir>\`.`
+  );
+  out.push("");
+  for (const s of plan.sections) {
+    out.push(`## ${s.id} \xB7 ${s.title}`);
+    out.push(`_query:_ \`${s.query}\``);
+    if (!s.evidenceIds.length) {
+      out.push(`_evidence:_ none retrieved \u2014 drill this section or mark it an explicit unknown.`);
+      out.push("");
+      continue;
+    }
+    out.push(`_evidence:_ ${s.evidenceIds.map((id) => `[${id}]`).join(" ")}`);
+    for (const id of s.evidenceIds) {
+      const e = byId.get(id);
+      if (!e) continue;
+      const firstLine = (e.snippet ?? "").split("\n").find((l) => l.trim()) ?? e.title;
+      out.push(`- [${id}] \`${e.ref}\` \u2014 ${firstLine.slice(0, 120)}`);
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+function defaultDocDir(repoDir, scopePkg) {
+  const base = join12(indexDir(repoDir), "doc");
+  return scopePkg ? join12(base, slugify(scopePkg.name)) : base;
+}
+async function runDoc(options, opts = {}) {
+  const ctx = buildContext(options);
+  const name = ctx.repoRef.repo ?? basename3(ctx.repoDir);
+  const outline = buildOutline(ctx.index, name, ctx.scopePkg);
+  const perSection = await Promise.all(
+    outline.map(async (section) => {
+      const sources = opts.sourcesOverride ?? section.sources;
+      const sctx = { ...ctx, options: { ...ctx.options, question: section.query, sources } };
+      const results = await runSources(sctx);
+      return {
+        section,
+        items: results.flatMap((r) => r.items),
+        notes: results.flatMap((r) => r.notes)
+      };
+    })
+  );
+  const { evidence, sectionIds } = mergeEvidence(perSection);
+  const sections = outline.map((s) => ({ ...s, evidenceIds: sectionIds.get(s.id) ?? [] }));
+  const usedSources = [...new Set(perSection.flatMap((p) => opts.sourcesOverride ?? p.section.sources))];
+  const plan = {
+    repo: ctx.repoRef.raw,
+    host: ctx.repoRef.host,
+    commit: ctx.index.commit,
+    pkg: ctx.scopePkg?.name,
+    builtAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sections
+  };
+  const meta = {
+    question: `Documentation: ${name}`,
+    repo: ctx.repoRef.raw,
+    host: ctx.repoRef.host,
+    ref: options.ref,
+    commit: ctx.index.commit,
+    pkg: ctx.scopePkg?.name,
+    sources: usedSources,
+    semantic: options.semantic,
+    evidenceCount: evidence.length,
+    builtAt: plan.builtAt,
+    notes: [...new Set(perSection.flatMap((p) => p.notes))]
+  };
+  const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
+  mkdirSync7(dir, { recursive: true });
+  const evidenceJson = join12(dir, "evidence.json");
+  const evidenceMd = join12(dir, "EVIDENCE.md");
+  const planJson = join12(dir, "DOC.plan.json");
+  const todoMd = join12(dir, "DOC.todo.md");
+  const metaJson = join12(dir, "meta.json");
+  writeFileSync6(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync6(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync6(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync6(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync6(metaJson, JSON.stringify(meta, null, 2));
+  let overviewPath2;
+  try {
+    overviewPath2 = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir).path;
+  } catch {
+  }
+  return { dir, plan, evidence, paths: { dir, evidenceJson, evidenceMd, planJson, todoMd, metaJson, overviewPath: overviewPath2 } };
+}
+
 // src/check.ts
-import { existsSync as existsSync6, readFileSync as readFileSync5 } from "fs";
-import { join as join11 } from "path";
+import { existsSync as existsSync7, readFileSync as readFileSync6 } from "fs";
+import { basename as basename4, join as join13 } from "path";
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
@@ -3086,6 +3392,17 @@ var SHAPE = {
   typed: /^(code|docs|web|so|release|commit|history|discussion):\S+$/
 };
 var TYPED_SOURCE = { commit: "history" };
+function resolveAnswerPath(dir, answerFile) {
+  if (answerFile) {
+    const p = join13(dir, answerFile);
+    return existsSync7(p) ? p : null;
+  }
+  for (const name of ["ANSWER.md", "DOC.md"]) {
+    const p = join13(dir, name);
+    if (existsSync7(p)) return p;
+  }
+  return null;
+}
 function isCitation(tok) {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
 }
@@ -3231,15 +3548,15 @@ function citedEvidenceIds(text, evidence) {
   return out;
 }
 function applySemantic(dir, result) {
-  const p = join11(dir, "VERIFY.json");
-  if (!existsSync6(p)) {
+  const p = join13(dir, "VERIFY.json");
+  if (!existsSync7(p)) {
     result.warnings.push(
       "--semantic: no VERIFY.json \u2014 run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped."
     );
     return;
   }
   try {
-    const sem = JSON.parse(readFileSync5(p, "utf8"));
+    const sem = JSON.parse(readFileSync6(p, "utf8"));
     result.semantic = sem;
     if (!sem.ok) {
       result.ok = false;
@@ -3257,9 +3574,9 @@ function applySemantic(dir, result) {
 function checkRun(dir, opts = {}) {
   const errors = [];
   const warnings = [];
-  const answerPath = join11(dir, "ANSWER.md");
-  const evidencePath = join11(dir, "evidence.json");
-  if (!existsSync6(evidencePath)) {
+  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  const evidencePath = join13(dir, "evidence.json");
+  if (!existsSync7(evidencePath)) {
     return {
       ok: false,
       citations: [],
@@ -3272,7 +3589,7 @@ function checkRun(dir, opts = {}) {
   }
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync5(evidencePath, "utf8"));
+    evidence = JSON.parse(readFileSync6(evidencePath, "utf8"));
   } catch (e) {
     return {
       ok: false,
@@ -3284,18 +3601,19 @@ function checkRun(dir, opts = {}) {
       warnings: []
     };
   }
-  if (!existsSync6(answerPath)) {
+  if (!answerPath) {
+    const which = opts.answerFile ?? "ANSWER.md or DOC.md";
     return {
       ok: false,
       citations: [],
       resolved: [],
       dangling: [],
       uncited: evidence.map((e) => e.id),
-      errors: [`No ANSWER.md in ${dir} \u2014 write the grounded answer there, then re-run check.`],
+      errors: [`No ${which} in ${dir} \u2014 write the grounded answer there, then re-run check.`],
       warnings: []
     };
   }
-  const answer = readFileSync5(answerPath, "utf8");
+  const answer = readFileSync6(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const citations = [];
@@ -3317,7 +3635,7 @@ function checkRun(dir, opts = {}) {
   const citedIds = new Set(resolved.filter((c2) => SHAPE.id.test(c2)));
   const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
   if (citations.length === 0) {
-    errors.push("ANSWER.md contains no citations \u2014 a grounded answer must cite evidence ids like [E1].");
+    errors.push(`${basename4(answerPath)} contains no citations \u2014 a grounded answer must cite evidence ids like [E1].`);
   }
   if (dangling.length) {
     errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);
@@ -3355,8 +3673,8 @@ function formatCheckReport(r, dir) {
 }
 
 // src/verify.ts
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync5 } from "fs";
-import { join as join12 } from "path";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync7 } from "fs";
+import { join as join14 } from "path";
 var VERIFY_MAX = 40;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 function claimStrings(text) {
@@ -3368,9 +3686,11 @@ function claimStrings(text) {
   return out;
 }
 function runVerify(dir, opts = {}) {
-  const evidence = JSON.parse(readFileSync6(join12(dir, "evidence.json"), "utf8"));
+  const evidence = JSON.parse(readFileSync7(join14(dir, "evidence.json"), "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
-  const answer = readFileSync6(join12(dir, "ANSWER.md"), "utf8");
+  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
+  const answer = readFileSync7(answerPath, "utf8");
   const pairs = [];
   let claimNo = 0;
   for (const claim of claimStrings(answer)) {
@@ -3399,8 +3719,8 @@ function runVerify(dir, opts = {}) {
     run: dir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" }))
   };
-  writeFileSync5(join12(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync5(join12(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync7(join14(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync7(join14(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -3423,7 +3743,7 @@ _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence
   return out.join("\n");
 }
 function applyVerdicts(dir, verdictsPath) {
-  const raw = JSON.parse(readFileSync6(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync7(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
   const verdicts = [];
   for (const v of list) {
@@ -3441,7 +3761,7 @@ function applyVerdicts(dir, verdictsPath) {
     });
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync5(join12(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync7(join14(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
 function reduceVerdicts(verdicts) {
@@ -3493,132 +3813,6 @@ function formatVerifyReport(r) {
   return lines.join("\n");
 }
 
-// src/overview.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync6 } from "fs";
-import { basename as basename2, dirname as dirname2, join as join13 } from "path";
-var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
-function overviewPath(repoDir) {
-  return join13(repoDir, ".ultradoc", "OVERVIEW.md");
-}
-function readmeAbout(repoDir, docFiles) {
-  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
-  if (!readme) return [];
-  const text = readText(join13(repoDir, readme));
-  const out = [];
-  let chars = 0;
-  for (const para of text.split(/\r?\n\s*\r?\n/)) {
-    const p = para.trim();
-    if (!p || p.startsWith("#") || p.startsWith("<") || p.startsWith("!") || p.startsWith("[![") || p.startsWith("```")) continue;
-    out.push(p.replace(/\s*\r?\n\s*/g, " "));
-    chars += p.length;
-    if (out.length >= 3 || chars > 700) break;
-  }
-  return out;
-}
-function layout(repoDir) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const f of walk(repoDir)) {
-    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
-    counts.set(top, (counts.get(top) ?? 0) + 1);
-  }
-  return [...counts.entries()].map(([dir, files]) => ({ dir, files })).sort((a, b) => b.files - a.files || a.dir.localeCompare(b.dir)).slice(0, 15);
-}
-function apiLines(symbols, prefix, maxFiles = 15, maxSyms = 8) {
-  const byFile = /* @__PURE__ */ new Map();
-  for (const s of symbols) {
-    if (!s.exported) continue;
-    if (prefix && !s.file.startsWith(prefix + "/")) continue;
-    const list = byFile.get(s.file) ?? [];
-    list.push(s);
-    byFile.set(s.file, list);
-  }
-  const files = [...byFile.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).slice(0, maxFiles);
-  return files.map(([file, syms]) => {
-    const shown = syms.sort((a, b) => a.line - b.line).slice(0, maxSyms).map((s) => `${s.kind} \`${s.name}\``).join(", ");
-    const more = syms.length > maxSyms ? ` (+${syms.length - maxSyms} more)` : "";
-    return `- \`${file}\` \u2014 ${shown}${more}`;
-  });
-}
-function renderOverview(index, ref, repoDir) {
-  const name = ref.repo ?? basename2(repoDir);
-  const out = [];
-  out.push(`<!-- ultradoc:overview commit=${index.commit ?? "unknown"} -->`);
-  out.push(`# ${name} \u2014 repository overview`);
-  out.push("");
-  out.push(`**Repo:** ${ref.raw}${index.commit ? ` @ ${index.commit}` : ""} \xB7 **host:** ${ref.host}`);
-  const langs = Object.entries(index.languages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`);
-  out.push(`**Files:** ${index.fileCount} \xB7 **symbols:** ${index.symbols.length} \xB7 **languages:** ${langs.join(", ")}`);
-  out.push(`**Generated:** ${index.builtAt} (regenerate with \`ultradoc overview --refresh\`)`);
-  out.push("");
-  out.push(
-    `> This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence \u2014 ground answers in a dossier from \`ultradoc ask\`.`
-  );
-  out.push("");
-  const about = readmeAbout(repoDir, index.docFiles);
-  if (about.length) {
-    out.push("## About");
-    out.push("");
-    for (const p of about) out.push(p, "");
-  }
-  if (index.packages.length) {
-    out.push("## Workspace packages");
-    out.push("");
-    out.push(`This is a monorepo with ${index.packages.length} packages. Scope any question with \`--package <name|dir>\`.`);
-    out.push("");
-    out.push("| package | path | description |");
-    out.push("|---------|------|-------------|");
-    for (const p of index.packages) {
-      out.push(`| ${p.name} | \`${p.dir}\` | ${p.description ?? ""} |`);
-    }
-    out.push("");
-  }
-  out.push("## Layout");
-  out.push("");
-  for (const l of layout(repoDir)) out.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
-  out.push("");
-  out.push("## Public API");
-  out.push("");
-  if (index.packages.length) {
-    for (const p of index.packages) {
-      const lines = apiLines(index.symbols, p.dir, 10, 8);
-      if (!lines.length) continue;
-      out.push(`### ${p.name} (\`${p.dir}\`)`);
-      out.push("");
-      out.push(...lines);
-      out.push("");
-    }
-  } else {
-    const lines = apiLines(index.symbols);
-    out.push(...lines.length ? lines : ["_No exported symbols were detected._"]);
-    out.push("");
-  }
-  out.push("## Documentation");
-  out.push("");
-  if (index.docsRoot) out.push(`- Canonical docs tree: \`${index.docsRoot}/\``);
-  if (index.docsUrl) out.push(`- Official docs site: ${index.docsUrl}`);
-  for (const d of index.docFiles.slice(0, 40)) out.push(`- \`${d}\``);
-  if (index.docFiles.length > 40) out.push(`- \u2026 ${index.docFiles.length - 40} more doc files`);
-  out.push("");
-  return out.join("\n");
-}
-function ensureOverview(index, ref, repoDir, opts = {}) {
-  const path = opts.out ?? overviewPath(repoDir);
-  if (!opts.refresh && existsSync8(path)) {
-    try {
-      const existing = readFileSync7(path, "utf8");
-      const commit = CACHE_MARK.exec(existing)?.[1];
-      if (commit && commit === (index.commit ?? "unknown")) {
-        return { path, markdown: existing, cached: true };
-      }
-    } catch {
-    }
-  }
-  const markdown = renderOverview(index, ref, repoDir);
-  mkdirSync6(dirname2(path), { recursive: true });
-  writeFileSync6(path, markdown);
-  return { path, markdown, cached: false };
-}
-
 // src/cli.ts
 var HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -3629,9 +3823,10 @@ Usage:
   ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
+  ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir> [--semantic]
-  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>]
+  ultradoc check --run <dossier-dir> [--semantic] [--answer <file>]
+  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>]
   ultradoc semantic up|down|status
 
 Commands:
@@ -3646,8 +3841,12 @@ Commands:
   overview   Generate (once) a cached markdown digest of the repo \u2014 packages,
              layout, public API, docs map \u2014 to answer follow-up questions
              without re-indexing. Reused while the commit is unchanged.
+  doc        Generate a GROUNDED reference doc: a deterministic outline +
+             one dossier per section + a DOC.todo worklist to fill into DOC.md
+             (cited, then validated by 'check'). Persists under .ultradoc/doc/.
   index      Build/refresh the structural index for a repo and print stats.
-  check      Validate ANSWER.md citations against a dossier's evidence.json.
+  check      Validate ANSWER.md (or a doc run's DOC.md) citations against a
+             dossier's evidence.json (--answer picks a specific file).
              --semantic also folds in verify's verdicts (fails on unsupported).
   verify     Emit a claim\u2194evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
@@ -3665,8 +3864,10 @@ Options:
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
   --per-source <n>     Max evidence items kept per source           (default: 6)
-  --out <dir>          Dossier output dir          (default: /tmp/ultradoc/<slug>/runs/<id>)
-  --run <dir>          For 'check': the dossier dir to validate (also accepts --out)
+  --out <dir>          Dossier output dir   (default: <clone>/.ultradoc/runs/<id>)
+  --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
+  --answer <file>      For 'check'/'verify': answer file to validate inside --run
+                                       (default: ANSWER.md, else DOC.md)
   --semantic           Use the optional local vector backend (falls back if absent)
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
@@ -3692,6 +3893,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "so",
   "web",
   "overview",
+  "doc",
   "index",
   "check",
   "verify",
@@ -3711,7 +3913,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "run",
   "package",
   "apply",
-  "max-verify"
+  "max-verify",
+  "answer"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh"]);
 function fail(message) {
@@ -3979,6 +4182,25 @@ async function main() {
       process.stderr.write(lines.join("\n") + "\n");
       return;
     }
+    case "doc": {
+      const opts = buildAskOptions(p, { requireQuestion: false });
+      const sourcesOverride = p.values.sources ? parseSources(p.values.sources) : void 0;
+      const r = await runDoc(opts, { sourcesOverride });
+      if (opts.json) {
+        process.stdout.write(JSON.stringify({ dir: r.dir, plan: r.plan }, null, 2) + "\n");
+        return;
+      }
+      const lines = [
+        `ultradoc: doc scaffold \u2014 ${r.plan.sections.length} section(s), ${r.evidence.length} evidence item(s)`,
+        `  repo:     ${r.plan.repo}${r.plan.commit ? ` @ ${r.plan.commit}` : ""}${r.plan.pkg ? ` \xB7 package: ${r.plan.pkg}` : ""}`,
+        `  sections: ${r.plan.sections.map((s) => s.title).join(" \xB7 ")}`,
+        `  dir:      ${r.dir}`,
+        `  next:     read ${r.paths.todoMd} + EVIDENCE.md, write DOC.md (cite [E#]), then:`,
+        `            ultradoc check --run ${r.dir}`
+      ];
+      process.stderr.write(lines.join("\n") + "\n");
+      return;
+    }
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
       const ctx = buildContext(opts);
@@ -4022,7 +4244,7 @@ async function main() {
     case "check": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const res = checkRun(resolve2(dir), { semantic: p.bools.has("semantic") });
+      const res = checkRun(resolve2(dir), { semantic: p.bools.has("semantic"), answerFile: p.values.answer });
       process.stdout.write(formatCheckReport(res, resolve2(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
@@ -4040,7 +4262,7 @@ async function main() {
       }
       const maxVerify = p.values["max-verify"] ? Number(p.values["max-verify"]) : VERIFY_MAX;
       if (!Number.isFinite(maxVerify) || maxVerify <= 0) fail("invalid --max-verify");
-      const wl = runVerify(rdir, { maxVerify });
+      const wl = runVerify(rdir, { maxVerify, answerFile: p.values.answer });
       if (p.bools.has("json")) {
         process.stdout.write(JSON.stringify(wl, null, 2) + "\n");
         return;

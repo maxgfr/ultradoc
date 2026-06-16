@@ -113,6 +113,19 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("runs the full verify→apply→check --semantic gate on a DOC.md (the `doc` flow)", () => {
+    const dir = scratch();
+    // A `doc` run writes DOC.md, not ANSWER.md — verify/check must auto-detect it.
+    writeFileSync(join(dir, "evidence.json"), JSON.stringify(EVIDENCE, null, 2));
+    writeFileSync(join(dir, "DOC.md"), ANSWER);
+    const wl = runVerify(dir);
+    expect(wl.pairs.map((p) => p.evidenceId).sort()).toEqual(["E1", "E2"]);
+    expect(checkRun(dir).ok).toBe(true); // mechanical passes on DOC.md
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "refuted", E2: "supported" }));
+    expect(checkRun(dir, { semantic: true }).ok).toBe(false); // semantic catches the refuted claim
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("warns (does not fail) when --semantic is set but no VERIFY.json exists", () => {
     const dir = scratch();
     dossier(dir, EVIDENCE, ANSWER);

@@ -46,9 +46,21 @@ function loadCases(suite) {
 
 function runCase(c, outRoot) {
   const out = join(outRoot, c.id);
-  const args = [BUNDLE, "ask", "--repo", c.repo, "--q", c.question, "--out", out, "--json"];
+  const mode = c.mode ?? "ask";
   const a = c.args ?? {};
-  args.push("--sources", a.sources ?? "code,docs");
+  // `doc` generates a whole-repo reference dossier (no --q); it writes the same
+  // evidence.json the expect[] scoring reads, so doc and ask share this runner.
+  const args =
+    mode === "doc"
+      ? [BUNDLE, "doc", "--repo", c.repo, "--out", out, "--json"]
+      : [BUNDLE, "ask", "--repo", c.repo, "--q", c.question, "--out", out, "--json"];
+  // ask always passes sources (default code,docs); doc keeps its per-section
+  // defaults unless a case overrides them.
+  if (mode === "doc") {
+    if (a.sources) args.push("--sources", a.sources);
+  } else {
+    args.push("--sources", a.sources ?? "code,docs");
+  }
   if (a.package) args.push("--package", a.package);
   if (a.perSource) args.push("--per-source", String(a.perSource));
   if (a.docsUrl) args.push("--docs-url", a.docsUrl);
@@ -62,7 +74,7 @@ function runCase(c, outRoot) {
   });
   const ms = Date.now() - started;
   if (res.status !== 0) {
-    return { id: c.id, ok: false, ms, error: (res.stderr || res.stdout || "ask failed").trim().slice(0, 300), expects: [] };
+    return { id: c.id, ok: false, ms, error: (res.stderr || res.stdout || `${mode} failed`).trim().slice(0, 300), expects: [] };
   }
 
   let evidence;

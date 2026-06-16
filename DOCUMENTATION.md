@@ -36,8 +36,10 @@ index/
 lang/             per-language symbol extractors (registry by extension)
 providers/        issue/PR APIs per host (github, gitlab, generic) + registry
 sources/          one module per evidence source (code, docs, issues, …) + fetch
-dossier.ts        assign ids, render EVIDENCE.md, persist the run
-check.ts          parse + validate ANSWER.md citations (the grounding guarantee)
+dossier.ts        assign ids, render EVIDENCE.md, persist the run (<repoDir>/.ultradoc/runs/)
+doc.ts            `doc`: deterministic outline → a dossier per section → DOC.todo worklist
+check.ts          parse + validate ANSWER.md/DOC.md citations (the grounding guarantee)
+verify.ts         claim↔evidence worklist + the semantic support gate (check --semantic)
 ```
 
 ## Data flow
@@ -51,8 +53,10 @@ AskOptions
       restricted to scopeDir when --package was given
   → assignIds: flatten → E1,E2,… in canonical source order
   → writeDossier: EVIDENCE.md + evidence.json + meta.json
+      (default location: <repoDir>/.ultradoc/runs/<id>, unless --out)
 [model] reads EVIDENCE.md → writes ANSWER.md citing ids
   → checkRun: every citation resolves? else non-zero exit
+  → (optional) runVerify → agent verdicts → check --semantic: every citation supports?
 ```
 
 ## Retrieval, in detail
@@ -124,15 +128,37 @@ the overview; the model reads one file to orient instead of re-retrieving. The
 overview is navigation, not evidence: `check` still requires citations to
 resolve to a dossier.
 
-## The grounding guarantee (`check.ts`)
+## Documentation generation (`doc.ts`)
 
-`ANSWER.md` citations (`[E1]`, `[pr#5]`, `[code:path]`, …) are parsed (markdown
-links are ignored) and resolved against `evidence.json`. The check **fails** on:
+`ultradoc doc` turns the retrieve → cite → verify loop into a whole-repo
+reference document. A deterministic outline (overview, install/usage, public API
+— or one section per workspace package — configuration, architecture) is grounded
+one section at a time: each runs the same `runSources` retrieval on a
+section-specific query, and the results merge into a single `evidence.json` with
+global `[E#]` ids (deduped across sections). The engine writes `DOC.plan.json` +
+a `DOC.todo.md` worklist (per section: its evidence ids and snippets); the model
+writes the cited `DOC.md`, which `check`/`verify` validate exactly like an
+`ANSWER.md`. The API section's query is seeded from the repo's real exported
+symbols (test/example and private/dunder symbols excluded). Persisted under
+`<repoDir>/.ultradoc/doc/`.
+
+## The grounding guarantee (`check.ts`, `verify.ts`)
+
+`ANSWER.md` (or a `doc` run's `DOC.md`) citations (`[E1]`, `[pr#5]`,
+`[code:path]`, …) are parsed (markdown links are ignored) and resolved against
+`evidence.json`. The structural check **fails** on:
 - any dangling citation (e.g. a fabricated `[E99]`), or
 - an answer with no citations at all.
 
-Non-zero exit ⇒ ungrounded ⇒ the model must retrieve more and rewrite. This is
-the mechanism that prevents memory-based answers from passing as grounded ones.
+Non-zero exit ⇒ ungrounded ⇒ the model must retrieve more and rewrite.
+
+A second, **semantic** layer (`verify.ts`) closes the gap where a citation
+*resolves* but does not actually *support* the claim: `verify --run <dir>` emits
+a claim↔evidence worklist (`VERIFY.todo.json`); an agent — or skeptic subagents
+in parallel — adjudicates each pair `supported · partial · refuted · unsupported`;
+then `verify --apply <verdicts.json>` + `check --semantic` **fail** on any refuted
+or wholly-unsupported claim, on top of the resolution gate (never relaxing it).
+Together they prevent memory-based answers from passing as grounded ones.
 
 ## Extending
 

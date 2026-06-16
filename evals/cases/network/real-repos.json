@@ -33,5 +33,12 @@
     "question": "comment l'indemnité de licenciement est-elle calculée ?",
     "args": { "sources": "code", "package": "modeles-social", "perSource": 8 },
     "expect": [{ "source": "code", "refIncludes": "packages/code-du-travail-modeles/", "topN": 1 }]
+  },
+  {
+    "id": "express-doc-generation",
+    "mode": "doc",
+    "repo": "https://github.com/expressjs/express",
+    "expect": [{ "source": "code", "refPattern": "^lib/" }],
+    "minItems": 8
   }
 ]

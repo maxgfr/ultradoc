@@ -72,7 +72,7 @@ export async function runAsk(options: AskOptions): Promise<AskResult> {
     },
     fallbacks: results.flatMap((r) => r.fallbacks ?? []),
   };
-  const dir = options.out ?? defaultRunDir(ctx.repoRef.slug);
+  const dir = options.out ?? defaultRunDir(ctx.repoDir);
   const paths = writeDossier(dir, evidence, meta);
   return { dir, evidence, meta, paths };
 }

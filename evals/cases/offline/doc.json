@@ -1,0 +1,27 @@
+[
+  {
+    "id": "doc-sample-lib",
+    "mode": "doc",
+    "repo": "tests/fixtures/sample-lib",
+    "expect": [
+      { "source": "code", "refIncludes": "src/retry.ts" },
+      { "source": "docs", "refPattern": "readme|guide" }
+    ],
+    "minItems": 5
+  },
+  {
+    "id": "doc-sample-mono-unscoped",
+    "mode": "doc",
+    "repo": "tests/fixtures/sample-mono",
+    "expect": [{ "source": "code", "refIncludes": "packages/" }],
+    "minItems": 4
+  },
+  {
+    "id": "doc-sample-mono-scoped",
+    "mode": "doc",
+    "repo": "tests/fixtures/sample-mono",
+    "args": { "package": "@sample/api" },
+    "expect": [{ "source": "code", "refIncludes": "packages/api/", "topN": 1 }],
+    "minItems": 1
+  }
+]

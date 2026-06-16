@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { CheckResult, EvidenceItem, VerifyResult } from "./types.js";
 
 // A bracketed token is a citation when it is NOT a markdown link ("](" after
@@ -19,6 +19,22 @@ const SHAPE = {
 // Typed-alias prefixes that differ from the SourceKind they cite: history
 // items carry refs like "commit:<sha>".
 const TYPED_SOURCE: Record<string, string> = { commit: "history" };
+
+// The grounded answer a dossier validates. `ask` writes ANSWER.md; `doc` writes
+// DOC.md. With no explicit name we prefer ANSWER.md, then DOC.md — so `check`
+// and `verify` cover both flows with no required flag. Returns null when neither
+// (nor an explicit answerFile) exists.
+export function resolveAnswerPath(dir: string, answerFile?: string): string | null {
+  if (answerFile) {
+    const p = join(dir, answerFile);
+    return existsSync(p) ? p : null;
+  }
+  for (const name of ["ANSWER.md", "DOC.md"]) {
+    const p = join(dir, name);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
 
 function isCitation(tok: string): boolean {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
@@ -235,11 +251,11 @@ function applySemantic(dir: string, result: CheckResult): void {
 // citation fails the check (non-zero exit). With `opts.semantic`, ALSO folds in
 // the VERIFY.json verdicts (fails on a refuted/unsupported claim) — additive:
 // plain `check` (no opts) is byte-for-byte unchanged.
-export function checkRun(dir: string, opts: { semantic?: boolean } = {}): CheckResult {
+export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: string } = {}): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const answerPath = join(dir, "ANSWER.md");
+  const answerPath = resolveAnswerPath(dir, opts.answerFile);
   const evidencePath = join(dir, "evidence.json");
 
   if (!existsSync(evidencePath)) {
@@ -264,14 +280,15 @@ export function checkRun(dir: string, opts: { semantic?: boolean } = {}): CheckR
     };
   }
 
-  if (!existsSync(answerPath)) {
+  if (!answerPath) {
+    const which = opts.answerFile ?? "ANSWER.md or DOC.md";
     return {
       ok: false,
       citations: [],
       resolved: [],
       dangling: [],
       uncited: evidence.map((e) => e.id),
-      errors: [`No ANSWER.md in ${dir} — write the grounded answer there, then re-run check.`],
+      errors: [`No ${which} in ${dir} — write the grounded answer there, then re-run check.`],
       warnings: [],
     };
   }
@@ -302,7 +319,7 @@ export function checkRun(dir: string, opts: { semantic?: boolean } = {}): CheckR
   const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
 
   if (citations.length === 0) {
-    errors.push("ANSWER.md contains no citations — a grounded answer must cite evidence ids like [E1].");
+    errors.push(`${basename(answerPath)} contains no citations — a grounded answer must cite evidence ids like [E1].`);
   }
   if (dangling.length) {
     errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);

@@ -163,6 +163,30 @@ export interface DossierMeta {
   fallbacks?: string[]; // degraded paths taken during retrieval ([] when none)
 }
 
+// ---------------------------------------------------------------------------
+// Documentation generation (`ultradoc doc`). The engine retrieves a grounded
+// dossier per outline section and emits a fill-in worklist; the model writes the
+// cited prose into DOC.md, which `check` validates exactly like an ANSWER.md.
+// ---------------------------------------------------------------------------
+export interface DocSection {
+  id: string; // "S1", "S2", …
+  title: string; // section heading written into DOC.md
+  query: string; // retrieval query the engine grounded this section on
+  sources: SourceKind[]; // sources retrieved for this section
+  evidenceIds: string[]; // ids (E#) of the section's deduped, best-scored evidence
+}
+
+// The documentation plan written to DOC.plan.json: the outline plus, per
+// section, the global evidence ids the model should cite when writing DOC.md.
+export interface DocPlan {
+  repo: string;
+  host: string;
+  commit?: string;
+  pkg?: string; // resolved workspace package when scoped with --package
+  builtAt: string;
+  sections: DocSection[];
+}
+
 export interface CheckResult {
   ok: boolean;
   citations: string[]; // every citation token found in ANSWER.md

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvidenceItem, SourceResult, DossierMeta, SourceKind } from "./types.js";
-import { cacheRoot } from "./clone.js";
+import { indexDir } from "./index/structural.js";
 
 // Canonical ordering so evidence ids are stable and grouped predictably,
 // regardless of which order the sources finished in.
@@ -37,8 +37,12 @@ export function runId(d: Date = new Date()): string {
   );
 }
 
-export function defaultRunDir(slug: string, d?: Date): string {
-  return join(cacheRoot(), slug, "runs", runId(d));
+// Persist runs beside the clone under <repoDir>/.ultradoc/runs/<id> — the same
+// stable, commit-pinned data home as the index and OVERVIEW.md — so a repo's
+// dossiers and answers survive as a reusable markdown knowledge base instead of
+// scattering under ephemeral /tmp run ids.
+export function defaultRunDir(repoDir: string, d?: Date): string {
+  return join(indexDir(repoDir), "runs", runId(d));
 }
 
 // Flatten all source results into one list and assign stable ids (E1, E2 …) in

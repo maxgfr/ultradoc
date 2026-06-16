@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import { VERSION } from "./types.js";
 import type { AskOptions, SourceKind, WebEngine, DossierMeta } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
+import { runDoc } from "./doc.js";
 import { renderEvidenceMarkdown } from "./dossier.js";
 import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
@@ -21,9 +22,10 @@ Usage:
   ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
+  ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir> [--semantic]
-  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>]
+  ultradoc check --run <dossier-dir> [--semantic] [--answer <file>]
+  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>]
   ultradoc semantic up|down|status
 
 Commands:
@@ -38,8 +40,12 @@ Commands:
   overview   Generate (once) a cached markdown digest of the repo — packages,
              layout, public API, docs map — to answer follow-up questions
              without re-indexing. Reused while the commit is unchanged.
+  doc        Generate a GROUNDED reference doc: a deterministic outline +
+             one dossier per section + a DOC.todo worklist to fill into DOC.md
+             (cited, then validated by 'check'). Persists under .ultradoc/doc/.
   index      Build/refresh the structural index for a repo and print stats.
-  check      Validate ANSWER.md citations against a dossier's evidence.json.
+  check      Validate ANSWER.md (or a doc run's DOC.md) citations against a
+             dossier's evidence.json (--answer picks a specific file).
              --semantic also folds in verify's verdicts (fails on unsupported).
   verify     Emit a claim↔evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
@@ -57,8 +63,10 @@ Options:
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
   --per-source <n>     Max evidence items kept per source           (default: 6)
-  --out <dir>          Dossier output dir          (default: /tmp/ultradoc/<slug>/runs/<id>)
-  --run <dir>          For 'check': the dossier dir to validate (also accepts --out)
+  --out <dir>          Dossier output dir   (default: <clone>/.ultradoc/runs/<id>)
+  --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
+  --answer <file>      For 'check'/'verify': answer file to validate inside --run
+                                       (default: ANSWER.md, else DOC.md)
   --semantic           Use the optional local vector backend (falls back if absent)
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
@@ -75,11 +83,11 @@ Grounding:
 
 const COMMANDS = new Set([
   "ask", "code", "issues", "prs", "docs", "releases", "history", "discussions",
-  "so", "web", "overview", "index", "check", "verify", "semantic",
+  "so", "web", "overview", "doc", "index", "check", "verify", "semantic",
 ]);
 const VALUE_FLAGS = new Set([
   "repo", "q", "question", "sources", "ref", "docs-url", "web-engine", "url", "per-source",
-  "out", "run", "package", "apply", "max-verify",
+  "out", "run", "package", "apply", "max-verify", "answer",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh"]);
 
@@ -338,6 +346,28 @@ async function main(): Promise<void> {
       return;
     }
 
+    case "doc": {
+      const opts = buildAskOptions(p, { requireQuestion: false });
+      // Only override per-section sources when --sources was given explicitly;
+      // otherwise each section keeps its natural defaults (code/docs).
+      const sourcesOverride = p.values.sources ? parseSources(p.values.sources) : undefined;
+      const r = await runDoc(opts, { sourcesOverride });
+      if (opts.json) {
+        process.stdout.write(JSON.stringify({ dir: r.dir, plan: r.plan }, null, 2) + "\n");
+        return;
+      }
+      const lines = [
+        `ultradoc: doc scaffold — ${r.plan.sections.length} section(s), ${r.evidence.length} evidence item(s)`,
+        `  repo:     ${r.plan.repo}${r.plan.commit ? ` @ ${r.plan.commit}` : ""}${r.plan.pkg ? ` · package: ${r.plan.pkg}` : ""}`,
+        `  sections: ${r.plan.sections.map((s) => s.title).join(" · ")}`,
+        `  dir:      ${r.dir}`,
+        `  next:     read ${r.paths.todoMd} + EVIDENCE.md, write DOC.md (cite [E#]), then:`,
+        `            ultradoc check --run ${r.dir}`,
+      ];
+      process.stderr.write(lines.join("\n") + "\n");
+      return;
+    }
+
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
       const ctx = buildContext(opts);
@@ -385,7 +415,7 @@ async function main(): Promise<void> {
     case "check": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const res = checkRun(resolve(dir), { semantic: p.bools.has("semantic") });
+      const res = checkRun(resolve(dir), { semantic: p.bools.has("semantic"), answerFile: p.values.answer });
       process.stdout.write(formatCheckReport(res, resolve(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
@@ -404,7 +434,7 @@ async function main(): Promise<void> {
       }
       const maxVerify = p.values["max-verify"] ? Number(p.values["max-verify"]) : VERIFY_MAX;
       if (!Number.isFinite(maxVerify) || maxVerify <= 0) fail("invalid --max-verify");
-      const wl = runVerify(rdir, { maxVerify });
+      const wl = runVerify(rdir, { maxVerify, answerFile: p.values.answer });
       if (p.bools.has("json")) {
         process.stdout.write(JSON.stringify(wl, null, 2) + "\n");
         return;

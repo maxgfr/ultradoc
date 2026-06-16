@@ -1,6 +1,6 @@
 ---
 name: ultradoc
-description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/releases/git-history/discussions/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Triggers: 'how does X work in <library>', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
+description: "Use when the user asks an ultra-precise question about an open-source project (a library, framework, CLI, or tool) and wants an answer grounded in the project's REAL source code, issues, PRs, docs and the web — not the model's training-data memory. Clones any git repo into /tmp, indexes it deterministically with code (ripgrep + a symbol index, optional local vector search), retrieves evidence from code/issues/PRs/docs/releases/git-history/discussions/StackOverflow/web, and has you write a citation-checked answer that `ultradoc check` verifies is grounded. Handles workspace monorepos (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle — scope retrieval to one package with --package) and can generate a cached markdown overview of a repo so follow-up questions skip re-indexing. Can also generate a complete grounded, citation-checked REFERENCE DOC for a whole repo or one package (`ultradoc doc` → a sectioned outline + per-section evidence that you write up as a cited `DOC.md`). Triggers: 'how does X work in <library>', 'generate/write documentation for <library>', 'document this project/package', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
 license: MIT
 metadata:
   version: 1.6.0
@@ -28,7 +28,9 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
 - `ask --repo <url|path> --q "<question>" [--sources ...] [--package <p>] [--semantic] [--docs-url <u>]`
   Clone (any git URL, cached in `/tmp/ultradoc/<slug>`), index, retrieve from all
   selected sources, and write an **evidence dossier** (`EVIDENCE.md`,
-  `evidence.json`, `meta.json`) to a run folder. Default sources:
+  `evidence.json`, `meta.json`) to a run folder — persisted beside the clone
+  under `<clone>/.ultradoc/runs/<id>` (a stable, commit-pinned home reused across
+  questions), unless you pass `--out`. Default sources:
   `code,issues,prs,docs` (add `web,so` when the repo alone won't answer it;
   add `releases,history` for "when was X added/changed" questions, and
   `discussions` for community Q&A — needs the gh CLI).
@@ -46,16 +48,27 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   map. Cached beside the clone and reused while the commit is unchanged — read
   it to orient yourself across several questions without re-indexing. It is a
   navigation map, NOT citable evidence.
-- `check --run <dossier-dir>` — validate `ANSWER.md`'s citations against the
-  dossier's `evidence.json`. Exit non-zero ⇒ ungrounded.
+- `doc --repo <...> [--package <p>] [--sources ...]` — scaffold a **grounded
+  reference doc**: a deterministic section outline (overview, install, public
+  API/per-package, configuration, architecture), one retrieved dossier per
+  section merged into a single `evidence.json`, and a `DOC.todo.md` worklist.
+  You write the cited prose into `DOC.md`; `check` validates it like an answer.
+  Persisted under `<clone>/.ultradoc/doc/`. See "Generate a documentation" below.
+- `check --run <dossier-dir>` — validate `ANSWER.md`'s (or a `doc` run's
+  `DOC.md`'s) citations against the dossier's `evidence.json`. Exit non-zero ⇒
+  ungrounded. `--answer <file>` validates a specific file.
 - `index --repo <...>` — build/print the structural index (debugging/inspection);
   lists discovered workspace packages for a monorepo.
 - `semantic up|down|status` — optional local vector backend (see below).
 
 ## Workflow
 
-You are invoked once and expected to return a grounded, cited answer. Do not
-hand control back mid-retrieval.
+You own this task end-to-end: return one grounded, cited answer, and never hand
+back a half-retrieved dossier. But the retrieval and verification work is a set
+of independent, near-free calls — **parallelize it when your harness can** (batch
+the independent drills in one message; fan out to subagents or a workflow if
+available) and do it inline otherwise. Iterate in rounds until the evidence is
+complete; don't return until it is. See `references/orchestration.md`.
 
 1. **Resolve the target.** Identify the project and the precise question. If you
    only have a name, find the canonical repo URL (use your WebSearch, or ask the
@@ -84,6 +97,9 @@ hand control back mid-retrieval.
      `retry_backoff`, `MAX_RETRIES`),
    - the literal error message, option or flag name if the user quoted one.
 
+   *Multi-part question?* Split it into sub-questions now — each needs its own
+   evidence or an explicit "unknown" at the end. Track coverage per sub-question.
+
    The engine already folds plurals and accents ("retries"/"retry",
    "délai"/"delai"), splits identifiers into subtokens, and boosts files named
    after a keyword — so spend your variants on **synonyms and identifiers**
@@ -102,25 +118,28 @@ hand control back mid-retrieval.
    grounds against it — pass `--docs-url <url>` only to override. Add `web,so`
    when the question is conceptual or the repo is sparse; add
    `releases,history` when it is about *when/why/which version* something
-   changed. The command prints the dossier path. Keep the other query variants
-   for step 4.
+   changed. The command prints the dossier path. Then treat the remaining
+   variants × drill-sources as a fan-out — issue those independent drills as
+   parallel calls in one message (or one subagent per cell). See
+   `references/orchestration.md`.
 
 3. **Read the dossier.** Open `EVIDENCE.md` in the run folder. Each item has an
    id (`[E1]`, `[E2]`, …), a provenance `ref`, and a snippet. This is your
    evidence — read the actual code/issue/PR/doc text.
 
-4. **Drill down on gaps.** The dossier is *thin* when it has fewer than ~3
-   on-topic code items, or no item actually contains the symbol/behavior asked
-   about. Before concluding evidence is missing, run `code --q "<variant>"`
-   for each remaining query variant from step 2 (drills are near-free — the
-   clone and index are cached). Then expand sideways:
+4. **Drill down on gaps.** A sub-question is *thin* when it has fewer than ~2
+   on-topic items, or no item actually contains the symbol/behavior asked about.
+   Don't wait until a dossier looks thin to drill the variants — run the variant
+   drills in parallel from the start (drills are near-free: the clone and index
+   are cached). Fan them out across sources:
    - `code --repo <...> --q "<symbol or behavior>"` to pull more code regions.
    - `issues`/`prs` to read related discussion and in-progress changes.
    - `releases` (changelog + release notes) and `history` (git pickaxe) when
      the question is *when/why/which version* something changed.
    - `discussions` for community Q&A and design threads (needs the gh CLI).
    - `web` (or your WebSearch → `web --url <u>`) for external references.
-   Follow `references/retrieval-playbook.md` for how to iterate.
+   Follow `references/retrieval-playbook.md` for how to iterate and
+   `references/orchestration.md` for how to run the drills in parallel.
 
    **Triage before writing.** Retrieval is recall-oriented, so the dossier
    will contain off-topic items that merely share keywords. The test: an item
@@ -135,12 +154,18 @@ hand control back mid-retrieval.
    identifier-shaped variant from step 2. Two off-topic dossiers in a row mean
    the wording is wrong, not that the repo lacks the answer.
 
+   **Loop until dry.** Drill in rounds (cap ~3). Stop when a round surfaces no
+   new on-topic evidence, or when every sub-question has ≥2 supporting items —
+   then triage and write. A sub-question still unsupported after the cap is an
+   explicit unknown, never filled from memory.
+
 5. **Write the answer.** Create `ANSWER.md` in the same run folder. Be precise
    and concise. **Cite every factual claim** with the evidence id it rests on,
    e.g. `Retries use exponential backoff with jitter [E1], and PR #79 is
    rewriting this [E7].` See `references/citation-format.md`. Pin the answer to
-   the commit shown in `meta.json` when version matters. Flag anything the
-   evidence does not settle as an explicit unknown — do not fill it from memory.
+   the commit shown in `meta.json` when version matters. Cover every sub-question
+   from step 2; flag anything the evidence does not settle as an explicit
+   unknown — do not fill it from memory.
 
 6. **Validate (two layers).**
    - *Structural:* `node scripts/ultradoc.mjs check --run <dossier-dir>`. It
@@ -148,10 +173,13 @@ hand control back mid-retrieval.
      no citations. Fix and re-run until it passes.
    - *Semantic (adversarial support-check):* `node scripts/ultradoc.mjs verify
      --run <dossier-dir>` writes a claim↔evidence worklist (`VERIFY.todo.json` +
-     `VERIFY.md`). For each pair, open the cited evidence and judge whether it
-     actually **supports** the claim — set `verdict` to supported · partial ·
-     refuted · unsupported (+ a short note); use skeptic subagents in parallel if
-     available, else adjudicate inline. Save as `verdicts.json`, then:
+     `VERIFY.md`). Judge each pair as a **skeptic**: default to
+     `unsupported`/`refuted` unless the cited snippet literally backs the claim,
+     setting `verdict` to supported · partial · refuted · unsupported (+ a short
+     note). Run one skeptic per pair — fan out to subagents when available (each
+     *returns* its verdict), else adjudicate each pair inline — and collect every
+     verdict into a **single** `verdicts.json` (see `references/orchestration.md`),
+     then:
      ```
      node scripts/ultradoc.mjs verify --apply verdicts.json --run <dossier-dir>
      node scripts/ultradoc.mjs check  --semantic --run <dossier-dir>
@@ -165,6 +193,29 @@ hand control back mid-retrieval.
 7. **Present.** Give the user the grounded answer with its citations and links
    (file:line, issue/PR numbers, doc/SO/web URLs from the evidence), and the
    commit it was verified against.
+
+## Generate a documentation
+
+When the user wants a *whole-project* (or whole-package) doc rather than one
+answer, use `doc` — it is the same grounded loop, fanned out over a section
+outline:
+
+1. **Scaffold.** `node scripts/ultradoc.mjs doc --repo <url> [--package <p>]`.
+   The engine builds a deterministic outline (overview, install/usage, public
+   API or one section per workspace package, configuration, architecture),
+   retrieves a dossier **per section**, merges them into one `evidence.json` with
+   global `[E#]` ids, and writes `DOC.todo.md` (the per-section worklist) +
+   `DOC.plan.json`. Add `--sources code,docs,issues,prs` to ground sections on
+   more than code+docs. It persists under `<clone>/.ultradoc/doc/`.
+2. **Write each section.** Read `DOC.todo.md` and `EVIDENCE.md`, then write
+   `DOC.md` in the run folder: one section per outline entry, **every claim cited
+   `[E#]`**. A section whose evidence is thin is a fan-out unit — drill it
+   (`code|docs|issues …`) or mark the gap an explicit unknown; never write from
+   memory. The per-section work parallelizes — see `references/orchestration.md`.
+3. **Validate & present.** `node scripts/ultradoc.mjs check --run <doc-dir>`
+   (and `verify` + `check --semantic` for the support gate, exactly as in step 6
+   — both auto-detect `DOC.md`). Fix until grounded, then present `DOC.md` pinned
+   to its commit.
 
 ## Optional semantic mode (fully local, no API key)
 
@@ -182,6 +233,9 @@ If the stack isn't up, `--semantic` logs a notice and falls back to Tier 1. See
 
 ## References
 
+- `references/orchestration.md` — how to parallelize retrieval drills and
+  verification across calls/subagents, with the return + verdict-assembly
+  contracts and the sequential fallback.
 - `references/retrieval-playbook.md` — how to pick sources and iterate to a
   complete answer.
 - `references/citation-format.md` — the citation grammar `check` enforces.

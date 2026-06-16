@@ -106,4 +106,30 @@ describe("checkRun", () => {
     expect(r.errors.join(" ")).toMatch(/No ANSWER\.md/);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it("validates DOC.md when no ANSWER.md is present (the `doc` flow)", () => {
+    writeFileSync(join(dir, "DOC.md"), "A grounded section [E1].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    expect(r.resolved).toContain("E1");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("prefers ANSWER.md over DOC.md when both exist", () => {
+    writeFileSync(join(dir, "ANSWER.md"), "From the answer [E1].");
+    writeFileSync(join(dir, "DOC.md"), "Fabricated [E99].");
+    const r = checkRun(dir); // ANSWER.md (E1) is validated; DOC.md's E99 ignored
+    expect(r.ok).toBe(true);
+    expect(r.dangling).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("honors an explicit --answer override", () => {
+    writeFileSync(join(dir, "ANSWER.md"), "From the answer [E1].");
+    writeFileSync(join(dir, "DOC.md"), "Fabricated [E99].");
+    const r = checkRun(dir, { answerFile: "DOC.md" });
+    expect(r.ok).toBe(false);
+    expect(r.dangling).toContain("E99");
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

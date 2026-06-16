@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
-import { extractClaimUnits, citedEvidenceIds } from "./check.js";
+import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
 
 // Bounds the verification loop (claim↔evidence pairs adjudicated per run).
 export const VERIFY_MAX = 40;
@@ -29,10 +29,12 @@ function claimStrings(text: string): string[] {
 // actually SUPPORTS the claim. Deterministic; the JUDGEMENT is the agent's.
 // Capped at maxVerify (highest-score evidence first). Writes VERIFY.todo.json
 // (machine worklist) + VERIFY.md (human checklist).
-export function runVerify(dir: string, opts: { maxVerify?: number } = {}): VerifyWorklist {
+export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): VerifyWorklist {
   const evidence: EvidenceItem[] = JSON.parse(readFileSync(join(dir, "evidence.json"), "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e] as const));
-  const answer = readFileSync(join(dir, "ANSWER.md"), "utf8");
+  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} — write the answer first.`);
+  const answer = readFileSync(answerPath, "utf8");
 
   const pairs: (ClaimEvidencePair & { score: number })[] = [];
   let claimNo = 0;

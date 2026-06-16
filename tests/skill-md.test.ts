@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
@@ -38,5 +38,11 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string };
     expect(data.metadata?.version).toBe(pkg.version);
     expect(VERSION).toBe(pkg.version);
+  });
+
+  it("links the orchestration reference and it exists on disk", () => {
+    const body = match?.[2] ?? "";
+    expect(body).toContain("references/orchestration.md");
+    expect(existsSync(join(ROOT, "references", "orchestration.md"))).toBe(true);
   });
 });
