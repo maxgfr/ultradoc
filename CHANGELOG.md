@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.7.0](https://github.com/maxgfr/ultradoc/compare/v1.6.0...v1.7.0) (2026-06-16)
+
+
+### Features
+
+* grounded reference-doc generation, parallel-retrieval skill, .ultradoc persistence ([ef3ebe2](https://github.com/maxgfr/ultradoc/commit/ef3ebe267cc7ec878c8e5907c1d026aa6c01a38a))
+
 # [1.6.0](https://github.com/maxgfr/ultradoc/compare/v1.5.0...v1.6.0) (2026-06-15)
 
 
