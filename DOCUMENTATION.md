@@ -1,7 +1,7 @@
 # ultradoc — architecture & internals
 
 `ultradoc` is a zero-dependency Node CLI (`scripts/ultradoc.mjs`, bundled from
-`src/` by tsup) plus a `SKILL.md` that orchestrates an agent. The engine does
+`src/` by tsup) plus a `skills/ultradoc/SKILL.md` that orchestrates an agent. The engine does
 the retrieval **with code**; the model only reasons over retrieved evidence and
 writes a **citation-checked** answer.
 
@@ -101,7 +101,7 @@ Chunks code+docs, embeds each chunk via a local Ollama model, upserts into a
 per-repo Qdrant collection (cached by commit), and vector-searches the question.
 Results fuse with lexical via RRF in `sources/code.ts`. Unreachable stack →
 `available: false` → transparent Tier-1 fallback. See
-`references/semantic-setup.md`.
+`skills/ultradoc/references/semantic-setup.md`.
 
 ## Monorepos (`index/workspaces.ts`)
 
@@ -173,7 +173,7 @@ Together they prevent memory-based answers from passing as grounded ones.
 
 Mirrors the `reconstruct` pipeline: `semantic-release` on push to `main` reads
 Conventional Commits, computes the next version, runs `scripts/sync-version.mjs`
-to sync it across `package.json` / `src/types.ts` / `SKILL.md` / `CHANGELOG.md`,
+to sync it across `package.json` / `src/types.ts` / `skills/ultradoc/SKILL.md` / `CHANGELOG.md`,
 rebuilds the committed bundle, and cuts a GitHub Release. CI
 (`.github/workflows/ci.yml`) gates on typecheck + tests + reproducible bundle
 (`check:build`) + an offline smoke run, with a Node-18 floor job for the

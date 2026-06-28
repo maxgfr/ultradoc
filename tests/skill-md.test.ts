@@ -10,10 +10,14 @@ import { VERSION } from "../src/types.js";
 // frontmatter with this exact regex and `parse()`-ing it with `yaml`. If that
 // parse throws — or name/description are missing — it SILENTLY drops the skill.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The skill is packaged under skills/ultradoc/ (not at the repo root) so that
+// `npx skills add` bundles the engine + references with the SKILL.md — a root
+// SKILL.md would be installed alone. See scripts/verify-skill-bundle.mjs.
+const SKILL_DIR = join(ROOT, "skills", "ultradoc");
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 describe("SKILL.md is installable by the `skills` CLI", () => {
-  const raw = readFileSync(join(ROOT, "SKILL.md"), "utf8");
+  const raw = readFileSync(join(SKILL_DIR, "SKILL.md"), "utf8");
   const match = raw.match(FRONTMATTER_RE);
   const frontmatter = match?.[1] ?? "";
 
@@ -43,6 +47,6 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
   it("links the orchestration reference and it exists on disk", () => {
     const body = match?.[2] ?? "";
     expect(body).toContain("references/orchestration.md");
-    expect(existsSync(join(ROOT, "references", "orchestration.md"))).toBe(true);
+    expect(existsSync(join(SKILL_DIR, "references", "orchestration.md"))).toBe(true);
   });
 });

@@ -227,6 +227,6 @@ pnpm run check:build # asserts the committed bundle is reproducible
 
 The shipped `scripts/ultradoc.mjs` is a single dependency-free bundle that runs
 on Node ≥ 18 with no install. See [`DOCUMENTATION.md`](./DOCUMENTATION.md) for the
-architecture and [`references/`](./references) for the agent playbooks.
+architecture and [`references/`](./skills/ultradoc/references) for the agent playbooks.
 
 MIT licensed.
