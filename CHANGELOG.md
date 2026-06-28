@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.7.1](https://github.com/maxgfr/ultradoc/compare/v1.7.0...v1.7.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* **skill:** package under skills/ultradoc/ so `npx skills add` bundles the engine + references ([f06727c](https://github.com/maxgfr/ultradoc/commit/f06727cc9e4fe878fba3a9771e5d54ccd8295fc0))
+
 # [1.7.0](https://github.com/maxgfr/ultradoc/compare/v1.6.0...v1.7.0) (2026-06-16)
 
 
