@@ -62,10 +62,7 @@ function keeperOver(a: RawItem, b: RawItem, docFiles: Set<string>): boolean {
 // budgets: (a) identical normalized snippets (e.g. the same external page
 // excerpted by both `docs` and `web`), (b) same file with excerpt line ranges
 // overlapping ≥ 60% (e.g. `code` and `docs` both quoting one README section).
-export function dedupeAcrossSources(
-  results: SourceResult[],
-  docFiles: Set<string>,
-): { results: SourceResult[]; dropped: number } {
+export function dedupeAcrossSources(results: SourceResult[], docFiles: Set<string>): { results: SourceResult[]; dropped: number } {
   const all = results.flatMap((res) => res.items.map((item) => ({ res, item })));
   const droppedItems = new Set<RawItem>();
 

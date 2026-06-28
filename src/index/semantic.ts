@@ -29,12 +29,7 @@ interface Chunk {
 }
 
 // Split a file into overlapping line windows. Pure + exported for testing.
-export function chunkText(
-  rel: string,
-  content: string,
-  isDoc: boolean,
-  opts: { windowLines?: number; overlap?: number; maxPerFile?: number } = {},
-): Chunk[] {
+export function chunkText(rel: string, content: string, isDoc: boolean, opts: { windowLines?: number; overlap?: number; maxPerFile?: number } = {}): Chunk[] {
   const win = opts.windowLines ?? 60;
   const overlap = opts.overlap ?? 12;
   const maxPerFile = opts.maxPerFile ?? 40;
@@ -93,9 +88,7 @@ async function buildIfNeeded(ctx: RunContext): Promise<{ name: string } | { erro
   }
 
   // Gather chunks from code + doc files (cap total to bound embedding time).
-  const codeFiles = ctx.index.symbols.length
-    ? [...new Set(ctx.index.symbols.map((s) => s.file))]
-    : [];
+  const codeFiles = ctx.index.symbols.length ? [...new Set(ctx.index.symbols.map((s) => s.file))] : [];
   const files = [...new Set([...codeFiles, ...ctx.index.docFiles])];
   const chunks: Chunk[] = [];
   for (const rel of files) {
@@ -236,7 +229,7 @@ export function semanticControl(action: string): { message: string; code: number
   const lines = [
     "ultradoc semantic: stack is up (Qdrant :6333 · Ollama :11434 · SearXNG :8888).",
     pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
-    "  use:    ultradoc ask --repo <url> --q \"...\" --semantic",
+    '  use:    ultradoc ask --repo <url> --q "..." --semantic',
   ];
   return { message: lines.join("\n"), code: 0 };
 }

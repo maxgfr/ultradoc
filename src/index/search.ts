@@ -1,10 +1,7 @@
 import { statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import {
-  sh, have, rrf, foldTerm, subtokens, buildMatcher, matcherFromTokens,
-  type KeywordMatcher,
-} from "../util.js";
+import { sh, have, rrf, foldTerm, subtokens, buildMatcher, matcherFromTokens, type KeywordMatcher } from "../util.js";
 import { walk, readText } from "../walk.js";
 import { bm25 } from "./bm25.js";
 
@@ -36,12 +33,32 @@ const EXCERPT_PAD = 8; // how far an excerpt may grow past the hit region
 // and "retry" in the text both count toward the keyword the user typed.
 function rgSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
   const args = [
-    "--json", "-i", "--max-count", "40", "--max-filesize", "1M",
-    "-g", "!**/.ultradoc/**", "-g", "!**/node_modules/**", "-g", "!**/{dist,build,vendor}/**",
+    "--json",
+    "-i",
+    "--max-count",
+    "40",
+    "--max-filesize",
+    "1M",
+    "-g",
+    "!**/.ultradoc/**",
+    "-g",
+    "!**/node_modules/**",
+    "-g",
+    "!**/{dist,build,vendor}/**",
     // Lockfiles are machine-generated noise (walk skips them for the index, but
     // ripgrep scans the tree directly, so exclude them here too).
-    "-g", "!**/*.lock", "-g", "!**/package-lock.json", "-g", "!**/npm-shrinkwrap.json",
-    "-g", "!**/pnpm-lock.yaml", "-g", "!**/yarn.lock", "-g", "!**/go.sum",
+    "-g",
+    "!**/*.lock",
+    "-g",
+    "!**/package-lock.json",
+    "-g",
+    "!**/npm-shrinkwrap.json",
+    "-g",
+    "!**/pnpm-lock.yaml",
+    "-g",
+    "!**/yarn.lock",
+    "-g",
+    "!**/go.sum",
   ];
   if (scope) args.push("-g", `${scope}/**`);
   for (const p of matcher.patterns) args.push("-e", p.source);
@@ -140,10 +157,7 @@ function regionsFor(fh: FileHits, matcher: KeywordMatcher, gap = 8): Region[] {
   return regions;
 }
 
-function scoreRegion(
-  cur: { start: number; end: number; lines: { line: number; text: string }[] },
-  matcher: KeywordMatcher,
-): Region {
+function scoreRegion(cur: { start: number; end: number; lines: { line: number; text: string }[] }, matcher: KeywordMatcher): Region {
   const covered = new Set<string>();
   let anchor = cur.start;
   let best = -1;
@@ -162,12 +176,7 @@ function scoreRegion(
 // line (paragraph/function boundary) or EXCERPT_PAD lines, never shrinking the
 // seed region; then cap at MAX_EXCERPT_LINES, keeping the anchor in view.
 // start/end/anchor are 1-based inclusive line numbers.
-export function expandWindow(
-  lines: string[],
-  start: number,
-  end: number,
-  anchor: number,
-): { start: number; end: number } {
+export function expandWindow(lines: string[], start: number, end: number, anchor: number): { start: number; end: number } {
   const blank = (n: number) => /^\s*$/.test(lines[n - 1] ?? "");
   let s = Math.max(1, start);
   let e = Math.min(lines.length, end);
@@ -276,9 +285,7 @@ export function searchCode(
   // Fuse the BM25 ranking with the symbol-index ranking via RRF — the same
   // scale-free fusion the semantic tier uses — then apply the low-signal
   // penalty on the fused score.
-  const lexRank = [...lexScores.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([rel]) => rel);
+  const lexRank = [...lexScores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([rel]) => rel);
   const symRank = [...symbols.entries()]
     .filter(([rel]) => files.has(rel))
     .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]))
@@ -297,9 +304,7 @@ export function searchCode(
   for (const rel of files) {
     const base = fused.get(rel) ?? 0;
     if (base <= 0) continue;
-    const lowSignal =
-      /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel) ||
-      docSet.has(rel);
+    const lowSignal = /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel) || docSet.has(rel);
     // A file literally named after a query keyword (retry.ts for "retry") is a
     // strong relevance signal BM25 can't see. Applied after the low-signal
     // penalty so tests/retry.test.ts still ranks below src/retry.ts
@@ -344,9 +349,7 @@ export function searchCode(
     }
 
     const excerpt = lines.slice(start - 1, end).join("\n");
-    const url = ref.isLocal
-      ? undefined
-      : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${start}-L${end}`;
+    const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${start}-L${end}`;
     items.push({
       source: "code",
       title: `${f.rel} — ${label}`,

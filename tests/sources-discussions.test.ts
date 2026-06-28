@@ -35,14 +35,25 @@ describe("discussionItems (GraphQL mapper)", () => {
 describe("discussionsSource", () => {
   const ctx: RunContext = {
     repoRef: {
-      raw: "https://github.com/o/r", host: "github.com", owner: "o", repo: "r",
-      webUrl: "https://github.com/o/r", isLocal: false, slug: "github-com-o-r",
+      raw: "https://github.com/o/r",
+      host: "github.com",
+      owner: "o",
+      repo: "r",
+      webUrl: "https://github.com/o/r",
+      isLocal: false,
+      slug: "github-com-o-r",
     },
     repoDir: "/nonexistent",
     index: { docFiles: [], symbols: [], packages: [] } as unknown as StructuralIndex,
     options: {
-      repo: "o/r", question: "heartbeat ping", sources: ["discussion"],
-      semantic: false, webEngine: "auto", perSource: 6, json: false, refresh: false,
+      repo: "o/r",
+      question: "heartbeat ping",
+      sources: ["discussion"],
+      semantic: false,
+      webEngine: "auto",
+      perSource: 6,
+      json: false,
+      refresh: false,
     },
   };
 

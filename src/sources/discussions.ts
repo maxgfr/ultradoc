@@ -25,17 +25,21 @@ export function discussionItems(nodes: any[]): RawItem[] {
   const items: RawItem[] = [];
   for (const d of nodes ?? []) {
     if (!d || typeof d.number !== "number") continue;
-    const body = String(d.bodyText ?? "").replace(/\r/g, "").trim().slice(0, 800);
-    const answer = String(d.answer?.bodyText ?? "").replace(/\r/g, "").trim().slice(0, 600);
+    const body = String(d.bodyText ?? "")
+      .replace(/\r/g, "")
+      .trim()
+      .slice(0, 800);
+    const answer = String(d.answer?.bodyText ?? "")
+      .replace(/\r/g, "")
+      .trim()
+      .slice(0, 600);
     items.push({
       source: "discussion",
       title: `#${d.number} ${d.title}${d.category?.name ? ` [${d.category.name}]` : ""}`,
       ref: `discussion#${d.number}`,
       location: d.url,
       score: 0, // reranked by keyword coverage below
-      snippet:
-        `updated: ${d.updatedAt ?? "?"}\n\n${body || "(no description)"}` +
-        (answer ? `\n\n--- accepted answer ---\n${answer}` : ""),
+      snippet: `updated: ${d.updatedAt ?? "?"}\n\n${body || "(no description)"}` + (answer ? `\n\n--- accepted answer ---\n${answer}` : ""),
       url: d.url,
       meta: { number: d.number, category: d.category?.name, answered: !!d.answer },
     });
@@ -44,12 +48,7 @@ export function discussionItems(nodes: any[]): RawItem[] {
 }
 
 function search(owner: string, repo: string, terms: string[], n: number): RawItem[] | undefined {
-  const res = sh("gh", [
-    "api", "graphql",
-    "-f", `query=${QUERY}`,
-    "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`,
-    "-F", `n=${n}`,
-  ]);
+  const res = sh("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
   if (!res.ok) return undefined;
   try {
     return discussionItems(JSON.parse(res.stdout)?.data?.search?.nodes ?? []);

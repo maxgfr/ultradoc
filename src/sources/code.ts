@@ -7,14 +7,7 @@ import { rrf } from "../util.js";
 // `--semantic` is on and the local stack is reachable, its vector hits are
 // fused in via Reciprocal Rank Fusion; otherwise Tier 1 stands alone.
 export async function codeSource(ctx: RunContext): Promise<SourceResult> {
-  const lexical = searchCode(
-    ctx.repoDir,
-    ctx.repoRef,
-    ctx.index,
-    ctx.options.question,
-    ctx.options.perSource,
-    ctx.scopeDir,
-  );
+  const lexical = searchCode(ctx.repoDir, ctx.repoRef, ctx.index, ctx.options.question, ctx.options.perSource, ctx.scopeDir);
 
   // Typed fallback signals so meta.json can say *why* a run was slow or
   // lexical-only, without string-sniffing the notes.

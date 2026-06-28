@@ -14,18 +14,21 @@ function ctxFor(question: string): RunContext {
     repoDir: LIB,
     index: buildIndex(LIB, repoRef.slug),
     options: {
-      repo: LIB, question, sources: ["release"],
-      semantic: false, webEngine: "auto", perSource: 6, json: false, refresh: true,
+      repo: LIB,
+      question,
+      sources: ["release"],
+      semantic: false,
+      webEngine: "auto",
+      perSource: 6,
+      json: false,
+      refresh: true,
     },
   };
 }
 
 describe("changelogSections", () => {
   it("splits a changelog into version sections", () => {
-    const sections = changelogSections(
-      "CHANGELOG.md",
-      "# Changelog\n\n## [2.0.0] - 2024-06-01\n- Big.\n\n## v1.1\n- Small.\n\n1.0.0 / 2023-01-01\n- First.\n",
-    );
+    const sections = changelogSections("CHANGELOG.md", "# Changelog\n\n## [2.0.0] - 2024-06-01\n- Big.\n\n## v1.1\n- Small.\n\n1.0.0 / 2023-01-01\n- First.\n");
     expect(sections.map((s) => s.version)).toEqual(["2.0.0", "1.1", "1.0.0"]);
     expect(sections[0]!.lines.join("\n")).toContain("Big.");
   });

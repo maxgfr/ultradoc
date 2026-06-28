@@ -1,6 +1,6 @@
 import { httpGet } from "../sources/fetch.js";
 import { rankedKeywords } from "../util.js";
-import type { Provider, RawItem, IssueKind } from "./registry.js";
+import type { Provider, RawItem } from "./registry.js";
 
 // GitLab provider. Public REST v4, unauthenticated read of public projects. The
 // project is addressed by its URL-encoded full path (namespace/subgroups/repo),
@@ -16,9 +16,7 @@ export const gitlab: Provider = {
     const proj = encodeURIComponent(`${ref.owner}/${ref.repo}`);
     const path = kind === "issue" ? "issues" : "merge_requests";
     const search = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
-    const url =
-      `https://${ref.host}/api/v4/projects/${proj}/${path}` +
-      `?search=${search}&per_page=${perSource}&order_by=updated_at&sort=desc`;
+    const url = `https://${ref.host}/api/v4/projects/${proj}/${path}` + `?search=${search}&per_page=${perSource}&order_by=updated_at&sort=desc`;
 
     const r = await httpGet(url, { accept: "application/json" });
     if (!r.ok) {
@@ -30,7 +28,10 @@ export const gitlab: Provider = {
       const marker = kind === "issue" ? "#" : "!";
       const items: RawItem[] = arr.map((it: any) => {
         const num = it.iid ?? it.id;
-        const body = String(it.description ?? "").replace(/\r/g, "").trim().slice(0, 1200);
+        const body = String(it.description ?? "")
+          .replace(/\r/g, "")
+          .trim()
+          .slice(0, 1200);
         return {
           source: kind,
           title: `${marker}${num} ${it.title} [${it.state}]`,

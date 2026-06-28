@@ -62,12 +62,7 @@ function clean(url: string): string {
 
 // Pull candidate doc URLs from README prose (markdown links + bare URLs, scored
 // with their surrounding text as context) and from manifest metadata fields.
-export function discoverDocsUrl(
-  repoDir: string,
-  docFiles: string[],
-  configFiles: string[],
-  projectNames: string[] = [],
-): string | undefined {
+export function discoverDocsUrl(repoDir: string, docFiles: string[], configFiles: string[], projectNames: string[] = []): string | undefined {
   const candidates: { url: string; score: number }[] = [];
   // Prefer URLs that belong to THIS project (its repo/owner name appears in the
   // host or path) — a README often links to dependencies' docs too, and we must

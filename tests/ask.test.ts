@@ -90,10 +90,7 @@ describe("runAsk (offline integration)", () => {
     const url = "https://example.com/docs";
     const cacheDir = join(repo, ".ultradoc", "extdocs");
     mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(
-      join(cacheDir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt"),
-      "External docs: renderPage takes a layout option.",
-    );
+    writeFileSync(join(cacheDir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt"), "External docs: renderPage takes a layout option.");
 
     const repoRef = resolveRepo(repo);
     const ctx: RunContext = {

@@ -21,19 +21,17 @@ async function viaSearxng(query: string, n: number): Promise<string[] | null> {
   }
 }
 
-// Discovery by scraping the DuckDuckGo HTML endpoint (keyless, no Docker). DDG
-// wraps result links through a redirector carrying the real URL in `uddg`.
-async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null> {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12000 });
-  if (!r.ok || !r.body) return null;
+// Pure parser for a DuckDuckGo HTML result page: pull up to `n` result anchors
+// (`result__a`) and decode each real target out of DDG's `uddg=` redirector.
+// Exported so it can be unit-tested against fixture HTML without the network.
+// Matches any result anchor regardless of attribute order, then pulls href out
+// separately — HTML attribute order is arbitrary, so a single
+// class-before-href pattern silently breaks if DDG reorders them.
+export function parseDuckDuckGoResults(html: string, n: number): string[] {
   const urls: string[] = [];
-  // Match any result anchor regardless of attribute order, then pull href out
-  // separately — HTML attribute order is arbitrary, so a single class-before-href
-  // pattern silently breaks if DDG reorders them.
   const tagRe = /<a\b[^>]*\bresult__a\b[^>]*>/g;
   let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(r.body)) && urls.length < n) {
+  while ((m = tagRe.exec(html)) && urls.length < n) {
     const href0 = /\bhref="([^"]+)"/.exec(m[0]);
     if (!href0) continue;
     let href = href0[1]!;
@@ -47,6 +45,16 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
     }
     if (/^https?:\/\//.test(href) && !/duckduckgo\.com/.test(href)) urls.push(href);
   }
+  return urls;
+}
+
+// Discovery by scraping the DuckDuckGo HTML endpoint (keyless, no Docker). DDG
+// wraps result links through a redirector carrying the real URL in `uddg`.
+async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null> {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12000 });
+  if (!r.ok || !r.body) return null;
+  const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
 }
 
@@ -54,26 +62,21 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
 // tries SearXNG, then DuckDuckGo. The `claude` engine (and the all-failed case)
 // returns no URLs and signals the orchestrator/model to use its built-in
 // WebSearch and feed URLs back via `ultradoc web --url`.
-async function discover(
-  query: string,
-  engine: WebEngine,
-  n: number,
-): Promise<{ urls: string[]; via: string; notes: string[] }> {
+async function discover(query: string, engine: WebEngine, n: number): Promise<{ urls: string[]; via: string; notes: string[] }> {
   const notes: string[] = [];
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query, n);
-    if (s && s.length) return { urls: s, via: "searxng", notes };
+    if (s?.length) return { urls: s, via: "searxng", notes };
     if (engine === "searxng") notes.push(`SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`);
   }
   if (engine === "ddg" || engine === "auto") {
     const d = await viaDuckDuckGo(query, n);
-    if (d && d.length) return { urls: d, via: "duckduckgo", notes };
+    if (d?.length) return { urls: d, via: "duckduckgo", notes };
     if (engine === "ddg") notes.push("DuckDuckGo returned no results.");
   }
   if (engine === "claude" || engine === "auto") {
     notes.push(
-      "No keyless engine returned results. Use your built-in WebSearch to find URLs, " +
-        "then ground them with `ultradoc web --repo <repo> --url <url>`.",
+      "No keyless engine returned results. Use your built-in WebSearch to find URLs, " + "then ground them with `ultradoc web --repo <repo> --url <url>`.",
     );
   }
   return { urls: [], via: "none", notes };
@@ -81,11 +84,7 @@ async function discover(
 
 // Fetch a set of URLs and turn each into grounded web evidence. Shared by the
 // `web` discovery flow and the `ultradoc web --url` drill-down.
-export async function webFetchUrls(
-  urls: string[],
-  question: string,
-  perSource: number,
-): Promise<{ items: RawItem[]; notes: string[] }> {
+export async function webFetchUrls(urls: string[], question: string, perSource: number): Promise<{ items: RawItem[]; notes: string[] }> {
   const items: RawItem[] = [];
   const notes: string[] = [];
   for (const url of urls.slice(0, Math.max(1, Math.ceil(perSource / 2)))) {
@@ -93,15 +92,21 @@ export async function webFetchUrls(
     if (note) notes.push(note);
     if (!text) continue;
     const ex = excerptsFromText(text, url, `Web — ${url}`, "web", question, perSource);
-    items.push(...(ex.length ? ex : [{
-      source: "web" as const,
-      title: `Web — ${url}`,
-      ref: url,
-      location: url,
-      score: 0,
-      snippet: text.slice(0, 800),
-      url,
-    }]));
+    items.push(
+      ...(ex.length
+        ? ex
+        : [
+            {
+              source: "web" as const,
+              title: `Web — ${url}`,
+              ref: url,
+              location: url,
+              score: 0,
+              snippet: text.slice(0, 800),
+              url,
+            },
+          ]),
+    );
   }
   return { items, notes };
 }

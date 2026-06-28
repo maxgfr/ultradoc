@@ -6,9 +6,7 @@ import { discoverDocsRoot, discoverDocsUrl } from "../src/sources/doc-discovery.
 
 describe("discoverDocsRoot", () => {
   it("finds the dominant in-repo docs folder", () => {
-    expect(
-      discoverDocsRoot(["README.md", "docs/a.md", "docs/b.md", "docs/c.md", "CONTRIBUTING.md"]),
-    ).toBe("docs");
+    expect(discoverDocsRoot(["README.md", "docs/a.md", "docs/b.md", "docs/c.md", "CONTRIBUTING.md"])).toBe("docs");
   });
 
   it("requires at least two doc files to call a folder a root", () => {
@@ -25,14 +23,9 @@ describe("discoverDocsRoot", () => {
 describe("discoverDocsUrl", () => {
   it("extracts a confident docs URL from the README", () => {
     const dir = mkdtempSync(join(tmpdir(), "ultradoc-disc-"));
-    writeFileSync(
-      join(dir, "README.md"),
-      "# Proj\n\nSee the [documentation](https://proj.readthedocs.io/en/latest/) for details.\n",
-    );
+    writeFileSync(join(dir, "README.md"), "# Proj\n\nSee the [documentation](https://proj.readthedocs.io/en/latest/) for details.\n");
     writeFileSync(join(dir, "package.json"), JSON.stringify({ homepage: "https://example.com" }));
-    expect(discoverDocsUrl(dir, ["README.md"], ["package.json"])).toBe(
-      "https://proj.readthedocs.io/en/latest/",
-    );
+    expect(discoverDocsUrl(dir, ["README.md"], ["package.json"])).toBe("https://proj.readthedocs.io/en/latest/");
     rmSync(dir, { recursive: true, force: true });
   });
 

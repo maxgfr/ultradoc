@@ -78,9 +78,7 @@ describe("checkRun", () => {
     answer("Added in [release:v1.2.0] by [commit:abc1234], discussed in [discussion#42].");
     const r = checkRun(dir);
     expect(r.ok).toBe(true);
-    expect(r.resolved).toEqual(
-      expect.arrayContaining(["release:v1.2.0", "commit:abc1234", "discussion#42"]),
-    );
+    expect(r.resolved).toEqual(expect.arrayContaining(["release:v1.2.0", "commit:abc1234", "discussion#42"]));
     rmSync(dir, { recursive: true, force: true });
   });
 

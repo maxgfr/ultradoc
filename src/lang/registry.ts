@@ -25,10 +25,7 @@ export interface Extractor {
 // Registry of symbol extractors keyed by file extension. Adding a language is a
 // matter of writing one `lang/<x>.ts` and registering it here — the same
 // registry pattern reconstruct uses for its framework adapters.
-const EXTRACTORS: Extractor[] = [
-  jsTs, python, go, ruby, java, rust,
-  csharp, php, swift, kotlin, c, lua, shell, elixir, scala,
-];
+const EXTRACTORS: Extractor[] = [jsTs, python, go, ruby, java, rust, csharp, php, swift, kotlin, c, lua, shell, elixir, scala];
 
 const BY_EXT = new Map<string, Extractor>();
 for (const e of EXTRACTORS) for (const ext of e.exts) BY_EXT.set(ext, e);

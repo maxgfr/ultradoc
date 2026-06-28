@@ -25,7 +25,7 @@ Usage:
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir> [--semantic] [--answer <file>]
-  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>]
+  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
 
 Commands:
@@ -67,6 +67,7 @@ Options:
   --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
                                        (default: ANSWER.md, else DOC.md)
+  --max-verify <n>     For 'verify': cap how many claim↔evidence pairs to emit  (default: 40)
   --semantic           Use the optional local vector backend (falls back if absent)
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
@@ -82,12 +83,39 @@ Grounding:
 `;
 
 const COMMANDS = new Set([
-  "ask", "code", "issues", "prs", "docs", "releases", "history", "discussions",
-  "so", "web", "overview", "doc", "index", "check", "verify", "semantic",
+  "ask",
+  "code",
+  "issues",
+  "prs",
+  "docs",
+  "releases",
+  "history",
+  "discussions",
+  "so",
+  "web",
+  "overview",
+  "doc",
+  "index",
+  "check",
+  "verify",
+  "semantic",
 ]);
 const VALUE_FLAGS = new Set([
-  "repo", "q", "question", "sources", "ref", "docs-url", "web-engine", "url", "per-source",
-  "out", "run", "package", "apply", "max-verify", "answer",
+  "repo",
+  "q",
+  "question",
+  "sources",
+  "ref",
+  "docs-url",
+  "web-engine",
+  "url",
+  "per-source",
+  "out",
+  "run",
+  "package",
+  "apply",
+  "max-verify",
+  "answer",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh"]);
 
@@ -179,20 +207,31 @@ export function parseArgs(argv: string[]): Parsed {
 
 const SOURCE_TOKENS: Record<string, SourceKind> = {
   code: "code",
-  issue: "issue", issues: "issue",
-  pr: "pr", prs: "pr", "pull-requests": "pr", "merge-requests": "pr",
-  doc: "docs", docs: "docs",
-  release: "release", releases: "release",
+  issue: "issue",
+  issues: "issue",
+  pr: "pr",
+  prs: "pr",
+  "pull-requests": "pr",
+  "merge-requests": "pr",
+  doc: "docs",
+  docs: "docs",
+  release: "release",
+  releases: "release",
   history: "history",
-  discussion: "discussion", discussions: "discussion",
+  discussion: "discussion",
+  discussions: "discussion",
   web: "web",
-  so: "so", stackoverflow: "so",
+  so: "so",
+  stackoverflow: "so",
 };
 const DEFAULT_SOURCES: SourceKind[] = ["code", "issue", "pr", "docs"];
 
 function parseSources(s: string): SourceKind[] {
   const out: SourceKind[] = [];
-  for (const t of s.split(",").map((x) => x.trim()).filter(Boolean)) {
+  for (const t of s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)) {
     const k = SOURCE_TOKENS[t.toLowerCase()];
     if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,releases,history,discussions,web,so)`);
     if (!out.includes(k)) out.push(k);
@@ -210,9 +249,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", [
-    "auto", "searxng", "ddg", "claude",
-  ]);
+  const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude"]);
 
   return {
     repo,
@@ -250,9 +287,7 @@ async function main(): Promise<void> {
         process.stdout.write(JSON.stringify({ dir: r.dir, meta: r.meta }, null, 2) + "\n");
         return;
       }
-      const bySource = r.meta.sources.map(
-        (s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`,
-      );
+      const bySource = r.meta.sources.map((s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`);
       const lines = [
         `ultradoc: ${r.evidence.length} evidence item(s) for "${opts.question}"`,
         `  repo:     ${r.meta.repo}${r.meta.commit ? ` @ ${r.meta.commit}` : ""} (${r.meta.host})`,
@@ -275,16 +310,29 @@ async function main(): Promise<void> {
     case "discussions":
     case "so": {
       const kindMap: Record<string, SourceKind> = {
-        code: "code", issues: "issue", prs: "pr", docs: "docs",
-        releases: "release", history: "history", discussions: "discussion", so: "so",
+        code: "code",
+        issues: "issue",
+        prs: "pr",
+        docs: "docs",
+        releases: "release",
+        history: "history",
+        discussions: "discussion",
+        so: "so",
       };
       const kind = kindMap[p.command]!;
       const opts = buildAskOptions(p);
       const { ctx, evidence, notes } = await runSingleSource(opts, kind);
       const meta: DossierMeta = {
-        question: opts.question, repo: ctx.repoRef.raw, host: ctx.repoRef.host,
-        ref: opts.ref, commit: ctx.index.commit, sources: [kind], semantic: opts.semantic,
-        evidenceCount: evidence.length, builtAt: new Date().toISOString(), notes,
+        question: opts.question,
+        repo: ctx.repoRef.raw,
+        host: ctx.repoRef.host,
+        ref: opts.ref,
+        commit: ctx.index.commit,
+        sources: [kind],
+        semantic: opts.semantic,
+        evidenceCount: evidence.length,
+        builtAt: new Date().toISOString(),
+        notes,
       };
       printEvidence(p, evidence, meta);
       return;
@@ -293,22 +341,38 @@ async function main(): Promise<void> {
     case "web": {
       const opts = buildAskOptions(p, { requireQuestion: !p.values.url });
       if (p.values.url) {
-        const urls = p.values.url.split(",").map((u) => u.trim()).filter(Boolean);
+        const urls = p.values.url
+          .split(",")
+          .map((u) => u.trim())
+          .filter(Boolean);
         const q = opts.question || urls.join(" ");
         const { items, notes } = await webFetchUrls(urls, q, opts.perSource);
         const evidence = assignIds([{ source: "web", items, notes }]);
         const meta: DossierMeta = {
-          question: q, repo: opts.repo, host: "web", sources: ["web"],
-          semantic: false, evidenceCount: evidence.length, builtAt: new Date().toISOString(), notes,
+          question: q,
+          repo: opts.repo,
+          host: "web",
+          sources: ["web"],
+          semantic: false,
+          evidenceCount: evidence.length,
+          builtAt: new Date().toISOString(),
+          notes,
         };
         printEvidence(p, evidence, meta);
         return;
       }
       const { ctx, evidence, notes } = await runSingleSource(opts, "web");
       const meta: DossierMeta = {
-        question: opts.question, repo: ctx.repoRef.raw, host: ctx.repoRef.host, ref: opts.ref,
-        commit: ctx.index.commit, sources: ["web"], semantic: opts.semantic,
-        evidenceCount: evidence.length, builtAt: new Date().toISOString(), notes,
+        question: opts.question,
+        repo: ctx.repoRef.raw,
+        host: ctx.repoRef.host,
+        ref: opts.ref,
+        commit: ctx.index.commit,
+        sources: ["web"],
+        semantic: opts.semantic,
+        evidenceCount: evidence.length,
+        builtAt: new Date().toISOString(),
+        notes,
       };
       printEvidence(p, evidence, meta);
       return;
@@ -325,8 +389,11 @@ async function main(): Promise<void> {
         process.stdout.write(
           JSON.stringify(
             {
-              path: r.path, cached: r.cached, commit: ctx.index.commit,
-              packages: ctx.index.packages, fileCount: ctx.index.fileCount,
+              path: r.path,
+              cached: r.cached,
+              commit: ctx.index.commit,
+              packages: ctx.index.packages,
+              fileCount: ctx.index.fileCount,
             },
             null,
             2,
@@ -336,9 +403,7 @@ async function main(): Promise<void> {
       }
       const lines = [
         `ultradoc: overview ${r.cached ? "reused (commit unchanged)" : "generated"} for ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
-        ...(ctx.index.packages.length
-          ? [`  packages: ${ctx.index.packages.length} workspace package(s) — scope questions with --package`]
-          : []),
+        ...(ctx.index.packages.length ? [`  packages: ${ctx.index.packages.length} workspace package(s) — scope questions with --package`] : []),
         `  file:     ${r.path}`,
         `  next:     read it to navigate the repo; ground answers via 'ultradoc ask'.`,
       ];
@@ -379,10 +444,15 @@ async function main(): Promise<void> {
         process.stdout.write(
           JSON.stringify(
             {
-              repo: ctx.repoRef.raw, dir: ctx.repoDir, commit: ctx.index.commit,
-              fileCount: ctx.index.fileCount, symbols: ctx.index.symbols.length,
-              docFiles: ctx.index.docFiles.length, configFiles: ctx.index.configFiles.length,
-              docsRoot: ctx.index.docsRoot, docsUrl: ctx.index.docsUrl,
+              repo: ctx.repoRef.raw,
+              dir: ctx.repoDir,
+              commit: ctx.index.commit,
+              fileCount: ctx.index.fileCount,
+              symbols: ctx.index.symbols.length,
+              docFiles: ctx.index.docFiles.length,
+              configFiles: ctx.index.configFiles.length,
+              docsRoot: ctx.index.docsRoot,
+              docsUrl: ctx.index.docsUrl,
               packages: ctx.index.packages,
               languages: ctx.index.languages,
             },

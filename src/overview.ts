@@ -58,9 +58,7 @@ function apiLines(symbols: CodeSymbol[], prefix?: string, maxFiles = 15, maxSyms
     list.push(s);
     byFile.set(s.file, list);
   }
-  const files = [...byFile.entries()]
-    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
-    .slice(0, maxFiles);
+  const files = [...byFile.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).slice(0, maxFiles);
   return files.map(([file, syms]) => {
     const shown = syms
       .sort((a, b) => a.line - b.line)
@@ -154,12 +152,7 @@ export interface OverviewResult {
 
 // Write the overview beside the structural index, reusing it while the clone
 // stays at the same commit (unless `refresh`). `out` overrides the file path.
-export function ensureOverview(
-  index: StructuralIndex,
-  ref: RepoRef,
-  repoDir: string,
-  opts: { refresh?: boolean; out?: string } = {},
-): OverviewResult {
+export function ensureOverview(index: StructuralIndex, ref: RepoRef, repoDir: string, opts: { refresh?: boolean; out?: string } = {}): OverviewResult {
   const path = opts.out ?? overviewPath(repoDir);
   if (!opts.refresh && existsSync(path)) {
     try {

@@ -6,17 +6,7 @@ import { renderEvidenceMarkdown, SOURCE_ORDER } from "./dossier.js";
 import { ensureOverview } from "./overview.js";
 import { indexDir } from "./index/structural.js";
 import { slugify } from "./util.js";
-import type {
-  AskOptions,
-  DocPlan,
-  DocSection,
-  DossierMeta,
-  EvidenceItem,
-  RunContext,
-  SourceKind,
-  StructuralIndex,
-  WorkspacePackage,
-} from "./types.js";
+import type { AskOptions, DocPlan, DocSection, DossierMeta, EvidenceItem, RunContext, SourceKind, StructuralIndex, WorkspacePackage } from "./types.js";
 
 // `ultradoc doc` generates a GROUNDED reference document. Like `ask`, the engine
 // only retrieves — it builds a deterministic outline, grounds a dossier per
@@ -51,20 +41,15 @@ function topExportedSymbols(index: StructuralIndex, prefix: string | undefined, 
   // excluding test/example files, whose symbols aren't the public API.
   // Leading-underscore names (Python/JS `_private`, dunders like `__init__`)
   // are conventionally private, not public API.
-  const isApi = (s: { exported: boolean; file: string; name: string }) =>
-    s.exported && !looksLikeTestFile(s.file) && !s.name.startsWith("_");
+  const isApi = (s: { exported: boolean; file: string; name: string }) => s.exported && !looksLikeTestFile(s.file) && !s.name.startsWith("_");
   for (const s of index.symbols) {
     if (!isApi(s)) continue;
     if (prefix && !s.file.startsWith(prefix + "/")) continue;
     byFile.set(s.file, (byFile.get(s.file) ?? 0) + 1);
   }
-  const rankedFiles = [...byFile.keys()].sort(
-    (a, b) => (byFile.get(b) ?? 0) - (byFile.get(a) ?? 0) || a.localeCompare(b),
-  );
+  const rankedFiles = [...byFile.keys()].sort((a, b) => (byFile.get(b) ?? 0) - (byFile.get(a) ?? 0) || a.localeCompare(b));
   for (const file of rankedFiles) {
-    const syms = index.symbols
-      .filter((s) => isApi(s) && s.file === file)
-      .sort((a, b) => a.line - b.line);
+    const syms = index.symbols.filter((s) => isApi(s) && s.file === file).sort((a, b) => a.line - b.line);
     for (const s of syms) {
       if (seen.has(s.name)) continue;
       seen.add(s.name);
@@ -79,15 +64,10 @@ function topExportedSymbols(index: StructuralIndex, prefix: string | undefined, 
 // retrieval query and the sources to ground it on; runDoc fills evidenceIds.
 // A monorepo (unscoped) gets one section per package; a single repo or a
 // scoped run gets a single "Public API" section grounded on its top symbols.
-export function buildOutline(
-  index: StructuralIndex,
-  name: string,
-  scopePkg?: WorkspacePackage,
-): Omit<DocSection, "evidenceIds">[] {
+export function buildOutline(index: StructuralIndex, name: string, scopePkg?: WorkspacePackage): Omit<DocSection, "evidenceIds">[] {
   const sections: Omit<DocSection, "evidenceIds">[] = [];
   let n = 0;
-  const add = (title: string, query: string, sources: SourceKind[]) =>
-    sections.push({ id: `S${++n}`, title, query, sources });
+  const add = (title: string, query: string, sources: SourceKind[]) => sections.push({ id: `S${++n}`, title, query, sources });
 
   add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
   add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
@@ -109,8 +89,7 @@ export function buildOutline(
 }
 
 type Item = Omit<EvidenceItem, "id">;
-const dedupKey = (it: Item): string =>
-  `${it.source}|${it.ref}|${it.location ?? ""}|${(it.snippet ?? "").slice(0, 120)}`;
+const dedupKey = (it: Item): string => `${it.source}|${it.ref}|${it.location ?? ""}|${(it.snippet ?? "").slice(0, 120)}`;
 const sourceRank = (s: SourceKind): number => {
   const i = SOURCE_ORDER.indexOf(s);
   return i < 0 ? 99 : i;
@@ -120,9 +99,10 @@ const sourceRank = (s: SourceKind): number => {
 // global ids (canonical source order, best-scored first), deduping items that
 // surface in multiple sections, and map each section to its (deduped, capped)
 // evidence ids. One evidence.json is what `check` validates against DOC.md.
-function mergeEvidence(
-  perSection: { section: Omit<DocSection, "evidenceIds">; items: Item[] }[],
-): { evidence: EvidenceItem[]; sectionIds: Map<string, string[]> } {
+function mergeEvidence(perSection: { section: Omit<DocSection, "evidenceIds">; items: Item[] }[]): {
+  evidence: EvidenceItem[];
+  sectionIds: Map<string, string[]>;
+} {
   const best = new Map<string, Item>();
   for (const { items } of perSection) {
     for (const it of items) {
@@ -131,9 +111,7 @@ function mergeEvidence(
       if (!ex || it.score > ex.score) best.set(k, it);
     }
   }
-  const flat = [...best.values()].sort(
-    (a, b) => sourceRank(a.source) - sourceRank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref),
-  );
+  const flat = [...best.values()].sort((a, b) => sourceRank(a.source) - sourceRank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
   const evidence: EvidenceItem[] = flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
   const idByKey = new Map(evidence.map((e) => [dedupKey(e), e.id] as const));
 
@@ -216,10 +194,7 @@ export function defaultDocDir(repoDir: string, scopePkg?: WorkspacePackage): str
 // Run the full doc scaffold: clone+index once, retrieve a dossier per outline
 // section, merge into one evidence set, and write the worklist. `sourcesOverride`
 // (from an explicit --sources) replaces every section's default sources.
-export async function runDoc(
-  options: AskOptions,
-  opts: { sourcesOverride?: SourceKind[] } = {},
-): Promise<DocResult> {
+export async function runDoc(options: AskOptions, opts: { sourcesOverride?: SourceKind[] } = {}): Promise<DocResult> {
   const ctx = buildContext(options);
   const name = ctx.repoRef.repo ?? basename(ctx.repoDir);
   const outline = buildOutline(ctx.index, name, ctx.scopePkg);

@@ -18,10 +18,29 @@ const DOC_DIR = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
 
 // Manifests / config that reveal the stack, deps, scripts and entry points.
 const CONFIG_BASENAME = new Set([
-  "package.json", "pnpm-workspace.yaml", "tsconfig.json", "pyproject.toml", "setup.py",
-  "setup.cfg", "requirements.txt", "pipfile", "go.mod", "cargo.toml", "gemfile", "pom.xml",
-  "build.gradle", "build.gradle.kts", "composer.json", "mix.exs", "pubspec.yaml", "build.sbt",
-  "dockerfile", "docker-compose.yml", "makefile", ".env.example", "manifest.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "pyproject.toml",
+  "setup.py",
+  "setup.cfg",
+  "requirements.txt",
+  "pipfile",
+  "go.mod",
+  "cargo.toml",
+  "gemfile",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "composer.json",
+  "mix.exs",
+  "pubspec.yaml",
+  "build.sbt",
+  "dockerfile",
+  "docker-compose.yml",
+  "makefile",
+  ".env.example",
+  "manifest.json",
 ]);
 
 export function indexDir(root: string): string {
@@ -42,11 +61,7 @@ function isConfig(rel: string): boolean {
 // Build the deterministic structural index from a working tree: language
 // histogram, declared symbols, and the doc/config file lists. No LLM, no
 // network. Persisted under <root>/.ultradoc/index.json for reuse.
-export function buildIndex(
-  root: string,
-  slug: string,
-  opts: { maxFiles?: number; project?: string[] } = {},
-): StructuralIndex {
+export function buildIndex(root: string, slug: string, opts: { maxFiles?: number; project?: string[] } = {}): StructuralIndex {
   const files = walk(root, { maxFiles: opts.maxFiles });
   const languages: Record<string, number> = {};
   const symbols: CodeSymbol[] = [];
@@ -114,11 +129,7 @@ export function loadIndex(root: string): StructuralIndex | undefined {
 // Return a usable index, building it once and reusing it thereafter (unless
 // `refresh`). The cached index lives inside the clone, so it is discarded
 // whenever the clone is refreshed.
-export function ensureIndex(
-  root: string,
-  slug: string,
-  opts: { refresh?: boolean; maxFiles?: number; project?: string[] } = {},
-): StructuralIndex {
+export function ensureIndex(root: string, slug: string, opts: { refresh?: boolean; maxFiles?: number; project?: string[] } = {}): StructuralIndex {
   if (!opts.refresh) {
     const existing = loadIndex(root);
     if (existing) return existing;

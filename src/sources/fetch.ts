@@ -13,29 +13,59 @@ export interface HttpResult {
   error?: string;
 }
 
+// Stream a fetch Response body, keeping at most `max` bytes and cancelling the
+// rest the moment the cap is crossed — so a huge (or never-ending) page is
+// bounded instead of fully buffered into memory. Falls back to a one-shot read
+// on platforms that expose no readable stream.
+export async function readCapped(res: Response, max: number): Promise<string> {
+  const reader = res.body?.getReader?.();
+  if (!reader) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.subarray(0, max).toString("utf8");
+  }
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    const remaining = max - total;
+    if (chunk.length >= remaining) {
+      chunks.push(chunk.subarray(0, remaining));
+      // We have everything we'll keep; abort the rest of the transfer.
+      await reader.cancel().catch(() => {});
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 // Minimal HTTP GET on top of Node's built-in fetch (Node ≥18) — no
-// dependencies. Times out, sends a UA, and caps the body so a huge page can't
-// blow up memory.
-export async function httpGet(
-  url: string,
-  opts: { timeoutMs?: number; accept?: string; maxBytes?: number } = {},
-): Promise<HttpResult> {
+// dependencies. Times out, sends a UA, and bounds the body so a huge page can't
+// blow up memory: it rejects early when the server declares an oversized
+// Content-Length, otherwise streams and stops at maxBytes.
+export async function httpGet(url: string, opts: { timeoutMs?: number; accept?: string; maxBytes?: number } = {}): Promise<HttpResult> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 20_000);
+  const max = opts.maxBytes ?? 4 * 1024 * 1024;
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
       redirect: "follow",
       headers: { "user-agent": UA, accept: opts.accept ?? "*/*" },
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    const max = opts.maxBytes ?? 4 * 1024 * 1024;
-    return {
-      ok: res.ok,
-      status: res.status,
-      body: buf.subarray(0, max).toString("utf8"),
-      contentType: res.headers.get("content-type") ?? "",
-    };
+    const contentType = res.headers.get("content-type") ?? "";
+    // Don't even start streaming a body the server says is over the cap.
+    const declared = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > max) {
+      ctrl.abort();
+      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap` };
+    }
+    const body = await readCapped(res, max);
+    return { ok: res.ok, status: res.status, body, contentType };
   } catch (e) {
     return { ok: false, status: 0, body: "", contentType: "", error: (e as Error).message };
   } finally {
@@ -61,7 +91,7 @@ export async function httpJson(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
-    let data: any = undefined;
+    let data: any;
     try {
       data = text ? JSON.parse(text) : undefined;
     } catch {
@@ -76,8 +106,17 @@ export async function httpJson(
 }
 
 const ENTITIES: Record<string, string> = {
-  "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'",
-  "&nbsp;": " ", "&mdash;": "—", "&ndash;": "–", "&hellip;": "…", "&copy;": "©",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&nbsp;": " ",
+  "&mdash;": "—",
+  "&ndash;": "–",
+  "&hellip;": "…",
+  "&copy;": "©",
 };
 
 // Extract readable text from an HTML page. Zero-dep and intentionally simple:
@@ -142,14 +181,7 @@ export function nearestHeading(lines: string[], anchor: number): string | undefi
 
 // Turn fetched page text into ranked evidence excerpts around the question's
 // keywords. Returned as `docs` evidence (the external official documentation).
-export function excerptsFromText(
-  text: string,
-  url: string,
-  title: string,
-  source: EvidenceItem["source"],
-  question: string,
-  perSource: number,
-): RawItem[] {
+export function excerptsFromText(text: string, url: string, title: string, source: EvidenceItem["source"], question: string, perSource: number): RawItem[] {
   const lines = text.split("\n");
   const matcher = buildMatcher(question);
   const hits: { idx: number; cov: number }[] = [];

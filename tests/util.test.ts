@@ -1,7 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
-  keywords, rankedKeywords, slugify, rrf, escapeRegExp, clip,
-  foldTerm, deaccent, subtokens, accentPattern, expandTokens, buildMatcher, matcherFromTokens,
+  keywords,
+  rankedKeywords,
+  slugify,
+  rrf,
+  escapeRegExp,
+  clip,
+  foldTerm,
+  deaccent,
+  subtokens,
+  accentPattern,
+  expandTokens,
+  buildMatcher,
+  matcherFromTokens,
 } from "../src/util.js";
 
 describe("keywords", () => {

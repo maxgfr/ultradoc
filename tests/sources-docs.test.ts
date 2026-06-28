@@ -26,17 +26,7 @@ function ctxFor(repo: string, question: string): RunContext {
 }
 
 describe("nearestHeading", () => {
-  const lines = [
-    "# Title",
-    "intro",
-    "## Section A",
-    "```",
-    "# not a heading (code)",
-    "```",
-    "inside section A",
-    "## Section B",
-    "inside section B",
-  ];
+  const lines = ["# Title", "intro", "## Section A", "```", "# not a heading (code)", "```", "inside section A", "## Section B", "inside section B"];
   it("returns the closest preceding heading", () => {
     expect(nearestHeading(lines, 6)).toBe("Section A");
     expect(nearestHeading(lines, 8)).toBe("Section B");
@@ -52,7 +42,7 @@ describe("nearestHeading", () => {
 
 describe("htmlToText headings", () => {
   it("keeps h1-h6 structure as markdown markers", () => {
-    const text = htmlToText("<h2 class=\"x\">Configuration</h2><p>set the option</p>");
+    const text = htmlToText('<h2 class="x">Configuration</h2><p>set the option</p>');
     expect(text).toContain("## Configuration");
   });
 });

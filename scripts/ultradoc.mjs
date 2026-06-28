@@ -301,9 +301,7 @@ function expandTokens(tokens, max = 8) {
     for (const sub of subtokens(raw)) variants.push({ text: sub, kind: "subtoken" });
     byCanonical.set(canonical, { canonical, original: raw, variants });
   }
-  const all = [...byCanonical.values()].flatMap(
-    (ek, kwIdx) => ek.variants.map((v) => ({ ek, v, kwIdx }))
-  );
+  const all = [...byCanonical.values()].flatMap((ek, kwIdx) => ek.variants.map((v) => ({ ek, v, kwIdx })));
   all.sort((a, b) => VARIANT_PRIORITY[a.v.kind] - VARIANT_PRIORITY[b.v.kind] || a.kwIdx - b.kwIdx);
   const seen = /* @__PURE__ */ new Set();
   const kept = /* @__PURE__ */ new Set();
@@ -437,16 +435,10 @@ function ensureClone(ref, opts = {}) {
   args.push(ref.cloneUrl, dir);
   const res = sh("git", args, { timeoutMs: 3e5 });
   if (!res.ok) {
-    const fallback = sh(
-      "git",
-      ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir],
-      { timeoutMs: 3e5 }
-    );
+    const fallback = sh("git", ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir], { timeoutMs: 3e5 });
     if (!fallback.ok) {
-      throw new Error(
-        `git clone failed for ${ref.cloneUrl}
-${(res.stderr || fallback.stderr).trim()}`
-      );
+      throw new Error(`git clone failed for ${ref.cloneUrl}
+${(res.stderr || fallback.stderr).trim()}`);
     }
   }
   if (!existsSync(dir) || readdirSync(dir).length === 0) {
@@ -469,15 +461,7 @@ function ensureHistoryDepth(dir) {
     out = { ok: true };
   } else {
     if (partial) sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
-    const args = [
-      "-C",
-      dir,
-      "fetch",
-      "--quiet",
-      ...partial ? ["--refetch"] : [],
-      ...shallow ? ["--unshallow"] : [],
-      "origin"
-    ];
+    const args = ["-C", dir, "fetch", "--quiet", ...partial ? ["--refetch"] : [], ...shallow ? ["--unshallow"] : [], "origin"];
     const full = sh("git", args, { timeoutMs: 3e5 });
     if (full.ok) {
       out = { ok: true };
@@ -828,7 +812,11 @@ var RULES5 = [
   { re: /^\s*(?:public|protected|private)?\s*(?:abstract\s+|final\s+)?class\s+(?<name>[\w]+)/, kind: "class", exported: (_m, l) => /\bpublic\b/.test(l) },
   { re: /^\s*(?:public|protected|private)?\s*interface\s+(?<name>[\w]+)/, kind: "interface", exported: (_m, l) => /\bpublic\b/.test(l) },
   { re: /^\s*(?:public|protected|private)?\s*enum\s+(?<name>[\w]+)/, kind: "enum", exported: (_m, l) => /\bpublic\b/.test(l) },
-  { re: /^\s*(?:public|protected|private)\s+(?:static\s+|final\s+|abstract\s+|synchronized\s+)*[\w<>\[\],.?\s]+\s+(?<name>[\w]+)\s*\(/, kind: "method", exported: (_m, l) => /\bpublic\b/.test(l) }
+  {
+    re: /^\s*(?:public|protected|private)\s+(?:static\s+|final\s+|abstract\s+|synchronized\s+)*[\w<>[\],.?\s]+\s+(?<name>[\w]+)\s*\(/,
+    kind: "method",
+    exported: (_m, l) => /\bpublic\b/.test(l)
+  }
 ];
 var java = {
   lang: "java",
@@ -858,12 +846,20 @@ var rust = {
 // src/lang/csharp.ts
 var pub2 = (_m, l) => /\b(public|internal)\b/.test(l);
 var RULES7 = [
-  { re: /^\s*(?:public|internal|protected|private)?\s*(?:static\s+|sealed\s+|abstract\s+|partial\s+)*(?:class|record)\s+(?<name>\w+)/, kind: "class", exported: pub2 },
+  {
+    re: /^\s*(?:public|internal|protected|private)?\s*(?:static\s+|sealed\s+|abstract\s+|partial\s+)*(?:class|record)\s+(?<name>\w+)/,
+    kind: "class",
+    exported: pub2
+  },
   { re: /^\s*(?:public|internal|protected|private)?\s*(?:partial\s+)?interface\s+(?<name>\w+)/, kind: "interface", exported: pub2 },
   { re: /^\s*(?:public|internal|protected|private)?\s*(?:readonly\s+)?(?:ref\s+)?struct\s+(?<name>\w+)/, kind: "struct", exported: pub2 },
   { re: /^\s*(?:public|internal|protected|private)?\s*enum\s+(?<name>\w+)/, kind: "enum", exported: pub2 },
   // method: a visibility modifier, a return type, then `name(`
-  { re: /^\s*(?:public|internal|protected|private)\s+(?:static\s+|virtual\s+|override\s+|async\s+|sealed\s+|abstract\s+|new\s+)*[\w<>\[\],.?]+\s+(?<name>\w+)\s*(?:<[^>]*>)?\s*\(/, kind: "method", exported: pub2 }
+  {
+    re: /^\s*(?:public|internal|protected|private)\s+(?:static\s+|virtual\s+|override\s+|async\s+|sealed\s+|abstract\s+|new\s+)*[\w<>[\],.?]+\s+(?<name>\w+)\s*(?:<[^>]*>)?\s*\(/,
+    kind: "method",
+    exported: pub2
+  }
 ];
 var csharp = {
   lang: "csharp",
@@ -901,7 +897,11 @@ var RULES9 = [
   { re: new RegExp(`^\\s*${MODS}struct\\s+(?<name>\\w+)`), kind: "struct", exported: vis },
   { re: new RegExp(`^\\s*${MODS}enum\\s+(?<name>\\w+)`), kind: "enum", exported: vis },
   { re: new RegExp(`^\\s*${MODS}protocol\\s+(?<name>\\w+)`), kind: "protocol", exported: vis },
-  { re: /^\s*(?:public\s+|open\s+|internal\s+|private\s+|fileprivate\s+)?(?:static\s+|class\s+|final\s+|override\s+|mutating\s+|@\w+\s+)*func\s+(?<name>\w+)/, kind: "function", exported: vis }
+  {
+    re: /^\s*(?:public\s+|open\s+|internal\s+|private\s+|fileprivate\s+)?(?:static\s+|class\s+|final\s+|override\s+|mutating\s+|@\w+\s+)*func\s+(?<name>\w+)/,
+    kind: "function",
+    exported: vis
+  }
 ];
 var swift = {
   lang: "swift",
@@ -917,7 +917,11 @@ var RULES10 = [
   { re: /^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|sealed\s+|open\s+|final\s+|data\s+)*class\s+(?<name>\w+)/, kind: "class", exported: vis2 },
   { re: /^\s*(?:public\s+|internal\s+|private\s+|fun\s+)?interface\s+(?<name>\w+)/, kind: "interface", exported: vis2 },
   { re: /^\s*(?:public\s+|internal\s+|private\s+|companion\s+)?object\s+(?<name>\w+)/, kind: "object", exported: vis2 },
-  { re: /^\s*(?:public\s+|internal\s+|private\s+|protected\s+|override\s+|open\s+|abstract\s+|suspend\s+|inline\s+|operator\s+)*fun\s+(?:<[^>]*>\s+)?(?<name>\w+)\s*\(/, kind: "function", exported: vis2 }
+  {
+    re: /^\s*(?:public\s+|internal\s+|private\s+|protected\s+|override\s+|open\s+|abstract\s+|suspend\s+|inline\s+|operator\s+)*fun\s+(?:<[^>]*>\s+)?(?<name>\w+)\s*\(/,
+    kind: "function",
+    exported: vis2
+  }
 ];
 var kotlin = {
   lang: "kotlin",
@@ -936,7 +940,11 @@ var RULES11 = [
   // typedef struct/enum/union NAME {
   { re: /^\s*(?:typedef\s+)?(?:struct|enum|union)\s+(?<name>[A-Za-z_]\w+)\s*\{/, kind: "struct", exported: true },
   // function definition: <type ...> name(<args>) [const] {?  at column 0-ish
-  { re: new RegExp(`^${NOT_KEYWORD}[A-Za-z_][\\w\\s\\*&<>:,]*?\\b(?<name>[A-Za-z_]\\w+)\\s*\\([^;{]*\\)\\s*(?:const)?\\s*\\{?\\s*$`), kind: "function", exported: true }
+  {
+    re: new RegExp(`^${NOT_KEYWORD}[A-Za-z_][\\w\\s\\*&<>:,]*?\\b(?<name>[A-Za-z_]\\w+)\\s*\\([^;{]*\\)\\s*(?:const)?\\s*\\{?\\s*$`),
+    kind: "function",
+    exported: true
+  }
 ];
 var c = {
   lang: "c/cpp",
@@ -993,7 +1001,11 @@ var RULES15 = [
   { re: /^\s*(?:final\s+|sealed\s+|abstract\s+|implicit\s+)*(?:case\s+)?class\s+(?<name>\w+)/, kind: "class", exported: true },
   { re: /^\s*(?:sealed\s+)?trait\s+(?<name>\w+)/, kind: "trait", exported: true },
   { re: /^\s*(?:case\s+)?object\s+(?<name>\w+)/, kind: "object", exported: true },
-  { re: /^\s*(?:override\s+|final\s+|private\s+|protected\s+|implicit\s+)*def\s+(?<name>\w+)/, kind: "def", exported: (_m, l) => !/\b(private|protected)\b/.test(l) }
+  {
+    re: /^\s*(?:override\s+|final\s+|private\s+|protected\s+|implicit\s+)*def\s+(?<name>\w+)/,
+    kind: "def",
+    exported: (_m, l) => !/\b(private|protected)\b/.test(l)
+  }
 ];
 var scala = {
   lang: "scala",
@@ -1004,23 +1016,7 @@ var scala = {
 };
 
 // src/lang/registry.ts
-var EXTRACTORS = [
-  jsTs,
-  python,
-  go,
-  ruby,
-  java,
-  rust,
-  csharp,
-  php,
-  swift,
-  kotlin,
-  c,
-  lua,
-  shell,
-  elixir,
-  scala
-];
+var EXTRACTORS = [jsTs, python, go, ruby, java, rust, csharp, php, swift, kotlin, c, lua, shell, elixir, scala];
 var BY_EXT = /* @__PURE__ */ new Map();
 for (const e of EXTRACTORS) for (const ext of e.exts) BY_EXT.set(ext, e);
 function extractSymbols(rel, ext, content) {
@@ -1126,16 +1122,7 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
 // src/index/workspaces.ts
 import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
 import { join as join4 } from "path";
-var PKG_MANIFESTS = [
-  "package.json",
-  "Cargo.toml",
-  "go.mod",
-  "composer.json",
-  "pyproject.toml",
-  "pom.xml",
-  "build.gradle",
-  "build.gradle.kts"
-];
+var PKG_MANIFESTS = ["package.json", "Cargo.toml", "go.mod", "composer.json", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts"];
 function tomlArrayInSection(text, section, key) {
   const out = [];
   let table = "";
@@ -1352,14 +1339,10 @@ function resolvePackage(packages, query2) {
   const q = query2.toLowerCase().replace(/\/+$/, "");
   const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
   if (exact) return exact;
-  const short = packages.filter(
-    (p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q
-  );
+  const short = packages.filter((p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q);
   if (short.length === 1) return short[0];
   if (short.length > 1) return void 0;
-  const loose = packages.filter(
-    (p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q)
-  );
+  const loose = packages.filter((p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q));
   return loose.length === 1 ? loose[0] : void 0;
 }
 
@@ -1472,17 +1455,7 @@ function ensureIndex(root, slug, opts = {}) {
 // src/dossier.ts
 import { mkdirSync as mkdirSync3, writeFileSync as writeFileSync2 } from "fs";
 import { join as join6 } from "path";
-var SOURCE_ORDER = [
-  "code",
-  "docs",
-  "release",
-  "history",
-  "issue",
-  "pr",
-  "discussion",
-  "so",
-  "web"
-];
+var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var SOURCE_LABEL = {
   code: "Code",
   docs: "Documentation",
@@ -1509,9 +1482,7 @@ function defaultRunDir(repoDir, d) {
 }
 function assignIds(results) {
   const flat = results.flatMap((r) => r.items);
-  flat.sort(
-    (a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref)
-  );
+  flat.sort((a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
   return flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
 }
 function renderEvidenceMarkdown(evidence, meta) {
@@ -1538,11 +1509,7 @@ function renderEvidenceMarkdown(evidence, meta) {
     out.push("");
     for (const it of items) {
       out.push(`### [${it.id}] ${it.title}`);
-      const meta1 = [
-        `ref: \`${it.ref}\``,
-        it.location ? `loc: \`${it.location}\`` : "",
-        `score: ${it.score}`
-      ].filter(Boolean).join(" \xB7 ");
+      const meta1 = [`ref: \`${it.ref}\``, it.location ? `loc: \`${it.location}\`` : "", `score: ${it.score}`].filter(Boolean).join(" \xB7 ");
       out.push(meta1);
       if (it.url) out.push(`url: ${it.url}`);
       out.push("");
@@ -1859,23 +1826,49 @@ import { fileURLToPath } from "url";
 
 // src/sources/fetch.ts
 var UA = "ultradoc/0.x (+https://github.com/maxgfr/ultradoc)";
+async function readCapped(res, max) {
+  const reader = res.body?.getReader?.();
+  if (!reader) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.subarray(0, max).toString("utf8");
+  }
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    const remaining = max - total;
+    if (chunk.length >= remaining) {
+      chunks.push(chunk.subarray(0, remaining));
+      await reader.cancel().catch(() => {
+      });
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 async function httpGet(url, opts = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
+  const max = opts.maxBytes ?? 4 * 1024 * 1024;
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
       redirect: "follow",
       headers: { "user-agent": UA, accept: opts.accept ?? "*/*" }
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    const max = opts.maxBytes ?? 4 * 1024 * 1024;
-    return {
-      ok: res.ok,
-      status: res.status,
-      body: buf.subarray(0, max).toString("utf8"),
-      contentType: res.headers.get("content-type") ?? ""
-    };
+    const contentType = res.headers.get("content-type") ?? "";
+    const declared = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > max) {
+      ctrl.abort();
+      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap` };
+    }
+    const body = await readCapped(res, max);
+    return { ok: res.ok, status: res.status, body, contentType };
   } catch (e) {
     return { ok: false, status: 0, body: "", contentType: "", error: e.message };
   } finally {
@@ -1893,7 +1886,7 @@ async function httpJson(method, url, body, opts = {}) {
       body: body === void 0 ? void 0 : JSON.stringify(body)
     });
     const text = await res.text();
-    let data = void 0;
+    let data;
     try {
       data = text ? JSON.parse(text) : void 0;
     } catch {
@@ -2172,14 +2165,7 @@ ${up.stderr}`, code: 1 };
 
 // src/sources/code.ts
 async function codeSource(ctx) {
-  const lexical = searchCode(
-    ctx.repoDir,
-    ctx.repoRef,
-    ctx.index,
-    ctx.options.question,
-    ctx.options.perSource,
-    ctx.scopeDir
-  );
+  const lexical = searchCode(ctx.repoDir, ctx.repoRef, ctx.index, ctx.options.question, ctx.options.perSource, ctx.scopeDir);
   const fallbacks = [];
   if (lexical.fallback === "js-scan") {
     fallbacks.push("code: ripgrep missing \u2014 used the built-in JS scanner");
@@ -2333,10 +2319,7 @@ async function githubReleases(ctx, kws) {
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(
-      `https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`,
-      { accept: "application/vnd.github+json" }
-    );
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, { accept: "application/vnd.github+json" });
     if (!r.ok) {
       notes.push(`GitHub releases API unavailable (status ${r.status}); used the changelog only.`);
       return { items: [], notes };
@@ -2506,20 +2489,7 @@ function toItems(raw, kind) {
 async function query(ref, terms, kind, perSource) {
   const q = `repo:${ref.owner}/${ref.repo} type:${kind} ${terms.join(" ")}`.trim();
   if (have("gh")) {
-    const res = sh("gh", [
-      "api",
-      "-X",
-      "GET",
-      "search/issues",
-      "-f",
-      `q=${q}`,
-      "-f",
-      `per_page=${perSource}`,
-      "-f",
-      "sort=updated",
-      "-f",
-      "order=desc"
-    ]);
+    const res = sh("gh", ["api", "-X", "GET", "search/issues", "-f", `q=${q}`, "-f", `per_page=${perSource}`, "-f", "sort=updated", "-f", "order=desc"]);
     if (res.ok) {
       try {
         return { items: toItems(JSON.parse(res.stdout).items, kind) };
@@ -2640,9 +2610,7 @@ var generic = {
   async search(ref, _question, kind) {
     return {
       items: [],
-      notes: [
-        `No public ${kind} API for host "${ref.host}". The code was cloned and indexed; issues/PRs are not retrievable for this host.`
-      ]
+      notes: [`No public ${kind} API for host "${ref.host}". The code was cloned and indexed; issues/PRs are not retrievable for this host.`]
     };
   }
 };
@@ -2720,16 +2688,7 @@ ${answer}` : ""),
   return items;
 }
 function search(owner, repo, terms, n) {
-  const res = sh("gh", [
-    "api",
-    "graphql",
-    "-f",
-    `query=${QUERY}`,
-    "-f",
-    `q=repo:${owner}/${repo} ${terms.join(" ")}`,
-    "-F",
-    `n=${n}`
-  ]);
+  const res = sh("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
   if (!res.ok) return void 0;
   try {
     return discussionItems(JSON.parse(res.stdout)?.data?.search?.nodes ?? []);
@@ -2837,14 +2796,11 @@ async function viaSearxng(query2, n) {
     return null;
   }
 }
-async function viaDuckDuckGo(query2, n) {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query2)}`;
-  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12e3 });
-  if (!r.ok || !r.body) return null;
+function parseDuckDuckGoResults(html, n) {
   const urls = [];
   const tagRe = /<a\b[^>]*\bresult__a\b[^>]*>/g;
   let m;
-  while ((m = tagRe.exec(r.body)) && urls.length < n) {
+  while ((m = tagRe.exec(html)) && urls.length < n) {
     const href0 = /\bhref="([^"]+)"/.exec(m[0]);
     if (!href0) continue;
     let href = href0[1];
@@ -2857,18 +2813,25 @@ async function viaDuckDuckGo(query2, n) {
     }
     if (/^https?:\/\//.test(href) && !/duckduckgo\.com/.test(href)) urls.push(href);
   }
+  return urls;
+}
+async function viaDuckDuckGo(query2, n) {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query2)}`;
+  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12e3 });
+  if (!r.ok || !r.body) return null;
+  const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
 }
 async function discover(query2, engine, n) {
   const notes = [];
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query2, n);
-    if (s && s.length) return { urls: s, via: "searxng", notes };
+    if (s?.length) return { urls: s, via: "searxng", notes };
     if (engine === "searxng") notes.push(`SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`);
   }
   if (engine === "ddg" || engine === "auto") {
     const d = await viaDuckDuckGo(query2, n);
-    if (d && d.length) return { urls: d, via: "duckduckgo", notes };
+    if (d?.length) return { urls: d, via: "duckduckgo", notes };
     if (engine === "ddg") notes.push("DuckDuckGo returned no results.");
   }
   if (engine === "claude" || engine === "auto") {
@@ -2886,15 +2849,19 @@ async function webFetchUrls(urls, question, perSource) {
     if (note) notes.push(note);
     if (!text) continue;
     const ex = excerptsFromText(text, url, `Web \u2014 ${url}`, "web", question, perSource);
-    items.push(...ex.length ? ex : [{
-      source: "web",
-      title: `Web \u2014 ${url}`,
-      ref: url,
-      location: url,
-      score: 0,
-      snippet: text.slice(0, 800),
-      url
-    }]);
+    items.push(
+      ...ex.length ? ex : [
+        {
+          source: "web",
+          title: `Web \u2014 ${url}`,
+          ref: url,
+          location: url,
+          score: 0,
+          snippet: text.slice(0, 800),
+          url
+        }
+      ]
+    );
   }
   return { items, notes };
 }
@@ -3221,9 +3188,7 @@ function topExportedSymbols(index, prefix, n) {
     if (prefix && !s.file.startsWith(prefix + "/")) continue;
     byFile.set(s.file, (byFile.get(s.file) ?? 0) + 1);
   }
-  const rankedFiles = [...byFile.keys()].sort(
-    (a, b) => (byFile.get(b) ?? 0) - (byFile.get(a) ?? 0) || a.localeCompare(b)
-  );
+  const rankedFiles = [...byFile.keys()].sort((a, b) => (byFile.get(b) ?? 0) - (byFile.get(a) ?? 0) || a.localeCompare(b));
   for (const file of rankedFiles) {
     const syms = index.symbols.filter((s) => isApi(s) && s.file === file).sort((a, b) => a.line - b.line);
     for (const s of syms) {
@@ -3268,9 +3233,7 @@ function mergeEvidence(perSection) {
       if (!ex || it.score > ex.score) best.set(k, it);
     }
   }
-  const flat = [...best.values()].sort(
-    (a, b) => sourceRank(a.source) - sourceRank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref)
-  );
+  const flat = [...best.values()].sort((a, b) => sourceRank(a.source) - sourceRank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
   const evidence = flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
   const idByKey = new Map(evidence.map((e) => [dedupKey(e), e.id]));
   const sectionIds = /* @__PURE__ */ new Map();
@@ -3550,9 +3513,7 @@ function citedEvidenceIds(text, evidence) {
 function applySemantic(dir, result) {
   const p = join13(dir, "VERIFY.json");
   if (!existsSync7(p)) {
-    result.warnings.push(
-      "--semantic: no VERIFY.json \u2014 run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped."
-    );
+    result.warnings.push("--semantic: no VERIFY.json \u2014 run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
     return;
   }
   try {
@@ -3560,9 +3521,7 @@ function applySemantic(dir, result) {
     result.semantic = sem;
     if (!sem.ok) {
       result.ok = false;
-      result.errors.push(
-        `Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`
-      );
+      result.errors.push(`Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
     }
     if (sem.unadjudicated?.length) {
       result.warnings.push(`${sem.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
@@ -3826,7 +3785,7 @@ Usage:
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir> [--semantic] [--answer <file>]
-  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>]
+  ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
 
 Commands:
@@ -3868,6 +3827,7 @@ Options:
   --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
                                        (default: ANSWER.md, else DOC.md)
+  --max-verify <n>     For 'verify': cap how many claim\u2194evidence pairs to emit  (default: 40)
   --semantic           Use the optional local vector backend (falls back if absent)
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
@@ -4025,12 +3985,7 @@ function buildAskOptions(p, opts = {}) {
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf("web-engine", p.values["web-engine"] ?? "auto", [
-    "auto",
-    "searxng",
-    "ddg",
-    "claude"
-  ]);
+  const webEngine = oneOf("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude"]);
   return {
     repo,
     question,
@@ -4063,9 +4018,7 @@ async function main() {
         process.stdout.write(JSON.stringify({ dir: r.dir, meta: r.meta }, null, 2) + "\n");
         return;
       }
-      const bySource = r.meta.sources.map(
-        (s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`
-      );
+      const bySource = r.meta.sources.map((s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`);
       const lines = [
         `ultradoc: ${r.evidence.length} evidence item(s) for "${opts.question}"`,
         `  repo:     ${r.meta.repo}${r.meta.commit ? ` @ ${r.meta.commit}` : ""} (${r.meta.host})`,

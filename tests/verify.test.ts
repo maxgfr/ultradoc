@@ -59,7 +59,14 @@ describe("runVerify (worklist)", () => {
 
   it("caps the worklist at maxVerify", () => {
     const dir = scratch();
-    const ev: EvidenceItem[] = [0, 1, 2].map((i) => ({ id: `E${i + 1}`, source: "code", title: `f${i}`, ref: `f${i}.ts`, score: 1 - i * 0.1, snippet: `snippet ${i}` }));
+    const ev: EvidenceItem[] = [0, 1, 2].map((i) => ({
+      id: `E${i + 1}`,
+      source: "code",
+      title: `f${i}`,
+      ref: `f${i}.ts`,
+      score: 1 - i * 0.1,
+      snippet: `snippet ${i}`,
+    }));
     dossier(dir, ev, "# X\n## A\nClaim one here [E1].\n## B\nClaim two here [E2].\n## C\nClaim three here [E3].");
     const r = runVerify(dir, { maxVerify: 2 });
     expect(r.pairs.length).toBe(2);

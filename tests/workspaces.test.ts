@@ -28,9 +28,7 @@ describe("discoverWorkspaces", () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ workspaces: { packages: ["libs/*"] } }));
     mkdirSync(join(dir, "libs", "one"), { recursive: true });
     writeFileSync(join(dir, "libs", "one", "package.json"), JSON.stringify({ name: "one" }));
-    expect(discoverWorkspaces(dir)).toEqual([
-      { name: "one", dir: "libs/one", description: undefined },
-    ]);
+    expect(discoverWorkspaces(dir)).toEqual([{ name: "one", dir: "libs/one", description: undefined }]);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -83,16 +81,17 @@ describe("discoverWorkspaces", () => {
       mkdirSync(join(dir, "crates", m), { recursive: true });
       writeFileSync(join(dir, "crates", m, "Cargo.toml"), `[package]\nname = "${m}"\n`);
     }
-    expect(discoverWorkspaces(dir).map((p) => p.name).sort()).toEqual(["cli", "core"]);
+    expect(
+      discoverWorkspaces(dir)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual(["cli", "core"]);
     rmSync(dir, { recursive: true, force: true });
   });
 
   it("discovers uv workspace members from pyproject.toml", () => {
     const dir = tmp();
-    writeFileSync(
-      join(dir, "pyproject.toml"),
-      '[project]\nname = "root"\n\n[tool.uv.workspace]\nmembers = ["packages/*"]\nexclude = ["packages/skipme"]\n',
-    );
+    writeFileSync(join(dir, "pyproject.toml"), '[project]\nname = "root"\n\n[tool.uv.workspace]\nmembers = ["packages/*"]\nexclude = ["packages/skipme"]\n');
     mkdirSync(join(dir, "packages", "mylib"), { recursive: true });
     writeFileSync(join(dir, "packages", "mylib", "pyproject.toml"), '[project]\nname = "mylib"\ndescription = "A lib"\n');
     mkdirSync(join(dir, "packages", "skipme"), { recursive: true });
@@ -122,18 +121,16 @@ describe("discoverWorkspaces", () => {
 
   it("discovers Maven modules and reads their artifactIds (ignoring <parent>)", () => {
     const dir = tmp();
-    writeFileSync(
-      join(dir, "pom.xml"),
-      "<project>\n  <modules>\n    <module>app</module>\n    <module>lib/core</module>\n  </modules>\n</project>",
-    );
+    writeFileSync(join(dir, "pom.xml"), "<project>\n  <modules>\n    <module>app</module>\n    <module>lib/core</module>\n  </modules>\n</project>");
     mkdirSync(join(dir, "app"), { recursive: true });
-    writeFileSync(
-      join(dir, "app", "pom.xml"),
-      "<project><parent><artifactId>parent-pom</artifactId></parent><artifactId>my-app</artifactId></project>",
-    );
+    writeFileSync(join(dir, "app", "pom.xml"), "<project><parent><artifactId>parent-pom</artifactId></parent><artifactId>my-app</artifactId></project>");
     mkdirSync(join(dir, "lib", "core"), { recursive: true });
     writeFileSync(join(dir, "lib", "core", "pom.xml"), "<project><artifactId>core</artifactId></project>");
-    expect(discoverWorkspaces(dir).map((p) => p.name).sort()).toEqual(["core", "my-app"]);
+    expect(
+      discoverWorkspaces(dir)
+        .map((p) => p.name)
+        .sort(),
+    ).toEqual(["core", "my-app"]);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -144,7 +141,11 @@ describe("discoverWorkspaces", () => {
     writeFileSync(join(dir, "app", "build.gradle"), "plugins {}\n");
     mkdirSync(join(dir, "lib", "core"), { recursive: true });
     writeFileSync(join(dir, "lib", "core", "build.gradle"), "plugins {}\n");
-    expect(discoverWorkspaces(dir).map((p) => p.dir).sort()).toEqual(["app", "lib/core"]);
+    expect(
+      discoverWorkspaces(dir)
+        .map((p) => p.dir)
+        .sort(),
+    ).toEqual(["app", "lib/core"]);
     rmSync(dir, { recursive: true, force: true });
   });
 

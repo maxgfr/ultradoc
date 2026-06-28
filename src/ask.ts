@@ -21,7 +21,7 @@ export function buildContext(options: AskOptions): RunContext {
 
   // --package: resolve to one workspace package and scope retrieval to its
   // subtree. An unknown name fails loudly with what actually exists.
-  let scopePkg;
+  let scopePkg: ReturnType<typeof resolvePackage>;
   if (options.pkg) {
     scopePkg = resolvePackage(index.packages, options.pkg);
     if (!scopePkg) {
@@ -79,10 +79,7 @@ export async function runAsk(options: AskOptions): Promise<AskResult> {
 
 // Single-source drill-down used by `ultradoc code|issues|prs|docs|so`. Returns
 // ranked evidence without writing a dossier — the model reads it from stdout.
-export async function runSingleSource(
-  options: AskOptions,
-  kind: SourceKind,
-): Promise<{ ctx: RunContext; evidence: EvidenceItem[]; notes: string[] }> {
+export async function runSingleSource(options: AskOptions, kind: SourceKind): Promise<{ ctx: RunContext; evidence: EvidenceItem[]; notes: string[] }> {
   const ctx = buildContext({ ...options, sources: [kind] });
   const results = await runSources(ctx);
   return { ctx, evidence: assignIds(results), notes: results.flatMap((r) => r.notes) };

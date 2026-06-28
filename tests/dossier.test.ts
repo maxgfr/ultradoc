@@ -32,8 +32,14 @@ describe("renderEvidenceMarkdown", () => {
   it("renders the question, grouped sections and citable ids", () => {
     const ev = assignIds(results);
     const meta: DossierMeta = {
-      question: "what?", repo: "r", host: "h", sources: ["code", "docs"], semantic: false,
-      evidenceCount: ev.length, builtAt: "now", notes: ["a note"],
+      question: "what?",
+      repo: "r",
+      host: "h",
+      sources: ["code", "docs"],
+      semantic: false,
+      evidenceCount: ev.length,
+      builtAt: "now",
+      notes: ["a note"],
     };
     const md = renderEvidenceMarkdown(ev, meta);
     expect(md).toContain("**Question:** what?");

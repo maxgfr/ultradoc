@@ -10,14 +10,7 @@ export interface Bm25Doc {
   len: number; // doc length in tokens (any consistent proxy works)
 }
 
-export function bm25(
-  docs: Bm25Doc[],
-  terms: string[],
-  N: number,
-  df: Map<string, number>,
-  k1 = 1.2,
-  b = 0.75,
-): Map<string, number> {
+export function bm25(docs: Bm25Doc[], terms: string[], N: number, df: Map<string, number>, k1 = 1.2, b = 0.75): Map<string, number> {
   const scores = new Map<string, number>();
   // Average length over the candidates, not the whole corpus — the corpus-wide
   // average isn't stored anywhere and the candidate average normalizes the same

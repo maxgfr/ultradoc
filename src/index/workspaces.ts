@@ -12,10 +12,7 @@ import { readText } from "../walk.js";
 
 // A directory only counts as a package if it carries a real manifest —
 // otherwise a glob like "packages/*" would pick up assets or fixtures.
-const PKG_MANIFESTS = [
-  "package.json", "Cargo.toml", "go.mod", "composer.json", "pyproject.toml",
-  "pom.xml", "build.gradle", "build.gradle.kts",
-];
+const PKG_MANIFESTS = ["package.json", "Cargo.toml", "go.mod", "composer.json", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts"];
 
 // Extract a string-array value for `key` inside TOML table [section]. Tracks
 // table headers line by line so key order, preceding keys (resolver = "2"),
@@ -93,9 +90,7 @@ function subDirs(root: string, rel: string): string[] {
   } catch {
     return [];
   }
-  return entries
-    .filter((n) => !n.startsWith(".") && n !== "node_modules" && isDir(join(abs, n)))
-    .map((n) => (rel ? `${rel}/${n}` : n));
+  return entries.filter((n) => !n.startsWith(".") && n !== "node_modules" && isDir(join(abs, n))).map((n) => (rel ? `${rel}/${n}` : n));
 }
 
 // Expand one workspace pattern to candidate dirs, segment by segment: literal
@@ -134,7 +129,7 @@ function expand(root: string, patterns: string[]): string[] {
     const neg = raw.startsWith("!");
     const pat = (neg ? raw.slice(1) : raw).replace(/^\.\//, "").replace(/\/+$/, "");
     if (!pat || pat === ".") continue;
-    for (const dir of expandOne(root, pat)) (neg ? exclude.add(dir) : include.push(dir));
+    for (const dir of expandOne(root, pat)) neg ? exclude.add(dir) : include.push(dir);
   }
   return include.filter((d) => !exclude.has(d));
 }
@@ -161,8 +156,7 @@ function describePackage(root: string, dir: string): WorkspacePackage | undefine
   const py = readText(join(root, dir, "pyproject.toml"));
   if (py) {
     const name = tomlStringInSection(py, "project", "name") ?? tomlStringInSection(py, "tool.poetry", "name");
-    const description =
-      tomlStringInSection(py, "project", "description") ?? tomlStringInSection(py, "tool.poetry", "description");
+    const description = tomlStringInSection(py, "project", "description") ?? tomlStringInSection(py, "tool.poetry", "description");
     if (name) return { name, dir, description };
   }
   const pom = readText(join(root, dir, "pom.xml"));
@@ -217,7 +211,10 @@ function workspacePatterns(root: string): string[] {
   if (gowork) {
     const block = /^use\s*\(([\s\S]*?)\)/m.exec(gowork)?.[1];
     const uses = block
-      ? block.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("//"))
+      ? block
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith("//"))
       : [...gowork.matchAll(/^use\s+(\S+)/gm)].map((m) => m[1]!);
     patterns.push(...uses);
   }
@@ -275,20 +272,13 @@ export function discoverWorkspaces(root: string): WorkspacePackage[] {
 
 // Resolve a user-supplied --package value (full name, short name, or dir) to
 // one package. Ambiguous or unknown → undefined; the caller reports loudly.
-export function resolvePackage(
-  packages: WorkspacePackage[],
-  query: string,
-): WorkspacePackage | undefined {
+export function resolvePackage(packages: WorkspacePackage[], query: string): WorkspacePackage | undefined {
   const q = query.toLowerCase().replace(/\/+$/, "");
   const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
   if (exact) return exact;
-  const short = packages.filter(
-    (p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q,
-  );
+  const short = packages.filter((p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q);
   if (short.length === 1) return short[0];
   if (short.length > 1) return undefined;
-  const loose = packages.filter(
-    (p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q),
-  );
+  const loose = packages.filter((p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q));
   return loose.length === 1 ? loose[0] : undefined;
 }

@@ -80,10 +80,7 @@ export function resolveRepo(raw: string): RepoRef {
 // Local repos are used in place. Remote repos are shallow-cloned into the cache
 // (reused on subsequent runs unless `refresh`). Throws a readable error if the
 // clone fails (private repo, bad URL, no network).
-export function ensureClone(
-  ref: RepoRef,
-  opts: { refresh?: boolean; branch?: string } = {},
-): string {
+export function ensureClone(ref: RepoRef, opts: { refresh?: boolean; branch?: string } = {}): string {
   if (ref.isLocal) return resolve(ref.raw);
 
   const dir = join(cacheRoot(), ref.slug);
@@ -105,15 +102,9 @@ export function ensureClone(
   const res = sh("git", args, { timeoutMs: 300_000 });
   if (!res.ok) {
     // Retry without the partial-clone filter; some servers reject it.
-    const fallback = sh(
-      "git",
-      ["clone", "--depth", "1", ...(opts.branch ? ["--branch", opts.branch] : []), ref.cloneUrl!, dir],
-      { timeoutMs: 300_000 },
-    );
+    const fallback = sh("git", ["clone", "--depth", "1", ...(opts.branch ? ["--branch", opts.branch] : []), ref.cloneUrl!, dir], { timeoutMs: 300_000 });
     if (!fallback.ok) {
-      throw new Error(
-        `git clone failed for ${ref.cloneUrl}\n${(res.stderr || fallback.stderr).trim()}`,
-      );
+      throw new Error(`git clone failed for ${ref.cloneUrl}\n${(res.stderr || fallback.stderr).trim()}`);
     }
   }
   if (!existsSync(dir) || readdirSync(dir).length === 0) {
@@ -145,12 +136,7 @@ export function ensureHistoryDepth(dir: string): { ok: boolean; note?: string } 
     out = { ok: true };
   } else {
     if (partial) sh("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
-    const args = [
-      "-C", dir, "fetch", "--quiet",
-      ...(partial ? ["--refetch"] : []),
-      ...(shallow ? ["--unshallow"] : []),
-      "origin",
-    ];
+    const args = ["-C", dir, "fetch", "--quiet", ...(partial ? ["--refetch"] : []), ...(shallow ? ["--unshallow"] : []), "origin"];
     const full = sh("git", args, { timeoutMs: 300_000 });
     if (full.ok) {
       out = { ok: true };

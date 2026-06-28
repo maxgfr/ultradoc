@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
 import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";

@@ -23,12 +23,8 @@ describe("dedupeAcrossSources", () => {
   });
 
   it("collapses overlapping excerpts of the same file across sources", () => {
-    const code = res("code", [
-      item({ source: "code", ref: "README.md", location: "README.md:10-20", snippet: "a" }),
-    ]);
-    const docs = res("docs", [
-      item({ source: "docs", ref: "README.md", location: "README.md:12-22", snippet: "b" }),
-    ]);
+    const code = res("code", [item({ source: "code", ref: "README.md", location: "README.md:10-20", snippet: "a" })]);
+    const docs = res("docs", [item({ source: "docs", ref: "README.md", location: "README.md:12-22", snippet: "b" })]);
     const { results, dropped } = dedupeAcrossSources([code, docs], new Set(["README.md"]));
     expect(dropped).toBe(1);
     // README is a doc file — the docs-source copy must survive.
@@ -37,12 +33,8 @@ describe("dedupeAcrossSources", () => {
   });
 
   it("keeps non-overlapping excerpts of the same file", () => {
-    const code = res("code", [
-      item({ source: "code", ref: "src/a.ts", location: "src/a.ts:1-10", snippet: "a" }),
-    ]);
-    const docs = res("docs", [
-      item({ source: "docs", ref: "src/a.ts", location: "src/a.ts:50-60", snippet: "b" }),
-    ]);
+    const code = res("code", [item({ source: "code", ref: "src/a.ts", location: "src/a.ts:1-10", snippet: "a" })]);
+    const docs = res("docs", [item({ source: "docs", ref: "src/a.ts", location: "src/a.ts:50-60", snippet: "b" })]);
     const { dropped } = dedupeAcrossSources([code, docs], new Set());
     expect(dropped).toBe(0);
   });
@@ -57,12 +49,8 @@ describe("dedupeAcrossSources", () => {
   });
 
   it("prefers the earlier canonical source for non-doc files", () => {
-    const code = res("code", [
-      item({ source: "code", ref: "src/a.ts", location: "src/a.ts:1-10", snippet: "x" }),
-    ]);
-    const web = res("web", [
-      item({ source: "web", ref: "src/a.ts", location: "src/a.ts:2-11", snippet: "y", score: 99 }),
-    ]);
+    const code = res("code", [item({ source: "code", ref: "src/a.ts", location: "src/a.ts:1-10", snippet: "x" })]);
+    const web = res("web", [item({ source: "web", ref: "src/a.ts", location: "src/a.ts:2-11", snippet: "y", score: 99 })]);
     const { results } = dedupeAcrossSources([code, web], new Set());
     expect(results.find((r) => r.source === "code")!.items).toHaveLength(1);
     expect(results.find((r) => r.source === "web")!.items).toHaveLength(0);

@@ -40,6 +40,19 @@ describe("parseArgs", () => {
     expect(p.bools.has("json")).toBe(true);
   });
 
+  // Boolean flags are presence-only: `--semantic` / `--json` set the flag, but
+  // a `--flag=value` form is rejected rather than silently swallowing the value.
+  it("rejects a value attached to a boolean flag", () => {
+    expect(trapExit(() => parseArgs(["ask", "--repo", "x", "--q", "y", "--json=true"])).code).toBe(1);
+    expect(trapExit(() => parseArgs(["ask", "--repo", "x", "--q", "y", "--semantic=false"])).code).toBe(1);
+  });
+
+  it("treats a bare boolean flag as present without consuming the next token", () => {
+    const p = parseArgs(["ask", "--repo", "x", "--q", "y", "--semantic", "--sources", "code"]);
+    expect(p.bools.has("semantic")).toBe(true);
+    expect(p.values.sources).toBe("code");
+  });
+
   it("collects the positional action for semantic", () => {
     const p = parseArgs(["semantic", "up"]);
     expect(p.command).toBe("semantic");

@@ -42,8 +42,14 @@ export async function historySource(ctx: RunContext): Promise<SourceResult> {
     const res = sh(
       "git",
       [
-        "-C", ctx.repoDir, "log", pickaxe,
-        "--format=%h%x09%ad%x09%an%x09%s", "--date=short", "--max-count=5", "--no-merges",
+        "-C",
+        ctx.repoDir,
+        "log",
+        pickaxe,
+        "--format=%h%x09%ad%x09%an%x09%s",
+        "--date=short",
+        "--max-count=5",
+        "--no-merges",
         ...(ctx.scopeDir ? ["--", ctx.scopeDir] : []),
       ],
       { timeoutMs: 120_000 },
@@ -64,9 +70,7 @@ export async function historySource(ctx: RunContext): Promise<SourceResult> {
 
   // Commits touched by more of the question's keywords rank first; recency
   // breaks ties (dates are ISO, so string compare works).
-  const top = [...hits.values()]
-    .sort((a, b) => b.kws.size - a.kws.size || b.date.localeCompare(a.date))
-    .slice(0, ctx.options.perSource);
+  const top = [...hits.values()].sort((a, b) => b.kws.size - a.kws.size || b.date.localeCompare(a.date)).slice(0, ctx.options.perSource);
 
   const items: RawItem[] = [];
   for (const c of top) {

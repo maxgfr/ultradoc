@@ -6,28 +6,9 @@ export const VERSION = "1.7.2";
 // Every retrieval source the dossier can draw from. The model cites evidence by
 // id; `source` lets the dossier group items and lets `check` validate citation
 // kinds.
-export type SourceKind =
-  | "code"
-  | "docs"
-  | "release"
-  | "history"
-  | "issue"
-  | "pr"
-  | "discussion"
-  | "so"
-  | "web";
+export type SourceKind = "code" | "docs" | "release" | "history" | "issue" | "pr" | "discussion" | "so" | "web";
 
-export const ALL_SOURCES: readonly SourceKind[] = [
-  "code",
-  "docs",
-  "release",
-  "history",
-  "issue",
-  "pr",
-  "discussion",
-  "so",
-  "web",
-];
+export const ALL_SOURCES: readonly SourceKind[] = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 
 // A single piece of grounded evidence. `id` is stable within a run ("E1", "E2",
 // …) and is what the model cites in ANSWER.md. `ref` is a short provenance

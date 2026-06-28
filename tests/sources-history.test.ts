@@ -22,10 +22,7 @@ beforeAll(() => {
   writeFileSync(join(repo, "lib.ts"), "export const VERSION = 1;\n");
   git("add", "-A");
   git("commit", "-q", "-m", "initial commit");
-  writeFileSync(
-    join(repo, "lib.ts"),
-    "export const VERSION = 1;\nexport function retryBackoff(attempt: number): number {\n  return 2 ** attempt;\n}\n",
-  );
+  writeFileSync(join(repo, "lib.ts"), "export const VERSION = 1;\nexport function retryBackoff(attempt: number): number {\n  return 2 ** attempt;\n}\n");
   git("add", "-A");
   git("commit", "-q", "-m", "feat: add retryBackoff helper");
 });
@@ -40,8 +37,14 @@ function ctxFor(question: string): RunContext {
     repoDir: repo,
     index: { docFiles: [], symbols: [], packages: [] } as unknown as StructuralIndex,
     options: {
-      repo, question, sources: ["history"],
-      semantic: false, webEngine: "auto", perSource: 6, json: false, refresh: false,
+      repo,
+      question,
+      sources: ["history"],
+      semantic: false,
+      webEngine: "auto",
+      perSource: 6,
+      json: false,
+      refresh: false,
     },
   };
 }

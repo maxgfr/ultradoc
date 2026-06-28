@@ -23,6 +23,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "lint": "biome ci .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "verify:bundle": "node scripts/verify-skill-bundle.mjs",
     "check:build": "tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/ultradoc.mjs skills/ultradoc/scripts/ultradoc.mjs && node scripts/verify-skill-bundle.mjs",
     "demo": "node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib --q \"how does the retry backoff work?\" --sources code,docs --out /tmp/ultradoc-demo",
@@ -47,6 +50,7 @@
     "url": "https://github.com/maxgfr/ultradoc"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",

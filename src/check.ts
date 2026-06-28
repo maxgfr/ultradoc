@@ -54,10 +54,7 @@ function resolves(tok: string, evidence: EvidenceItem[], ids: Set<string>, refs:
     return evidence.some(
       (e) =>
         e.source === source &&
-        (e.ref.includes(payload) ||
-          payload.includes(e.ref) ||
-          (e.location?.includes(payload) ?? false) ||
-          (e.url?.includes(payload) ?? false)),
+        (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false)),
     );
   }
   return false;
@@ -99,7 +96,13 @@ function isTableRow(line: string): boolean {
   return /\|/.test(line.trim()) && !isTableSeparator(line);
 }
 function tableCells(line: string): string {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()).join(" ");
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim())
+    .join(" ");
 }
 function isListItem(line: string): boolean {
   return /^\s*([-*+]|\d+\.)\s+\S/.test(line);
@@ -203,10 +206,7 @@ export function citedEvidenceIds(text: string, evidence: EvidenceItem[]): string
       for (const e of evidence) {
         if (
           e.source === source &&
-          (e.ref.includes(payload) ||
-            payload.includes(e.ref) ||
-            (e.location?.includes(payload) ?? false) ||
-            (e.url?.includes(payload) ?? false))
+          (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))
         ) {
           push(e.id);
         }
@@ -223,9 +223,7 @@ export function citedEvidenceIds(text: string, evidence: EvidenceItem[]): string
 function applySemantic(dir: string, result: CheckResult): void {
   const p = join(dir, "VERIFY.json");
   if (!existsSync(p)) {
-    result.warnings.push(
-      "--semantic: no VERIFY.json — run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.",
-    );
+    result.warnings.push("--semantic: no VERIFY.json — run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
     return;
   }
   try {
@@ -233,9 +231,7 @@ function applySemantic(dir: string, result: CheckResult): void {
     result.semantic = sem;
     if (!sem.ok) {
       result.ok = false;
-      result.errors.push(
-        `Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`,
-      );
+      result.errors.push(`Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
     }
     if (sem.unadjudicated?.length) {
       result.warnings.push(`${sem.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
@@ -274,7 +270,11 @@ export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: s
     evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as EvidenceItem[];
   } catch (e) {
     return {
-      ok: false, citations: [], resolved: [], dangling: [], uncited: [],
+      ok: false,
+      citations: [],
+      resolved: [],
+      dangling: [],
+      uncited: [],
       errors: [`evidence.json is unreadable: ${(e as Error).message}`],
       warnings: [],
     };

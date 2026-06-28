@@ -26,13 +26,7 @@ describe("buildOutline", () => {
     const index = buildIndex(resolve("tests/fixtures/sample-lib"), "test-sample");
     const outline = buildOutline(index, "sample-lib");
     const titles = outline.map((s) => s.title);
-    expect(titles).toEqual([
-      "Overview",
-      "Installation & usage",
-      "Public API",
-      "Configuration",
-      "Architecture & internals",
-    ]);
+    expect(titles).toEqual(["Overview", "Installation & usage", "Public API", "Configuration", "Architecture & internals"]);
     // Ids are stable and ordered.
     expect(outline.map((s) => s.id)).toEqual(["S1", "S2", "S3", "S4", "S5"]);
     // The API section is grounded on the project's actual exported identifiers.
@@ -46,7 +40,11 @@ describe("buildOutline", () => {
     // (foo_test.go, test_foo.py) that rank high only because test files are
     // symbol-dense — they are not the public API.
     const index = {
-      slug: "x", root: "/x", builtAt: "", fileCount: 4, languages: {},
+      slug: "x",
+      root: "/x",
+      builtAt: "",
+      fileCount: 4,
+      languages: {},
       symbols: [
         { name: "TestRetry", kind: "function", file: "client_test.go", line: 1, exported: true, lang: "go" },
         { name: "TestServe", kind: "function", file: "tests/server.go", line: 1, exported: true, lang: "go" },
@@ -56,7 +54,10 @@ describe("buildOutline", () => {
         { name: "RetryClient", kind: "type", file: "client.go", line: 4, exported: true, lang: "go" },
         { name: "NewClient", kind: "function", file: "client.go", line: 5, exported: true, lang: "go" },
       ],
-      docFiles: [], configFiles: [], packages: [], schemaVersion: 1,
+      docFiles: [],
+      configFiles: [],
+      packages: [],
+      schemaVersion: 1,
     } as unknown as StructuralIndex;
     const api = buildOutline(index, "mylib").find((s) => s.title === "Public API")!;
     expect(api.query).toMatch(/RetryClient|NewClient/);
@@ -88,7 +89,10 @@ describe("runDoc (offline integration)", () => {
 
     // A DOC.md citing real ids passes check (which auto-detects DOC.md when no
     // ANSWER.md is present).
-    const cite = r.evidence.slice(0, 2).map((e) => `[${e.id}]`).join(" ");
+    const cite = r.evidence
+      .slice(0, 2)
+      .map((e) => `[${e.id}]`)
+      .join(" ");
     writeFileSync(join(out, "DOC.md"), `# doc\n\n## Overview\nA grounded claim ${cite}.\n`);
     const ok = checkRun(out);
     expect(ok.ok).toBe(true);

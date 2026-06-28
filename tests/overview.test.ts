@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { rmSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { buildIndex } from "../src/index/structural.js";
 import { renderOverview, ensureOverview, overviewPath } from "../src/overview.js";
 import { resolveRepo } from "../src/clone.js";

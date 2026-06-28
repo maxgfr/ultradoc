@@ -62,10 +62,7 @@ async function githubReleases(ctx: RunContext, kws: string[]): Promise<{ items: 
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(
-      `https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`,
-      { accept: "application/vnd.github+json" },
-    );
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, { accept: "application/vnd.github+json" });
     if (!r.ok) {
       notes.push(`GitHub releases API unavailable (status ${r.status}); used the changelog only.`);
       return { items: [], notes };
@@ -105,7 +102,10 @@ export function githubReleaseItems(releases: any[], kws: string[]): RawItem[] {
       ref: `release:${tag}`,
       location: rel.html_url,
       score: cov * 3,
-      snippet: String(rel.body ?? "(no release notes)").replace(/\r/g, "").trim().slice(0, 1200),
+      snippet: String(rel.body ?? "(no release notes)")
+        .replace(/\r/g, "")
+        .trim()
+        .slice(0, 1200),
       url: rel.html_url,
       meta: { tag, publishedAt: rel.published_at },
     });
@@ -120,10 +120,7 @@ export async function releasesSource(ctx: RunContext): Promise<SourceResult> {
 
   // Offline half: version sections of the repo's own changelog(s).
   const changelogs = ctx.index.docFiles.filter(
-    (rel) =>
-      CHANGELOG_RE.test(rel) &&
-      (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) &&
-      !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel),
+    (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel),
   );
   for (const rel of changelogs) {
     const content = readText(join(ctx.repoDir, rel));
@@ -141,9 +138,7 @@ export async function releasesSource(ctx: RunContext): Promise<SourceResult> {
         location: `${rel}:${s.start}-${s.start + s.lines.length - 1}`,
         score: cov * 3,
         snippet: s.lines.slice(0, 30).join("\n"),
-        url: ctx.repoRef.isLocal
-          ? undefined
-          : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${rel}#L${s.start}-L${end}`,
+        url: ctx.repoRef.isLocal ? undefined : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${rel}#L${s.start}-L${end}`,
       });
     }
   }

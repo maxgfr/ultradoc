@@ -5,9 +5,7 @@ import { indexDir } from "./index/structural.js";
 
 // Canonical ordering so evidence ids are stable and grouped predictably,
 // regardless of which order the sources finished in.
-export const SOURCE_ORDER: SourceKind[] = [
-  "code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web",
-];
+export const SOURCE_ORDER: SourceKind[] = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 const SOURCE_LABEL: Record<SourceKind, string> = {
   code: "Code",
   docs: "Documentation",
@@ -31,10 +29,7 @@ function pad(n: number): string {
 }
 
 export function runId(d: Date = new Date()): string {
-  return (
-    `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
-    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
-  );
+  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 // Persist runs beside the clone under <repoDir>/.ultradoc/runs/<id> — the same
@@ -49,18 +44,13 @@ export function defaultRunDir(repoDir: string, d?: Date): string {
 // canonical source order, best-scored first within each source.
 export function assignIds(results: SourceResult[]): EvidenceItem[] {
   const flat = results.flatMap((r) => r.items);
-  flat.sort(
-    (a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref),
-  );
+  flat.sort((a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
   return flat.map((it, i) => ({ id: `E${i + 1}`, ...it }));
 }
 
 // Render the model-facing evidence document. Every item carries an id the model
 // must cite in ANSWER.md; `ultradoc check` later verifies those citations.
-export function renderEvidenceMarkdown(
-  evidence: EvidenceItem[],
-  meta: DossierMeta,
-): string {
+export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMeta): string {
   const out: string[] = [];
   out.push(`# Evidence dossier`);
   out.push("");
@@ -89,13 +79,7 @@ export function renderEvidenceMarkdown(
     out.push("");
     for (const it of items) {
       out.push(`### [${it.id}] ${it.title}`);
-      const meta1 = [
-        `ref: \`${it.ref}\``,
-        it.location ? `loc: \`${it.location}\`` : "",
-        `score: ${it.score}`,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+      const meta1 = [`ref: \`${it.ref}\``, it.location ? `loc: \`${it.location}\`` : "", `score: ${it.score}`].filter(Boolean).join(" · ");
       out.push(meta1);
       if (it.url) out.push(`url: ${it.url}`);
       out.push("");
