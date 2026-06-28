@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.7.2](https://github.com/maxgfr/ultradoc/compare/v1.7.1...v1.7.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **skill:** restore temporal/doc-gen triggers in ultradoc description (≤1024) ([b84e269](https://github.com/maxgfr/ultradoc/commit/b84e269f5828d85d0514e5a509946dc72eac3e12))
+
 ## [1.7.1](https://github.com/maxgfr/ultradoc/compare/v1.7.0...v1.7.1) (2026-06-28)
 
 
