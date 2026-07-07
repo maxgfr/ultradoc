@@ -489,3 +489,22 @@ export function rrf<T>(lists: T[][], keyOf: (item: T) => string, k = 60): Map<st
   }
   return score;
 }
+
+// Map `fn` over `items` with at most `limit` concurrent calls, preserving input
+// order in the result. Used to embed chunks in parallel without a dependency and
+// without unbounded fan-out; a rejected call surfaces as the thrown error.
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const n = items.length;
+  const out: R[] = new Array(n);
+  const width = Math.max(1, Math.min(limit, n || 1));
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= n) return;
+      out[i] = await fn(items[i]!, i);
+    }
+  }
+  await Promise.all(Array.from({ length: width }, () => worker()));
+  return out;
+}

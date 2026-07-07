@@ -3,7 +3,7 @@ import { join, dirname } from "node:path";
 import type { RunContext, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
 import { httpGet, httpJson } from "../sources/fetch.js";
-import { sh, have } from "../util.js";
+import { sh, have, mapLimit } from "../util.js";
 import { LIMITS } from "../config.js";
 import { ensureComposeMaterialized } from "./compose.js";
 
@@ -29,7 +29,8 @@ interface Chunk {
   isDoc: boolean;
 }
 
-// Split a file into overlapping line windows. Pure + exported for testing.
+// Split a file into overlapping line windows. Pure + exported for testing. Used
+// for docs and for code files with no extracted symbols.
 export function chunkText(rel: string, content: string, isDoc: boolean, opts: { windowLines?: number; overlap?: number; maxPerFile?: number } = {}): Chunk[] {
   const win = opts.windowLines ?? 60;
   const overlap = opts.overlap ?? 12;
@@ -46,13 +47,59 @@ export function chunkText(rel: string, content: string, isDoc: boolean, opts: { 
   return chunks;
 }
 
+// Chunk a code file at symbol boundaries so a function/class isn't split across
+// the middle of its body: each symbol anchors a chunk spanning from its
+// definition to the next symbol (capped at `win` lines). The region before the
+// first symbol (imports/top-level) gets its own chunk. Docs, and files with no
+// symbols, fall back to the fixed-window chunker. Pure + exported for testing.
+export function chunkFile(
+  rel: string,
+  content: string,
+  isDoc: boolean,
+  symbolLines: number[],
+  opts: { windowLines?: number; overlap?: number; maxPerFile?: number } = {},
+): Chunk[] {
+  const win = opts.windowLines ?? 60;
+  const maxPerFile = opts.maxPerFile ?? 40;
+  const MIN_LEADING = 5;
+  const lines = content.split(/\r?\n/);
+  const n = lines.length;
+  const starts = [...new Set((symbolLines ?? []).filter((l) => l >= 1 && l <= n))].sort((a, b) => a - b);
+  if (isDoc || starts.length === 0) return chunkText(rel, content, isDoc, opts);
+
+  const chunks: Chunk[] = [];
+  const add = (from: number, to: number): void => {
+    if (chunks.length >= maxPerFile) return;
+    const s = Math.max(1, from);
+    const e = Math.min(n, to);
+    if (e < s) return;
+    const text = lines
+      .slice(s - 1, e)
+      .join("\n")
+      .trim();
+    if (text.length < 16) return;
+    chunks.push({ rel, start: s, end: e, text, isDoc });
+  };
+
+  if (starts[0]! - 1 >= MIN_LEADING) add(1, starts[0]! - 1);
+  for (let i = 0; i < starts.length && chunks.length < maxPerFile; i++) {
+    const start = starts[i]!;
+    const nextStart = i + 1 < starts.length ? starts[i + 1]! : n + 1;
+    // Span the symbol body up to the next symbol, capped at `win` lines.
+    add(start, Math.min(start + win - 1, nextStart - 1));
+  }
+  return chunks;
+}
+
 async function reachable(base: string, path = "/"): Promise<boolean> {
   const r = await httpGet(base + path, { timeoutMs: 2500 });
   return r.ok; // a healthy 2xx — a 5xx means up-but-broken, treat as unavailable
 }
 
 async function embed(text: string): Promise<number[] | null> {
-  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 60_000 });
+  // 30s per embed: a wedged Ollama should fail the build fast, not after minutes
+  // of stalled requests. Parallelism (mapLimit) keeps throughput up.
+  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 30_000 });
   const v = r.ok ? r.data?.embedding : undefined;
   return Array.isArray(v) && v.length ? v : null;
 }
@@ -71,8 +118,9 @@ async function collectionExists(name: string): Promise<boolean> {
 }
 
 // Build the per-repo vector collection if it isn't already present for this
-// commit: chunk code + docs, embed each chunk locally, upsert into Qdrant.
-async function buildIfNeeded(ctx: RunContext): Promise<{ name: string } | { error: string }> {
+// commit: chunk code (at symbol boundaries) + docs, embed the chunks in
+// parallel, upsert into Qdrant. Returns notes when the index is partial.
+async function buildIfNeeded(ctx: RunContext): Promise<{ name: string; notes: string[] } | { error: string }> {
   const name = collectionName(ctx.repoRef.slug);
   const marker = markerPath(ctx.repoDir);
   const commit = ctx.index.commit ?? "HEAD";
@@ -81,34 +129,48 @@ async function buildIfNeeded(ctx: RunContext): Promise<{ name: string } | { erro
     try {
       const m = JSON.parse(readFileSync(marker, "utf8"));
       if (m.collection === name && m.commit === commit && (await collectionExists(name))) {
-        return { name };
+        return { name, notes: [] };
       }
     } catch {
       /* rebuild */
     }
   }
 
-  // Gather chunks from code + doc files (cap total to bound embedding time).
-  const codeFiles = ctx.index.symbols.length ? [...new Set(ctx.index.symbols.map((s) => s.file))] : [];
+  // Symbol start-lines per file so code chunks respect definition boundaries.
+  const symbolLines = new Map<string, number[]>();
+  for (const s of ctx.index.symbols) {
+    const arr = symbolLines.get(s.file) ?? [];
+    arr.push(s.line);
+    symbolLines.set(s.file, arr);
+  }
+  const codeFiles = symbolLines.size ? [...symbolLines.keys()] : [];
   const files = [...new Set([...codeFiles, ...ctx.index.docFiles])];
   const chunks: Chunk[] = [];
+  let capped = false;
   for (const rel of files) {
-    if (chunks.length >= MAX_CHUNKS) break;
+    if (chunks.length >= MAX_CHUNKS) {
+      capped = true;
+      break;
+    }
     const content = readText(join(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc = ctx.index.docFiles.includes(rel);
-    for (const c of chunkText(rel, content, isDoc)) {
+    for (const c of chunkFile(rel, content, isDoc, symbolLines.get(rel) ?? [])) {
       chunks.push(c);
-      if (chunks.length >= MAX_CHUNKS) break;
+      if (chunks.length >= MAX_CHUNKS) {
+        capped = true;
+        break;
+      }
     }
   }
   if (chunks.length === 0) return { error: "no chunkable content to embed" };
 
-  // Embed the first chunk to learn the vector dimension, then (re)create the
-  // collection and upsert in batches.
-  const first = await embed(chunks[0]!.text);
-  if (!first) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
-  const dim = first.length;
+  // Embed all chunks in parallel (bounded concurrency), preserving order so
+  // point ids are stable. A failed embed yields null and is counted.
+  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c) => embed(c.text));
+  const dim = vectors.find((v): v is number[] => Array.isArray(v) && v.length > 0)?.length;
+  if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
+  const failed = vectors.filter((v) => !v).length;
 
   // We only reach here when (re)building — marker missing, commit changed, or
   // the collection is gone. Delete any existing collection first so a rebuild
@@ -119,33 +181,38 @@ async function buildIfNeeded(ctx: RunContext): Promise<{ name: string } | { erro
   });
   if (!create.ok) return { error: `could not create Qdrant collection (${create.status})` };
 
-  const points: any[] = [];
+  let points: any[] = [];
   const flush = async (): Promise<boolean> => {
     if (!points.length) return true;
     const up = await httpJson("PUT", `${QDRANT}/collections/${name}/points?wait=true`, { points });
-    points.length = 0;
+    points = [];
     return up.ok;
   };
   for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i]!;
-    const vector = i === 0 ? first : await embed(c.text);
+    const vector = vectors[i];
     if (!vector) continue;
-    points.push({
-      id: i + 1,
-      vector,
-      payload: { rel: c.rel, start: c.start, end: c.end, isDoc: c.isDoc, snippet: c.text.slice(0, 1500) },
-    });
+    const c = chunks[i]!;
+    points.push({ id: i + 1, vector, payload: { rel: c.rel, start: c.start, end: c.end, isDoc: c.isDoc, snippet: c.text.slice(0, 1500) } });
     if (points.length >= 64 && !(await flush())) return { error: "failed to upsert vectors to Qdrant" };
   }
   if (!(await flush())) return { error: "failed to upsert vectors to Qdrant" };
 
-  try {
-    mkdirSync(dirname(marker), { recursive: true });
-    writeFileSync(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
-  } catch {
-    /* persistence is best-effort */
+  const notes: string[] = [];
+  if (capped) notes.push(`Embedded ${chunks.length} chunks (repo has more) — raise ULTRADOC_MAX_CHUNKS for fuller semantic coverage.`);
+  if (failed) notes.push(`${failed} chunk(s) failed to embed — the semantic index is partial.`);
+
+  // If more than 20% of chunks failed the index is too hollow to trust; skip the
+  // marker so the next run retries instead of reusing a partial collection.
+  const tooHollow = failed / chunks.length > 0.2;
+  if (!tooHollow) {
+    try {
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
+    } catch {
+      /* persistence is best-effort */
+    }
   }
-  return { name };
+  return { name, notes };
 }
 
 // Tier-2 semantic retrieval. Returns available:false (so the code source falls
@@ -163,6 +230,7 @@ export async function semanticSearch(ctx: RunContext): Promise<SemanticResult> {
 
   const built = await buildIfNeeded(ctx);
   if ("error" in built) return fallbackNote(built.error);
+  const buildNotes = built.notes;
 
   const qv = await embed(ctx.options.question);
   if (!qv) return fallbackNote("could not embed the question");
@@ -189,7 +257,7 @@ export async function semanticSearch(ctx: RunContext): Promise<SemanticResult> {
     };
   });
 
-  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`] };
+  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`, ...buildNotes] };
 }
 
 // Materialize the compose stack from the bundle into the cache dir and return

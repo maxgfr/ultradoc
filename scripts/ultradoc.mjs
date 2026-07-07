@@ -368,6 +368,21 @@ function rrf(lists, keyOf, k = 60) {
   }
   return score;
 }
+async function mapLimit(items, limit, fn) {
+  const n = items.length;
+  const out = new Array(n);
+  const width = Math.max(1, Math.min(limit, n || 1));
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= n) return;
+      out[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: width }, () => worker()));
+  return out;
+}
 
 // src/config.ts
 import { homedir, tmpdir } from "os";
@@ -2224,12 +2239,38 @@ function chunkText(rel, content, isDoc2, opts = {}) {
   }
   return chunks;
 }
+function chunkFile(rel, content, isDoc2, symbolLines, opts = {}) {
+  const win = opts.windowLines ?? 60;
+  const maxPerFile = opts.maxPerFile ?? 40;
+  const MIN_LEADING = 5;
+  const lines = content.split(/\r?\n/);
+  const n = lines.length;
+  const starts = [...new Set((symbolLines ?? []).filter((l) => l >= 1 && l <= n))].sort((a, b) => a - b);
+  if (isDoc2 || starts.length === 0) return chunkText(rel, content, isDoc2, opts);
+  const chunks = [];
+  const add = (from, to) => {
+    if (chunks.length >= maxPerFile) return;
+    const s = Math.max(1, from);
+    const e = Math.min(n, to);
+    if (e < s) return;
+    const text = lines.slice(s - 1, e).join("\n").trim();
+    if (text.length < 16) return;
+    chunks.push({ rel, start: s, end: e, text, isDoc: isDoc2 });
+  };
+  if (starts[0] - 1 >= MIN_LEADING) add(1, starts[0] - 1);
+  for (let i = 0; i < starts.length && chunks.length < maxPerFile; i++) {
+    const start = starts[i];
+    const nextStart = i + 1 < starts.length ? starts[i + 1] : n + 1;
+    add(start, Math.min(start + win - 1, nextStart - 1));
+  }
+  return chunks;
+}
 async function reachable(base, path = "/") {
   const r = await httpGet(base + path, { timeoutMs: 2500 });
   return r.ok;
 }
 async function embed(text) {
-  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 6e4 });
+  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 3e4 });
   const v = r.ok ? r.data?.embedding : void 0;
   return Array.isArray(v) && v.length ? v : null;
 }
@@ -2251,58 +2292,74 @@ async function buildIfNeeded(ctx) {
     try {
       const m = JSON.parse(readFileSync4(marker, "utf8"));
       if (m.collection === name && m.commit === commit && await collectionExists(name)) {
-        return { name };
+        return { name, notes: [] };
       }
     } catch {
     }
   }
-  const codeFiles = ctx.index.symbols.length ? [...new Set(ctx.index.symbols.map((s) => s.file))] : [];
+  const symbolLines = /* @__PURE__ */ new Map();
+  for (const s of ctx.index.symbols) {
+    const arr = symbolLines.get(s.file) ?? [];
+    arr.push(s.line);
+    symbolLines.set(s.file, arr);
+  }
+  const codeFiles = symbolLines.size ? [...symbolLines.keys()] : [];
   const files = [.../* @__PURE__ */ new Set([...codeFiles, ...ctx.index.docFiles])];
   const chunks = [];
+  let capped = false;
   for (const rel of files) {
-    if (chunks.length >= MAX_CHUNKS) break;
+    if (chunks.length >= MAX_CHUNKS) {
+      capped = true;
+      break;
+    }
     const content = readText(join10(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
-    for (const c2 of chunkText(rel, content, isDoc2)) {
+    for (const c2 of chunkFile(rel, content, isDoc2, symbolLines.get(rel) ?? [])) {
       chunks.push(c2);
-      if (chunks.length >= MAX_CHUNKS) break;
+      if (chunks.length >= MAX_CHUNKS) {
+        capped = true;
+        break;
+      }
     }
   }
   if (chunks.length === 0) return { error: "no chunkable content to embed" };
-  const first = await embed(chunks[0].text);
-  if (!first) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
-  const dim = first.length;
+  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c2) => embed(c2.text));
+  const dim = vectors.find((v) => Array.isArray(v) && v.length > 0)?.length;
+  if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
+  const failed = vectors.filter((v) => !v).length;
   await httpJson("DELETE", `${QDRANT}/collections/${name}`);
   const create = await httpJson("PUT", `${QDRANT}/collections/${name}`, {
     vectors: { size: dim, distance: "Cosine" }
   });
   if (!create.ok) return { error: `could not create Qdrant collection (${create.status})` };
-  const points = [];
+  let points = [];
   const flush = async () => {
     if (!points.length) return true;
     const up = await httpJson("PUT", `${QDRANT}/collections/${name}/points?wait=true`, { points });
-    points.length = 0;
+    points = [];
     return up.ok;
   };
   for (let i = 0; i < chunks.length; i++) {
-    const c2 = chunks[i];
-    const vector = i === 0 ? first : await embed(c2.text);
+    const vector = vectors[i];
     if (!vector) continue;
-    points.push({
-      id: i + 1,
-      vector,
-      payload: { rel: c2.rel, start: c2.start, end: c2.end, isDoc: c2.isDoc, snippet: c2.text.slice(0, 1500) }
-    });
+    const c2 = chunks[i];
+    points.push({ id: i + 1, vector, payload: { rel: c2.rel, start: c2.start, end: c2.end, isDoc: c2.isDoc, snippet: c2.text.slice(0, 1500) } });
     if (points.length >= 64 && !await flush()) return { error: "failed to upsert vectors to Qdrant" };
   }
   if (!await flush()) return { error: "failed to upsert vectors to Qdrant" };
-  try {
-    mkdirSync5(dirname2(marker), { recursive: true });
-    writeFileSync4(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
-  } catch {
+  const notes = [];
+  if (capped) notes.push(`Embedded ${chunks.length} chunks (repo has more) \u2014 raise ULTRADOC_MAX_CHUNKS for fuller semantic coverage.`);
+  if (failed) notes.push(`${failed} chunk(s) failed to embed \u2014 the semantic index is partial.`);
+  const tooHollow = failed / chunks.length > 0.2;
+  if (!tooHollow) {
+    try {
+      mkdirSync5(dirname2(marker), { recursive: true });
+      writeFileSync4(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
+    } catch {
+    }
   }
-  return { name };
+  return { name, notes };
 }
 async function semanticSearch(ctx) {
   const fallbackNote = (why) => ({
@@ -2314,6 +2371,7 @@ async function semanticSearch(ctx) {
   if (!await reachable(OLLAMA, "/api/tags")) return fallbackNote(`Ollama not reachable at ${OLLAMA}`);
   const built = await buildIfNeeded(ctx);
   if ("error" in built) return fallbackNote(built.error);
+  const buildNotes = built.notes;
   const qv = await embed(ctx.options.question);
   if (!qv) return fallbackNote("could not embed the question");
   const res = await httpJson("POST", `${QDRANT}/collections/${built.name}/points/search`, {
@@ -2336,7 +2394,7 @@ async function semanticSearch(ctx) {
       meta: { semantic: true }
     };
   });
-  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`] };
+  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`, ...buildNotes] };
 }
 function composeFile() {
   return ensureComposeMaterialized();
