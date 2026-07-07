@@ -2,7 +2,7 @@
 
 // src/cli.ts
 import { resolve as resolve2 } from "path";
-import { pathToFileURL, fileURLToPath as fileURLToPath2 } from "url";
+import { pathToFileURL, fileURLToPath } from "url";
 import { realpathSync } from "fs";
 
 // src/types.ts
@@ -1847,9 +1847,8 @@ function searchCode(root, ref, index, question, perSource, scope) {
 }
 
 // src/index/semantic.ts
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync3, mkdirSync as mkdirSync4 } from "fs";
-import { join as join9, dirname } from "path";
-import { fileURLToPath } from "url";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync4, mkdirSync as mkdirSync5 } from "fs";
+import { join as join10, dirname as dirname2 } from "path";
 
 // src/sources/fetch.ts
 var UA = "ultradoc/0.x (+https://github.com/maxgfr/ultradoc)";
@@ -2053,6 +2052,98 @@ function excerptsFromText(text, url, title, source, question, perSource) {
   return items;
 }
 
+// src/index/compose.ts
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { dirname, join as join9 } from "path";
+var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode and web
+# search. Start it with \`ultradoc semantic up\` (or \`docker compose --profile all
+# up -d\`). The published bundle stays dependency-free \u2014 it only speaks HTTP to
+# these containers on localhost; nothing here is required for Tier-1 retrieval.
+#
+# Profiles let you start subsets:
+#   --profile semantic  \u2192 qdrant + ollama (vector search)
+#   --profile search    \u2192 searxng (web discovery)
+#   --profile all       \u2192 everything
+name: ultradoc
+
+services:
+  # Vector database \u2014 Apache-2.0, self-hosted, no key.
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ultradoc-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ultradoc_qdrant:/qdrant/storage
+    restart: unless-stopped
+    profiles: ["semantic", "all"]
+
+  # Local embedding server \u2014 no key, no data leaves the machine. Pull the model
+  # once: \`docker compose exec ollama ollama pull nomic-embed-text\`
+  # (\`ultradoc semantic up\` does this for you).
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ultradoc-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ultradoc_ollama:/root/.ollama
+    restart: unless-stopped
+    profiles: ["semantic", "all"]
+
+  # Self-hosted metasearch for keyless web discovery. JSON output is enabled in
+  # docker/searxng/settings.yml so the engine can be queried programmatically.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: ultradoc-searxng
+    ports:
+      - "8888:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    volumes:
+      - ./docker/searxng:/etc/searxng:rw
+    restart: unless-stopped
+    profiles: ["search", "all"]
+
+volumes:
+  ultradoc_qdrant:
+  ultradoc_ollama:
+`;
+var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for ultradoc's keyless web discovery. The important
+# bit is enabling the JSON output format so \`ultradoc web\` can query it
+# programmatically (\`/search?format=json\`). Change the secret_key for anything
+# beyond local use.
+use_default_settings: true
+
+server:
+  secret_key: "ultradoc-dev-secret-change-me"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json
+`;
+function ensureComposeMaterialized() {
+  const base = join9(cacheRoot(), "compose");
+  const composePath = join9(base, "docker-compose.yml");
+  const settingsPath = join9(base, "docker", "searxng", "settings.yml");
+  writeIfChanged(composePath, COMPOSE_YAML);
+  writeIfChanged(settingsPath, SEARXNG_SETTINGS_YAML);
+  return composePath;
+}
+function writeIfChanged(path, content) {
+  try {
+    if (existsSync4(path) && readFileSync3(path, "utf8") === content) return;
+    mkdirSync4(dirname(path), { recursive: true });
+    writeFileSync3(path, content);
+  } catch {
+  }
+}
+
 // src/index/semantic.ts
 var QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
 var OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
@@ -2086,7 +2177,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join9(repoDir, ".ultradoc", "semantic.json");
+  return join10(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name}`);
@@ -2096,9 +2187,9 @@ async function buildIfNeeded(ctx) {
   const name = collectionName(ctx.repoRef.slug);
   const marker = markerPath(ctx.repoDir);
   const commit = ctx.index.commit ?? "HEAD";
-  if (existsSync4(marker)) {
+  if (existsSync5(marker)) {
     try {
-      const m = JSON.parse(readFileSync3(marker, "utf8"));
+      const m = JSON.parse(readFileSync4(marker, "utf8"));
       if (m.collection === name && m.commit === commit && await collectionExists(name)) {
         return { name };
       }
@@ -2110,7 +2201,7 @@ async function buildIfNeeded(ctx) {
   const chunks = [];
   for (const rel of files) {
     if (chunks.length >= MAX_CHUNKS) break;
-    const content = readText(join9(ctx.repoDir, rel));
+    const content = readText(join10(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc2 = ctx.index.docFiles.includes(rel);
     for (const c2 of chunkText(rel, content, isDoc2)) {
@@ -2147,8 +2238,8 @@ async function buildIfNeeded(ctx) {
   }
   if (!await flush()) return { error: "failed to upsert vectors to Qdrant" };
   try {
-    mkdirSync4(dirname(marker), { recursive: true });
-    writeFileSync3(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
+    mkdirSync5(dirname2(marker), { recursive: true });
+    writeFileSync4(marker, JSON.stringify({ collection: name, commit, chunks: chunks.length, dim }));
   } catch {
   }
   return { name };
@@ -2188,11 +2279,7 @@ async function semanticSearch(ctx) {
   return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`] };
 }
 function composeFile() {
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const cand of [join9(here, "..", "docker-compose.yml"), join9(here, "docker-compose.yml")]) {
-    if (existsSync4(cand)) return cand;
-  }
-  return join9(here, "..", "docker-compose.yml");
+  return ensureComposeMaterialized();
 }
 function semanticControl(action) {
   if (!["up", "down", "status"].includes(action)) {
@@ -2261,19 +2348,19 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
-import { join as join10 } from "path";
-import { existsSync as existsSync5, readFileSync as readFileSync4, statSync as statSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync5 } from "fs";
+import { join as join11 } from "path";
+import { existsSync as existsSync6, readFileSync as readFileSync5, statSync as statSync5, writeFileSync as writeFileSync5, mkdirSync as mkdirSync6 } from "fs";
 function extdocsTtlMs() {
   return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
 }
 async function getDocText(repoDir, url) {
-  const dir = join10(repoDir, ".ultradoc", "extdocs");
-  const file = join10(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
+  const dir = join11(repoDir, ".ultradoc", "extdocs");
+  const file = join11(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
   let cached;
   let fresh = false;
   try {
-    if (existsSync5(file)) {
-      cached = readFileSync4(file, "utf8");
+    if (existsSync6(file)) {
+      cached = readFileSync5(file, "utf8");
       fresh = Date.now() - statSync5(file).mtimeMs < extdocsTtlMs();
     }
   } catch {
@@ -2282,8 +2369,8 @@ async function getDocText(repoDir, url) {
   const res = await fetchAndExtract(url);
   if (res.text) {
     try {
-      mkdirSync5(dir, { recursive: true });
-      writeFileSync4(file, res.text);
+      mkdirSync6(dir, { recursive: true });
+      writeFileSync5(file, res.text);
     } catch {
     }
     return res;
@@ -2299,7 +2386,7 @@ async function docsSource(ctx) {
   for (const rel of ctx.index.docFiles) {
     if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join10(ctx.repoDir, rel));
+    const content = readText(join11(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -2352,7 +2439,7 @@ async function docsSource(ctx) {
 }
 
 // src/sources/releases.ts
-import { join as join11 } from "path";
+import { join as join12 } from "path";
 
 // src/providers/shared.ts
 function ghAuthHeaders() {
@@ -2454,7 +2541,7 @@ async function releasesSource(ctx) {
     (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel)
   );
   for (const rel of changelogs) {
-    const content = readText(join11(ctx.repoDir, rel));
+    const content = readText(join12(ctx.repoDir, rel));
     if (!content) continue;
     const scored = changelogSections(rel, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
     for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
@@ -3128,20 +3215,20 @@ async function runSingleSource(options, kind) {
 }
 
 // src/doc.ts
-import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync6 } from "fs";
-import { basename as basename3, join as join13 } from "path";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "fs";
+import { basename as basename3, join as join14 } from "path";
 
 // src/overview.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync5, writeFileSync as writeFileSync5 } from "fs";
-import { basename as basename2, dirname as dirname2, join as join12 } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync6, writeFileSync as writeFileSync6 } from "fs";
+import { basename as basename2, dirname as dirname3, join as join13 } from "path";
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join12(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join13(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join12(repoDir, readme));
+  const text = readText(join13(repoDir, readme));
   const out = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -3241,9 +3328,9 @@ function renderOverview(index, ref, repoDir) {
 }
 function ensureOverview(index, ref, repoDir, opts = {}) {
   const path = opts.out ?? overviewPath(repoDir);
-  if (!opts.refresh && existsSync6(path)) {
+  if (!opts.refresh && existsSync7(path)) {
     try {
-      const existing = readFileSync5(path, "utf8");
+      const existing = readFileSync6(path, "utf8");
       const commit = CACHE_MARK.exec(existing)?.[1];
       if (commit && commit === (index.commit ?? "unknown")) {
         return { path, markdown: existing, cached: true };
@@ -3252,8 +3339,8 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
     }
   }
   const markdown = renderOverview(index, ref, repoDir);
-  mkdirSync6(dirname2(path), { recursive: true });
-  writeFileSync5(path, markdown);
+  mkdirSync7(dirname3(path), { recursive: true });
+  writeFileSync6(path, markdown);
   return { path, markdown, cached: false };
 }
 
@@ -3366,8 +3453,8 @@ function renderDocTodo(plan, evidence) {
   return out.join("\n");
 }
 function defaultDocDir(repoDir, scopePkg) {
-  const base = join13(indexDir(repoDir), "doc");
-  return scopePkg ? join13(base, slugify(scopePkg.name)) : base;
+  const base = join14(indexDir(repoDir), "doc");
+  return scopePkg ? join14(base, slugify(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
@@ -3411,17 +3498,17 @@ async function runDoc(options, opts = {}) {
     notes: [...new Set(perSection.flatMap((p) => p.notes))]
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
-  mkdirSync7(dir, { recursive: true });
-  const evidenceJson = join13(dir, "evidence.json");
-  const evidenceMd = join13(dir, "EVIDENCE.md");
-  const planJson = join13(dir, "DOC.plan.json");
-  const todoMd = join13(dir, "DOC.todo.md");
-  const metaJson = join13(dir, "meta.json");
-  writeFileSync6(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync6(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync6(planJson, JSON.stringify(plan, null, 2));
-  writeFileSync6(todoMd, renderDocTodo(plan, evidence));
-  writeFileSync6(metaJson, JSON.stringify(meta, null, 2));
+  mkdirSync8(dir, { recursive: true });
+  const evidenceJson = join14(dir, "evidence.json");
+  const evidenceMd = join14(dir, "EVIDENCE.md");
+  const planJson = join14(dir, "DOC.plan.json");
+  const todoMd = join14(dir, "DOC.todo.md");
+  const metaJson = join14(dir, "meta.json");
+  writeFileSync7(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync7(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync7(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync7(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync7(metaJson, JSON.stringify(meta, null, 2));
   let overviewPath2;
   try {
     overviewPath2 = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir).path;
@@ -3431,8 +3518,8 @@ async function runDoc(options, opts = {}) {
 }
 
 // src/check.ts
-import { existsSync as existsSync7, readFileSync as readFileSync6 } from "fs";
-import { basename as basename4, dirname as dirname3, join as join14 } from "path";
+import { existsSync as existsSync8, readFileSync as readFileSync7 } from "fs";
+import { basename as basename4, dirname as dirname4, join as join15 } from "path";
 
 // src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
@@ -3663,12 +3750,12 @@ function claimCoverage(text, _evidence) {
 var COVERAGE_MIN_DEFAULT = 0.7;
 function resolveAnswerPath(dir, answerFile) {
   if (answerFile) {
-    const p = join14(dir, answerFile);
-    return existsSync7(p) ? p : null;
+    const p = join15(dir, answerFile);
+    return existsSync8(p) ? p : null;
   }
   for (const name of ["ANSWER.md", "DOC.md"]) {
-    const p = join14(dir, name);
-    if (existsSync7(p)) return p;
+    const p = join15(dir, name);
+    if (existsSync8(p)) return p;
   }
   return null;
 }
@@ -3679,11 +3766,11 @@ function resolves(tok, evidence, ids, refs) {
 }
 function staleDossierWarning(dir) {
   try {
-    const metaPath = join14(dir, "meta.json");
-    if (!existsSync7(metaPath)) return void 0;
-    const meta = JSON.parse(readFileSync6(metaPath, "utf8"));
+    const metaPath = join15(dir, "meta.json");
+    if (!existsSync8(metaPath)) return void 0;
+    const meta = JSON.parse(readFileSync7(metaPath, "utf8"));
     if (!meta.commit) return void 0;
-    const repoDir = meta.repoDir && existsSync7(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
+    const repoDir = meta.repoDir && existsSync8(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
     if (!repoDir) return void 0;
     const head = headCommit(repoDir);
     if (head && head !== meta.commit) {
@@ -3696,21 +3783,21 @@ function staleDossierWarning(dir) {
 function dossierRepoDir(dir) {
   let d = dir;
   for (let i = 0; i < 6; i++) {
-    if (basename4(d) === ".ultradoc") return dirname3(d);
-    const parent = dirname3(d);
+    if (basename4(d) === ".ultradoc") return dirname4(d);
+    const parent = dirname4(d);
     if (parent === d) break;
     d = parent;
   }
   return void 0;
 }
 function applySemantic(dir, result) {
-  const p = join14(dir, "VERIFY.json");
-  if (!existsSync7(p)) {
+  const p = join15(dir, "VERIFY.json");
+  if (!existsSync8(p)) {
     result.warnings.push("--semantic: no VERIFY.json \u2014 run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
     return;
   }
   try {
-    const sem = JSON.parse(readFileSync6(p, "utf8"));
+    const sem = JSON.parse(readFileSync7(p, "utf8"));
     result.semantic = sem;
     if (!sem.ok) {
       result.ok = false;
@@ -3728,8 +3815,8 @@ function checkRun(dir, opts = {}) {
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
-  const evidencePath = join14(dir, "evidence.json");
-  if (!existsSync7(evidencePath)) {
+  const evidencePath = join15(dir, "evidence.json");
+  if (!existsSync8(evidencePath)) {
     return {
       ok: false,
       citations: [],
@@ -3742,7 +3829,7 @@ function checkRun(dir, opts = {}) {
   }
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync6(evidencePath, "utf8"));
+    evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
   } catch (e) {
     return {
       ok: false,
@@ -3766,7 +3853,7 @@ function checkRun(dir, opts = {}) {
       warnings: []
     };
   }
-  const answer = readFileSync6(answerPath, "utf8");
+  const answer = readFileSync7(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const { tokens: citations, fencedOnly } = collectCitations(answer);
@@ -3840,8 +3927,8 @@ function formatCheckReport(r, dir) {
 }
 
 // src/verify.ts
-import { readFileSync as readFileSync7, writeFileSync as writeFileSync7 } from "fs";
-import { join as join15 } from "path";
+import { readFileSync as readFileSync8, writeFileSync as writeFileSync8 } from "fs";
+import { join as join16 } from "path";
 var VERIFY_MAX = 40;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -3854,11 +3941,11 @@ function claimStrings(text) {
   return out;
 }
 function runVerify(dir, opts = {}) {
-  const evidence = JSON.parse(readFileSync7(join15(dir, "evidence.json"), "utf8"));
+  const evidence = JSON.parse(readFileSync8(join16(dir, "evidence.json"), "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
-  const answer = readFileSync7(answerPath, "utf8");
+  const answer = readFileSync8(answerPath, "utf8");
   const pairs = [];
   const uncitedClaims = [];
   let claimNo = 0;
@@ -3892,8 +3979,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims
   };
-  writeFileSync7(join15(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync7(join15(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync8(join16(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync8(join16(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -3924,7 +4011,7 @@ _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence
   return out.join("\n");
 }
 function applyVerdicts(dir, verdictsPath) {
-  const raw = JSON.parse(readFileSync7(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync8(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
   const verdicts = [];
   for (const v of list) {
@@ -3942,7 +4029,7 @@ function applyVerdicts(dir, verdictsPath) {
     });
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync7(join15(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync8(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
 function reduceVerdicts(verdicts) {
@@ -3995,8 +4082,8 @@ function formatVerifyReport(r) {
 }
 
 // src/cache.ts
-import { existsSync as existsSync8, readdirSync as readdirSync4, rmSync, statSync as statSync6 } from "fs";
-import { join as join16 } from "path";
+import { existsSync as existsSync9, readdirSync as readdirSync4, rmSync, statSync as statSync6 } from "fs";
+import { join as join17 } from "path";
 function dirSize(dir) {
   let total = 0;
   let entries;
@@ -4006,7 +4093,7 @@ function dirSize(dir) {
     return 0;
   }
   for (const name of entries) {
-    const p = join16(dir, name);
+    const p = join17(dir, name);
     let st;
     try {
       st = statSync6(p);
@@ -4025,7 +4112,7 @@ function cacheStatus() {
   try {
     slugs = readdirSync4(root).filter((n) => {
       try {
-        return statSync6(join16(root, n)).isDirectory();
+        return statSync6(join17(root, n)).isDirectory();
       } catch {
         return false;
       }
@@ -4034,7 +4121,7 @@ function cacheStatus() {
   }
   for (const slug of slugs) {
     if (slug === "compose") continue;
-    const dir = join16(root, slug);
+    const dir = join17(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
@@ -4055,8 +4142,8 @@ function cacheClean(opts) {
   }
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
-    const dir = join16(root, slug);
-    if (existsSync8(dir)) {
+    const dir = join17(root, slug);
+    if (existsSync9(dir)) {
       rmSync(dir, { recursive: true, force: true });
       removed.push(slug);
     }
@@ -4581,7 +4668,7 @@ async function main() {
 function isInvokedDirectly() {
   const argv1 = process.argv[1];
   if (argv1 === void 0) return false;
-  const modulePath = fileURLToPath2(import.meta.url);
+  const modulePath = fileURLToPath(import.meta.url);
   try {
     if (realpathSync(argv1) === realpathSync(modulePath)) return true;
   } catch {

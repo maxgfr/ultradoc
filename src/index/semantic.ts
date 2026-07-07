@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { RunContext, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
 import { httpGet, httpJson } from "../sources/fetch.js";
 import { sh, have } from "../util.js";
+import { ensureComposeMaterialized } from "./compose.js";
 
 export interface SemanticResult {
   available: boolean;
@@ -191,14 +191,12 @@ export async function semanticSearch(ctx: RunContext): Promise<SemanticResult> {
   return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`] };
 }
 
-// Locate docker-compose.yml relative to the bundle (scripts/ultradoc.mjs sits
-// one level under the repo root, alongside the committed compose file).
+// Materialize the compose stack from the bundle into the cache dir and return
+// its path. Always uses the embedded copy so `semantic up|down|status` works
+// from any install location (skills add, npm, curled bundle) — not just a dev
+// checkout where docker-compose.yml happens to sit beside the source.
 function composeFile(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  for (const cand of [join(here, "..", "docker-compose.yml"), join(here, "docker-compose.yml")]) {
-    if (existsSync(cand)) return cand;
-  }
-  return join(here, "..", "docker-compose.yml");
+  return ensureComposeMaterialized();
 }
 
 // Control the optional local Docker stack (Qdrant + embeddings + SearXNG).
