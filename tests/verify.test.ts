@@ -57,6 +57,18 @@ describe("runVerify (worklist)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("lists uncited claims in the worklist without adding pairs", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, "# X\n## A\nThe client uses exponential backoff [E1].\n## B\nThis whole sentence has no citation whatsoever here.");
+    const r = runVerify(dir);
+    expect(r.pairs.map((p) => p.evidenceId)).toEqual(["E1"]);
+    expect(r.uncitedClaims.length).toBe(1);
+    expect(r.uncitedClaims[0]!.claim).toMatch(/no citation whatsoever/);
+    const md = readFileSync(join(dir, "VERIFY.md"), "utf8");
+    expect(md).toMatch(/Uncited claims/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("caps the worklist at maxVerify", () => {
     const dir = scratch();
     const ev: EvidenceItem[] = [0, 1, 2].map((i) => ({

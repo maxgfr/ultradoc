@@ -58,6 +58,7 @@ export async function runAsk(options: AskOptions): Promise<AskResult> {
     host: ctx.repoRef.host,
     ref: options.ref,
     commit: ctx.index.commit,
+    repoDir: ctx.repoDir,
     pkg: ctx.scopePkg?.name,
     sources: options.sources,
     semantic: options.semantic,

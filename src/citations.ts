@@ -1,4 +1,4 @@
-import type { EvidenceItem } from "./types.js";
+import type { CoverageStats, EvidenceItem } from "./types.js";
 
 // A bracketed token is a citation when it is NOT a markdown link ("](" after
 // it) and matches one of the citation shapes:
@@ -22,20 +22,89 @@ export function isCitation(tok: string): boolean {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
 }
 
-// Resolve a typed-alias token ("code:path", "issue:123", …) to the evidence
+// Strip a trailing line range (":12" or ":12-40") from a path payload/ref so a
+// `[code:src/foo.ts:12-40]` alias compares path-to-path against `src/foo.ts`.
+function stripLineSuffix(p: string): string {
+  return p.replace(/:\d+(-\d+)?$/, "");
+}
+
+// A `code:`/`docs:` alias resolves only when the payload is a full path or a
+// trailing path SEGMENT of the item — never a bare substring. `[code:index]`
+// no longer matches `src/index/search.ts`; `[code:foo.ts]` still matches
+// `src/foo.ts` (segment) and `[code:src/foo.ts:12-40]` matches its location.
+function matchPath(e: EvidenceItem, payload: string): boolean {
+  const bare = stripLineSuffix(payload);
+  if (!bare) return false;
+  for (const c of [e.ref, e.location]) {
+    if (!c) continue;
+    const cBare = stripLineSuffix(c);
+    if (cBare === bare || cBare.endsWith("/" + bare)) return true;
+  }
+  return false;
+}
+
+// A `release:` alias matches the tag exactly, tolerating one leading `v` on
+// either side (`release:1.2` ⇔ ref `release:v1.2`).
+function matchRelease(ref: string, payload: string): boolean {
+  const tag = ref.startsWith("release:") ? ref.slice("release:".length) : ref;
+  const norm = (s: string) => s.replace(/^v/i, "");
+  return tag === payload || norm(tag) === norm(payload);
+}
+
+// A `commit:`/`history:` alias resolves by sha-prefix (either direction) against
+// the item's `commit:<sha>` ref — an abbreviated sha cites its full commit.
+function matchCommit(items: EvidenceItem[], payload: string): EvidenceItem[] {
+  if (!/^[0-9a-f]{7,}$/i.test(payload)) return [];
+  return items.filter((e) => {
+    const sha = e.ref.startsWith("commit:") ? e.ref.slice("commit:".length) : e.ref;
+    if (!/^[0-9a-f]{7,}$/i.test(sha)) return false;
+    return sha.startsWith(payload) || payload.startsWith(sha);
+  });
+}
+
+// A `web:` alias matches the item's url/ref exactly, ignoring the scheme and a
+// trailing slash (`web:qdrant.tech/docs` ⇔ `https://qdrant.tech/docs`).
+function matchWeb(e: EvidenceItem, payload: string): boolean {
+  const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  const p = bare(payload);
+  for (const c of [e.ref, e.url]) {
+    if (!c) continue;
+    if (c === payload || bare(c) === p) return true;
+  }
+  return false;
+}
+
+// Resolve a typed-alias token ("code:path", "release:v1", …) to the evidence
 // item(s) it cites. The ONE resolution used by both the `check` gate and the
 // `verify` worklist, so the two always agree on what a citation points at.
+// Strict per prefix: a payload must match a path segment, an exact number, an
+// exact tag, or a sha prefix — never a loose bidirectional substring (which let
+// vague aliases like `[code:index]` resolve against unrelated evidence).
 export function resolveAlias(tok: string, evidence: EvidenceItem[]): EvidenceItem[] {
   const colon = tok.indexOf(":");
   if (colon <= 0) return [];
   const prefix = tok.slice(0, colon);
   const payload = tok.slice(colon + 1);
   const source = TYPED_SOURCE[prefix] ?? prefix;
-  return evidence.filter(
-    (e) =>
-      e.source === source &&
-      (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false)),
-  );
+  const same = evidence.filter((e) => e.source === source);
+  switch (prefix) {
+    case "code":
+    case "docs":
+      return same.filter((e) => matchPath(e, payload));
+    case "discussion":
+      return /^\d+$/.test(payload) ? same.filter((e) => e.ref === `discussion#${payload}`) : [];
+    case "so":
+      return /^\d+$/.test(payload) ? same.filter((e) => e.ref === `so:${payload}`) : [];
+    case "release":
+      return same.filter((e) => matchRelease(e.ref, payload));
+    case "commit":
+    case "history":
+      return matchCommit(same, payload);
+    case "web":
+      return same.filter((e) => matchWeb(e, payload));
+    default:
+      return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,4 +248,65 @@ export function citedEvidenceIds(text: string, evidence: EvidenceItem[]): string
     for (const e of resolveAlias(tok, evidence)) push(e.id);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Citation collection + claim coverage. `check` uses these to enforce that an
+// answer's prose is GROUNDED (every claim ties to evidence), not merely that its
+// citations resolve — closing the "one real [E1] + paragraphs of memory" hole.
+// ---------------------------------------------------------------------------
+
+export interface CollectedCitations {
+  // Citation tokens that ground a claim: found in claim units, with code fences
+  // and inline code excluded (a `[E1]` in a fence can't ground prose).
+  tokens: string[];
+  // Citation-shaped tokens that appear ONLY inside fences/inline code — they
+  // look like citations but ground nothing. Warned about; errors under --strict.
+  fencedOnly: string[];
+}
+
+// Split an answer's citations into grounding tokens vs fence-only tokens. The
+// grounding set is what `check` resolves against evidence; fence-only tokens are
+// surfaced so a citation buried in a code block doesn't silently "count".
+export function collectCitations(text: string): CollectedCitations {
+  const tokens: string[] = [];
+  for (const u of extractClaimUnits(text)) {
+    const parts = u.kind === "text" ? [u.text] : u.items;
+    for (const part of parts) for (const t of citationTokensIn(part)) if (!tokens.includes(t)) tokens.push(t);
+  }
+  const all: string[] = [];
+  TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(text))) {
+    const tok = m[1]!.trim();
+    if (isCitation(tok) && !all.includes(tok)) all.push(tok);
+  }
+  return { tokens, fencedOnly: all.filter((t) => !tokens.includes(t)) };
+}
+
+// Claim units shorter than this (after trimming) are exempt from the coverage
+// count — transitions like "In short:" or "This has two parts:" carry no claim.
+const MIN_CLAIM_LEN = 25;
+
+// Measure how much of an answer's prose is grounded: the fraction of countable
+// claim units that carry a citation. A dangling citation still counts as an
+// attempt here (it's caught separately as a hard error); what this catches is
+// UNCITED prose — sentences asserting facts with no evidence at all.
+export function claimCoverage(text: string, _evidence: EvidenceItem[]): CoverageStats {
+  const claims: string[] = [];
+  for (const u of extractClaimUnits(text)) {
+    if (u.kind === "text") claims.push(u.text);
+    else for (const it of u.items) claims.push(it);
+  }
+  let counted = 0;
+  let cited = 0;
+  const uncited: string[] = [];
+  for (const c of claims) {
+    const trimmed = c.trim();
+    if (trimmed.length < MIN_CLAIM_LEN) continue;
+    counted++;
+    if (citationTokensIn(trimmed).length > 0) cited++;
+    else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
+  }
+  return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited };
 }

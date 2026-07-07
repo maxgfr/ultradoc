@@ -29,18 +29,28 @@ When it reads more naturally you may cite the underlying reference directly:
 | `[pr#456]` | an evidence item with `ref` `pr#456` | `…being changed [pr#456].` |
 | `[discussion#42]` | a GitHub Discussions evidence item | `…per the maintainer [discussion#42].` |
 | `[so:11227809]` | a StackOverflow evidence item | `…per the accepted answer [so:11227809].` |
-| `[code:path]` | a code item whose ref/location contains `path` | `…in [code:src/retry.ts].` |
-| `[docs:x]` `[web:x]` | a docs/web item whose ref/url contains `x` | `…[docs:retry-backoff].` |
-| `[release:v1.2.0]` | a release/changelog evidence item | `…added in [release:v1.2.0].` |
-| `[commit:abc1234]` | a git-history evidence item | `…introduced by [commit:abc1234].` |
+| `[code:path]` | a code item at that **full path or a trailing path segment** | `…in [code:src/retry.ts]` or `[code:retry.ts]`. |
+| `[docs:path]` | a docs item at that path (segment) | `…[docs:docs/guide.md].` |
+| `[web:url]` | a web item at that url (scheme/trailing-slash ignored) | `…[web:qdrant.tech/docs].` |
+| `[release:v1.2.0]` | a release item with that tag (a leading `v` is optional) | `…added in [release:v1.2.0].` |
+| `[commit:abc1234]` | a git-history item whose sha starts with that prefix (≥7 hex) | `…introduced by [commit:abc1234].` |
 
-Prefer evidence ids — they are unambiguous and let `check` confirm coverage.
+Typed aliases are matched **strictly**: a path must be a full path or a trailing
+segment (`[code:index]` does **not** resolve `src/index/search.ts` — write
+`[code:search.ts]` or the id), a number/tag/sha must match exactly. When in
+doubt, cite the evidence id.
 
 ## Rules `check` enforces
 
 - An answer with **no** citations fails.
 - Any citation that does not resolve to `evidence.json` fails (a fabricated
-  `[E99]`, a `[pr#5]` that wasn't retrieved, etc.).
+  `[E99]`, a `[pr#5]` that wasn't retrieved, a vague `[code:foo]`, etc.).
+- **Coverage:** most claim units must carry a citation. `check` fails when the
+  cited fraction drops below `--coverage-min` (default 0.7); `check --strict`
+  requires **every** claim to be cited (use it for `ask` answers — docs prose may
+  keep the default). This is what stops "one real `[E1]` + paragraphs of memory".
+- A citation that appears **only inside a code fence** or inline code does not
+  ground a claim (warned; an error under `--strict`).
 - Markdown links `[text](url)` are **not** citations and are ignored.
 - Uncited evidence is fine (informational warning only) — you needn't use it all.
 

@@ -10,7 +10,12 @@ const VALID_VERDICTS: VerdictKind[] = ["supported", "partial", "refuted", "unsup
 export interface VerifyWorklist {
   run: string;
   pairs: ClaimEvidencePair[];
+  uncitedClaims: { claimId: string; claim: string }[]; // claims with no citation — cite or delete
 }
+
+// Minimum length for an uncited claim to be worth flagging (mirrors the check
+// coverage exemption for short transitions).
+const MIN_UNCITED_LEN = 25;
 
 // Flatten ANSWER.md's claim units into individual claim strings: a text unit is
 // one claim; each list item is its own claim.
@@ -37,12 +42,18 @@ export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: 
   const answer = readFileSync(answerPath, "utf8");
 
   const pairs: (ClaimEvidencePair & { score: number })[] = [];
+  const uncitedClaims: { claimId: string; claim: string }[] = [];
   let claimNo = 0;
   for (const claim of claimStrings(answer)) {
     const ids = citedEvidenceIds(claim, evidence);
-    if (!ids.length) continue;
     claimNo++;
     const claimId = `C${claimNo}`;
+    if (!ids.length) {
+      // An uncited claim can never be adjudicated (no evidence to weigh), so it
+      // is not a verify pair — but surface it so it isn't silently accepted.
+      if (claim.trim().length >= MIN_UNCITED_LEN) uncitedClaims.push({ claimId, claim: claim.trim().slice(0, 400) });
+      continue;
+    }
     for (const id of ids) {
       const e = byId.get(id);
       if (!e) continue;
@@ -67,11 +78,12 @@ export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: 
           .sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId) || a.evidenceId.localeCompare(b.evidenceId))
           .slice(0, max)
       : pairs;
-  const worklist: VerifyWorklist = { run: dir, pairs: kept.map(({ score, ...rest }) => rest) };
+  const worklist: VerifyWorklist = { run: dir, pairs: kept.map(({ score, ...rest }) => rest), uncitedClaims };
 
   const todo = {
     run: dir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "" })),
+    uncitedClaims,
   };
   writeFileSync(join(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
   writeFileSync(join(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
@@ -95,6 +107,14 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
     out.push(`**Claim:** ${p.claim}`);
     out.push(`**Cited evidence:** ${p.digest}`);
     out.push(`**Verdict:** _____ · **Note:** _____`);
+    out.push("");
+  }
+  if (wl.uncitedClaims.length) {
+    out.push(`## Uncited claims — cite or delete`);
+    out.push("");
+    out.push(`These claim(s) cite no evidence, so verify cannot adjudicate them. Cite an evidence id or remove the claim (\`check\` fails on low coverage):`);
+    out.push("");
+    for (const u of wl.uncitedClaims) out.push(`- **${u.claimId}:** ${u.claim}`);
     out.push("");
   }
   return out.join("\n");

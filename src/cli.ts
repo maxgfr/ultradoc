@@ -24,7 +24,7 @@ Usage:
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir> [--semantic] [--answer <file>]
+  ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
 
@@ -44,8 +44,9 @@ Commands:
              one dossier per section + a DOC.todo worklist to fill into DOC.md
              (cited, then validated by 'check'). Persists under .ultradoc/doc/.
   index      Build/refresh the structural index for a repo and print stats.
-  check      Validate ANSWER.md (or a doc run's DOC.md) citations against a
-             dossier's evidence.json (--answer picks a specific file).
+  check      Validate ANSWER.md (or a doc run's DOC.md) against a dossier's
+             evidence.json: every citation must resolve AND enough claims must be
+             cited (--strict requires all; --coverage-min tunes the threshold).
              --semantic also folds in verify's verdicts (fails on unsupported).
   verify     Emit a claim↔evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
@@ -68,6 +69,8 @@ Options:
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
                                        (default: ANSWER.md, else DOC.md)
   --max-verify <n>     For 'verify': cap how many claim↔evidence pairs to emit  (default: 40)
+  --strict             For 'check': require EVERY claim to be cited (coverage 100%)
+  --coverage-min <r>   For 'check': min fraction of claims that must cite [0..1] (default: 0.7)
   --semantic           Use the optional local vector backend (falls back if absent)
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
@@ -116,8 +119,9 @@ const VALUE_FLAGS = new Set([
   "apply",
   "max-verify",
   "answer",
+  "coverage-min",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh"]);
+const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -485,8 +489,19 @@ async function main(): Promise<void> {
     case "check": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const res = checkRun(resolve(dir), { semantic: p.bools.has("semantic"), answerFile: p.values.answer });
-      process.stdout.write(formatCheckReport(res, resolve(dir)) + "\n");
+      let coverageMin: number | undefined;
+      if (p.values["coverage-min"] !== undefined) {
+        coverageMin = Number(p.values["coverage-min"]);
+        if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
+      }
+      const res = checkRun(resolve(dir), {
+        semantic: p.bools.has("semantic"),
+        answerFile: p.values.answer,
+        strict: p.bools.has("strict"),
+        coverageMin,
+      });
+      if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }

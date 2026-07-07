@@ -235,6 +235,7 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
     host: ctx.repoRef.host,
     ref: options.ref,
     commit: ctx.index.commit,
+    repoDir: ctx.repoDir,
     pkg: ctx.scopePkg?.name,
     sources: usedSources,
     semantic: options.semantic,

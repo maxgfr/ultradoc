@@ -134,6 +134,7 @@ export interface DossierMeta {
   host: string;
   ref?: string;
   commit?: string;
+  repoDir?: string; // absolute path of the indexed clone — lets `check` detect a moved HEAD
   pkg?: string; // resolved workspace package name when the run was scoped
   sources: SourceKind[];
   semantic: boolean;
@@ -168,14 +169,26 @@ export interface DocPlan {
   sections: DocSection[];
 }
 
+// How much of an answer's prose is grounded. `check` fails when too many claim
+// units carry no citation — the guard against "one real [E1] + paragraphs of
+// memory" that citation-resolution alone cannot catch.
+export interface CoverageStats {
+  claims: number; // countable claim units (short transitions excluded)
+  cited: number; // units carrying ≥1 citation token
+  ratio: number; // cited/claims; 1 when claims === 0
+  uncited: string[]; // first 8 uncited claim texts, clipped
+}
+
 export interface CheckResult {
   ok: boolean;
-  citations: string[]; // every citation token found in ANSWER.md
+  citations: string[]; // grounding citation tokens found in ANSWER.md
   resolved: string[]; // those that map to a real evidence id
   dangling: string[]; // cited but absent from evidence.json
   uncited: string[]; // evidence ids never cited (informational)
   errors: string[];
   warnings: string[];
+  coverage?: CoverageStats; // claim-coverage stats (additive)
+  fencedOnly?: string[]; // citation-shaped tokens found only inside code fences
   semantic?: VerifyResult; // populated only by `check --semantic` (folds VERIFY.json)
 }
 

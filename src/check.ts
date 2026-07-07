@@ -1,10 +1,24 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join } from "node:path";
-import { isCitation, resolveAlias, SHAPE, TOKEN_RE } from "./citations.js";
-import type { CheckResult, EvidenceItem, VerifyResult } from "./types.js";
+import { basename, dirname, join } from "node:path";
+import { claimCoverage, collectCitations, resolveAlias, SHAPE } from "./citations.js";
+import { headCommit } from "./clone.js";
+import type { CheckResult, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
 export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
+
+// A grounded answer must carry a citation on at least this fraction of its claim
+// units. Below it, `check` fails: the guard against "one real [E1] + paragraphs
+// of memory". 0.7 (not 1.0) tolerates a doc's transition/intro prose; `--strict`
+// raises it to 1.0 for `ask` answers where every sentence should be grounded.
+export const COVERAGE_MIN_DEFAULT = 0.7;
+
+export interface CheckOptions {
+  semantic?: boolean;
+  answerFile?: string;
+  coverageMin?: number; // grounding threshold (default COVERAGE_MIN_DEFAULT)
+  strict?: boolean; // coverageMin = 1.0 and fence-only citations become errors
+}
 
 // The grounded answer a dossier validates. `ask` writes ANSWER.md; `doc` writes
 // DOC.md. With no explicit name we prefer ANSWER.md, then DOC.md — so `check`
@@ -29,6 +43,43 @@ function resolves(tok: string, evidence: EvidenceItem[], ids: Set<string>, refs:
   if (refs.has(tok)) return true;
   // Typed alias: match the payload against an item of the same source.
   return resolveAlias(tok, evidence).length > 0;
+}
+
+// Warn (never fail) when the dossier's meta.json records a commit that no longer
+// matches the indexed clone's HEAD: line-anchored citations like
+// `src/foo.ts:12-40` may have drifted. Best-effort — silent if meta/repoDir/git
+// are unavailable.
+function staleDossierWarning(dir: string): string | undefined {
+  try {
+    const metaPath = join(dir, "meta.json");
+    if (!existsSync(metaPath)) return undefined;
+    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as DossierMeta;
+    if (!meta.commit) return undefined;
+    // Prefer the recorded repoDir; else walk up from the dossier to a repo root
+    // (runs are persisted under <repoDir>/.ultradoc/runs/<id>).
+    const repoDir = meta.repoDir && existsSync(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
+    if (!repoDir) return undefined;
+    const head = headCommit(repoDir);
+    if (head && head !== meta.commit) {
+      return `dossier was built at ${meta.commit} but the tree is now at ${head} — line-anchored citations may have drifted; re-run \`ask\`.`;
+    }
+  } catch {
+    /* meta unreadable — no guard */
+  }
+  return undefined;
+}
+
+// Walk up from a dossier dir to the repo root it was written under, recognizing
+// the <repoDir>/.ultradoc/runs/<id> (and .ultradoc/doc) layout.
+function dossierRepoDir(dir: string): string | undefined {
+  let d = dir;
+  for (let i = 0; i < 6; i++) {
+    if (basename(d) === ".ultradoc") return dirname(d);
+    const parent = dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+  return undefined;
 }
 
 // Fold the resolved semantic-verification record (VERIFY.json) into a check
@@ -56,15 +107,16 @@ function applySemantic(dir: string, result: CheckResult): void {
   }
 }
 
-// Validate that an answer is grounded: every citation in ANSWER.md must resolve
-// to a real evidence item from evidence.json. This is the mechanical guard
-// against the model answering from memory — an ungrounded or fabricated
-// citation fails the check (non-zero exit). With `opts.semantic`, ALSO folds in
-// the VERIFY.json verdicts (fails on a refuted/unsupported claim) — additive:
-// plain `check` (no opts) is byte-for-byte unchanged.
-export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: string } = {}): CheckResult {
+// Validate that an answer is grounded. Two guards: (1) every citation resolves
+// to a real evidence item (no fabricated citation), and (2) the prose is
+// COVERED — enough claim units carry a citation that the answer can't be mostly
+// uncited memory around a single real reference. Fails (non-zero exit) on a
+// dangling citation, no citations, or coverage below the threshold. With
+// `opts.semantic`, ALSO folds in the VERIFY.json verdicts.
+export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const coverageMin = opts.strict ? 1 : (opts.coverageMin ?? COVERAGE_MIN_DEFAULT);
 
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   const evidencePath = join(dir, "evidence.json");
@@ -112,16 +164,10 @@ export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: s
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
 
-  const citations: string[] = [];
-  const seen = new Set<string>();
-  let m: RegExpExecArray | null;
-  TOKEN_RE.lastIndex = 0;
-  while ((m = TOKEN_RE.exec(answer))) {
-    const tok = m[1]!.trim();
-    if (!isCitation(tok) || seen.has(tok)) continue;
-    seen.add(tok);
-    citations.push(tok);
-  }
+  // Grounding citations come from claim units only; tokens found solely inside
+  // code fences/inline code don't count (A3 — one shared tokenizer for check and
+  // verify), and are surfaced separately.
+  const { tokens: citations, fencedOnly } = collectCitations(answer);
 
   const resolved: string[] = [];
   const dangling: string[] = [];
@@ -132,6 +178,7 @@ export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: s
 
   const citedIds = new Set(resolved.filter((c) => SHAPE.id.test(c)));
   const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
+  const coverage = claimCoverage(answer, evidence);
 
   if (citations.length === 0) {
     errors.push(`${basename(answerPath)} contains no citations — a grounded answer must cite evidence ids like [E1].`);
@@ -139,11 +186,36 @@ export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: s
   if (dangling.length) {
     errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);
   }
+  // Coverage gate: fail when too much prose is uncited. At the default threshold
+  // this skips 1–2 claim answers (the no-citations error already covers those,
+  // which shouldn't fail on a ratio); --strict demands every claim be cited
+  // regardless of count.
+  if (coverage.ratio < coverageMin && (opts.strict || coverage.claims >= 3)) {
+    const pct = Math.round(coverage.ratio * 100);
+    errors.push(
+      `Only ${coverage.cited}/${coverage.claims} claim(s) cite evidence (${pct}% < ${Math.round(coverageMin * 100)}% required) — ` +
+        `ground each claim in an evidence id or run \`check --coverage-min\` lower if this is intentional.`,
+    );
+  }
+  if (coverage.ratio < 1 && coverage.uncited.length) {
+    const shown = coverage.uncited
+      .slice(0, 5)
+      .map((u) => `"${u}"`)
+      .join("; ");
+    warnings.push(`${coverage.claims - coverage.cited} claim(s) cite no evidence (coverage ${Math.round(coverage.ratio * 100)}%): ${shown}`);
+  }
+  if (fencedOnly.length) {
+    const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
+    if (opts.strict) errors.push(msg);
+    else warnings.push(msg);
+  }
   if (citations.length > 0 && citedIds.size === 0) {
     warnings.push("No evidence ids were cited (only typed aliases). Prefer citing ids like [E1].");
   } else if (uncited.length) {
     warnings.push(`${uncited.length} evidence item(s) were not cited (informational).`);
   }
+  const stale = staleDossierWarning(dir);
+  if (stale) warnings.push(stale);
 
   const result: CheckResult = {
     ok: errors.length === 0,
@@ -153,6 +225,8 @@ export function checkRun(dir: string, opts: { semantic?: boolean; answerFile?: s
     uncited,
     errors,
     warnings,
+    coverage,
+    fencedOnly,
   };
   if (opts.semantic) applySemantic(dir, result);
   return result;
@@ -162,6 +236,9 @@ export function formatCheckReport(r: CheckResult, dir: string): string {
   const lines: string[] = [];
   lines.push(`ultradoc check: ${dir}`);
   lines.push(`  citations: ${r.citations.length} · resolved: ${r.resolved.length} · dangling: ${r.dangling.length}`);
+  if (r.coverage) {
+    lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
+  }
   if (r.semantic) {
     const s = r.semantic;
     lines.push(`  semantic: supported ${s.supported} · partial ${s.partial} · refuted ${s.refuted} · unsupported ${s.unsupported}`);
