@@ -4,6 +4,7 @@ import { readText } from "../walk.js";
 import { keywords as extractKeywords, sh, have } from "../util.js";
 import { httpGet } from "./fetch.js";
 import { ghAuthHeaders } from "../providers/shared.js";
+import { LIMITS } from "../config.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -58,12 +59,13 @@ async function githubReleases(ctx: RunContext, kws: string[]): Promise<{ items: 
   }
 
   let body: string | undefined;
+  const perPage = LIMITS.releasesFetched;
   if (have("gh")) {
-    const res = sh("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=20`]);
+    const res = sh("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`]);
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, {
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`, {
       accept: "application/vnd.github+json",
       headers: ghAuthHeaders(),
       retries: 2,

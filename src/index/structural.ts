@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StructuralIndex, CodeSymbol } from "../types.js";
 import { walk, readText } from "../walk.js";
+import { LIMITS } from "../config.js";
 import { extractSymbols, languageOf } from "../lang/registry.js";
 import { headCommit } from "../clone.js";
 import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
@@ -80,7 +81,7 @@ export function buildIndex(root: string, slug: string, opts: { maxFiles?: number
     if (!content) continue;
     const syms = extractSymbols(f.rel, f.ext, content);
     // Cap symbols per file to avoid a generated/giant file dominating.
-    for (const s of syms.slice(0, 400)) symbols.push(s);
+    for (const s of syms.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
   }
 
   const sortedDocs = docFiles.sort();

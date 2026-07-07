@@ -6,6 +6,7 @@ import { renderEvidenceMarkdown, SOURCE_ORDER } from "./dossier.js";
 import { ensureOverview } from "./overview.js";
 import { indexDir } from "./index/structural.js";
 import { slugify } from "./util.js";
+import { LIMITS } from "./config.js";
 import type { AskOptions, DocPlan, DocSection, DossierMeta, EvidenceItem, RunContext, SourceKind, StructuralIndex, WorkspacePackage } from "./types.js";
 
 // `ultradoc doc` generates a GROUNDED reference document. Like `ask`, the engine
@@ -74,7 +75,7 @@ export function buildOutline(index: StructuralIndex, name: string, scopePkg?: Wo
 
   if (index.packages.length && !scopePkg) {
     // Monorepo: a section per workspace package (cap to keep the doc focused).
-    for (const pkg of index.packages.slice(0, 6)) {
+    for (const pkg of index.packages.slice(0, LIMITS.docPackages)) {
       const syms = topExportedSymbols(index, pkg.dir, 5);
       add(`Package: ${pkg.name}`, `${pkg.name} ${pkg.dir} ${syms.join(" ")}`.trim(), ["code", "docs"]);
     }

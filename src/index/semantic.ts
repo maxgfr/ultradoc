@@ -4,6 +4,7 @@ import type { RunContext, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
 import { httpGet, httpJson } from "../sources/fetch.js";
 import { sh, have } from "../util.js";
+import { LIMITS } from "../config.js";
 import { ensureComposeMaterialized } from "./compose.js";
 
 export interface SemanticResult {
@@ -18,7 +19,7 @@ export interface SemanticResult {
 const QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
 const OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
 const EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
-const MAX_CHUNKS = Number(process.env.ULTRADOC_MAX_CHUNKS || 800);
+const MAX_CHUNKS = LIMITS.embedChunks;
 
 interface Chunk {
   rel: string;

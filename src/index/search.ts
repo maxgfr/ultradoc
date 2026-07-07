@@ -3,6 +3,7 @@ import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
 import { sh, have, rrf, foldTerm, subtokens, buildMatcher, matcherFromTokens, type KeywordMatcher } from "../util.js";
 import { walk, readText } from "../walk.js";
+import { LIMITS } from "../config.js";
 import { bm25 } from "./bm25.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
@@ -112,7 +113,7 @@ function jsSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<st
   const byFile = new Map<string, FileHits>();
   const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "i"), canonical: p.canonical }));
   const base = scope ? join(root, scope) : root;
-  for (const f of walk(base, { maxFiles: 8000 })) {
+  for (const f of walk(base, { maxFiles: LIMITS.jsScanFiles })) {
     const rel = scope ? `${scope}/${f.rel}` : f.rel;
     const content = readText(f.abs);
     if (!content) continue;

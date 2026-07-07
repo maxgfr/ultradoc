@@ -2,9 +2,10 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
 import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
+import { LIMITS } from "./config.js";
 
 // Bounds the verification loop (claim↔evidence pairs adjudicated per run).
-export const VERIFY_MAX = 40;
+export const VERIFY_MAX = LIMITS.verifyPairs;
 const VALID_VERDICTS: VerdictKind[] = ["supported", "partial", "refuted", "unsupported"];
 
 export interface VerifyWorklist {

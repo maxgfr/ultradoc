@@ -1,5 +1,6 @@
 import { readdirSync, statSync, readFileSync } from "node:fs";
 import { join, relative, sep, extname } from "node:path";
+import { LIMITS } from "./config.js";
 
 // Directories that never carry signal for a documentation/code question and
 // would bloat the index (dependencies, build output, VCS internals, caches).
@@ -122,8 +123,8 @@ export interface WalkedFile {
 // Recursively list source-like files under `root`, applying ignore rules. Pure
 // filesystem walk — no git dependency, so it works on any directory.
 export function walk(root: string, opts: WalkOptions = {}): WalkedFile[] {
-  const maxFileBytes = opts.maxFileBytes ?? 1024 * 1024;
-  const maxFiles = opts.maxFiles ?? 20_000;
+  const maxFileBytes = opts.maxFileBytes ?? LIMITS.maxFileBytes;
+  const maxFiles = opts.maxFiles ?? LIMITS.maxFiles;
   const out: WalkedFile[] = [];
 
   const stack: string[] = [root];

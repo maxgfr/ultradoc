@@ -378,6 +378,26 @@ function envInt(name, def, min = 1) {
   const n = Number(raw);
   return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
 }
+var LIMITS = {
+  maxFiles: envInt("ULTRADOC_MAX_FILES", 2e4),
+  // files walked/indexed
+  maxFileBytes: envInt("ULTRADOC_MAX_FILE_BYTES", 1048576),
+  // per-file read cap
+  jsScanFiles: envInt("ULTRADOC_MAX_SCAN_FILES", 8e3),
+  // pure-JS search fallback cap
+  symbolsPerFile: envInt("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
+  // symbols kept per file
+  releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20),
+  // GitHub releases fetched
+  docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6),
+  // monorepo packages given doc sections
+  verifyPairs: envInt("ULTRADOC_MAX_VERIFY", 40),
+  // claim↔evidence pairs (CLI --max-verify wins)
+  embedChunks: envInt("ULTRADOC_MAX_CHUNKS", 800),
+  // semantic chunks embedded per repo
+  embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4)
+  // parallel embed requests
+};
 function cacheRoot() {
   const override = process.env.ULTRADOC_CACHE_DIR?.trim();
   if (override) return override;
@@ -618,8 +638,8 @@ var BINARY_EXT = /* @__PURE__ */ new Set([
   ".map"
 ]);
 function walk(root, opts = {}) {
-  const maxFileBytes = opts.maxFileBytes ?? 1024 * 1024;
-  const maxFiles = opts.maxFiles ?? 2e4;
+  const maxFileBytes = opts.maxFileBytes ?? LIMITS.maxFileBytes;
+  const maxFiles = opts.maxFiles ?? LIMITS.maxFiles;
   const out = [];
   const stack = [root];
   while (stack.length) {
@@ -1430,7 +1450,7 @@ function buildIndex(root, slug, opts = {}) {
     const content = readText(f.abs);
     if (!content) continue;
     const syms = extractSymbols(f.rel, f.ext, content);
-    for (const s of syms.slice(0, 400)) symbols.push(s);
+    for (const s of syms.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
   }
   const sortedDocs = docFiles.sort();
   const sortedConfigs = configFiles.sort();
@@ -1661,7 +1681,7 @@ function jsSearch(root, matcher, scope) {
   const byFile = /* @__PURE__ */ new Map();
   const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "i"), canonical: p.canonical }));
   const base = scope ? join8(root, scope) : root;
-  for (const f of walk(base, { maxFiles: 8e3 })) {
+  for (const f of walk(base, { maxFiles: LIMITS.jsScanFiles })) {
     const rel = scope ? `${scope}/${f.rel}` : f.rel;
     const content = readText(f.abs);
     if (!content) continue;
@@ -2148,7 +2168,7 @@ function writeIfChanged(path, content) {
 var QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
 var OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
 var EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
-var MAX_CHUNKS = Number(process.env.ULTRADOC_MAX_CHUNKS || 800);
+var MAX_CHUNKS = LIMITS.embedChunks;
 function chunkText(rel, content, isDoc2, opts = {}) {
   const win = opts.windowLines ?? 60;
   const overlap = opts.overlap ?? 12;
@@ -2481,12 +2501,13 @@ async function githubReleases(ctx, kws) {
     return { items: [], notes };
   }
   let body;
+  const perPage = LIMITS.releasesFetched;
   if (have("gh")) {
-    const res = sh("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=20`]);
+    const res = sh("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`]);
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, {
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`, {
       accept: "application/vnd.github+json",
       headers: ghAuthHeaders(),
       retries: 2
@@ -3379,7 +3400,7 @@ function buildOutline(index, name, scopePkg) {
   add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
   add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
   if (index.packages.length && !scopePkg) {
-    for (const pkg of index.packages.slice(0, 6)) {
+    for (const pkg of index.packages.slice(0, LIMITS.docPackages)) {
       const syms = topExportedSymbols(index, pkg.dir, 5);
       add(`Package: ${pkg.name}`, `${pkg.name} ${pkg.dir} ${syms.join(" ")}`.trim(), ["code", "docs"]);
     }
@@ -3929,7 +3950,7 @@ function formatCheckReport(r, dir) {
 // src/verify.ts
 import { readFileSync as readFileSync8, writeFileSync as writeFileSync8 } from "fs";
 import { join as join16 } from "path";
-var VERIFY_MAX = 40;
+var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
 function claimStrings(text) {
