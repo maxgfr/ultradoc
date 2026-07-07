@@ -12,6 +12,7 @@ import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl } from "./index/semantic.js";
 import { ensureOverview } from "./overview.js";
+import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
 
 const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -27,6 +28,7 @@ Usage:
   ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
+  ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
 Commands:
   ask        Retrieve from all selected sources and write an evidence dossier.
@@ -51,6 +53,7 @@ Commands:
   verify     Emit a claim↔evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
+  cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
 Options:
   --repo <url|path>    Any git URL or a local checkout              (required)
@@ -85,7 +88,9 @@ Grounding:
   prose is uncited — the mechanical guard against answering from memory.
 
 Environment (all optional, keyless by default):
-  GITHUB_TOKEN         Raise the GitHub REST rate limit on the keyless fallback.
+  GITHUB_TOKEN               Raise the GitHub REST rate limit on the keyless fallback.
+  ULTRADOC_CACHE_DIR         Override the clone/index cache root (persistent per-user).
+  ULTRADOC_EXTDOCS_TTL_HOURS External-docs cache freshness before refetch (default 168).
 `;
 
 const COMMANDS = new Set([
@@ -105,6 +110,7 @@ const COMMANDS = new Set([
   "check",
   "verify",
   "semantic",
+  "cache",
 ]);
 const VALUE_FLAGS = new Set([
   "repo",
@@ -124,7 +130,7 @@ const VALUE_FLAGS = new Set([
   "answer",
   "coverage-min",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict"]);
+const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -539,6 +545,24 @@ async function main(): Promise<void> {
       const r = semanticControl(action);
       process.stdout.write(r.message + "\n");
       if (r.code !== 0) process.exit(r.code);
+      return;
+    }
+
+    case "cache": {
+      const action = p.positional[0] ?? "status";
+      if (action === "status") {
+        const s = cacheStatus();
+        if (p.bools.has("json")) process.stdout.write(JSON.stringify(s, null, 2) + "\n");
+        else process.stdout.write(formatCacheStatus(s) + "\n");
+        return;
+      }
+      if (action === "clean") {
+        if (!p.bools.has("all") && !p.values.repo) fail("cache clean needs --all or --repo <url|path>");
+        const { removed } = cacheClean({ all: p.bools.has("all"), repo: p.values.repo });
+        process.stdout.write(`ultradoc: removed ${removed.length} cached repo(s)${removed.length ? ": " + removed.join(", ") : ""}\n`);
+        return;
+      }
+      fail(`unknown cache action "${action}" (use: status | clean)`);
       return;
     }
   }

@@ -1,14 +1,28 @@
-import { existsSync, statSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, statSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import type { RepoRef } from "./types.js";
 import { sh, slugify } from "./util.js";
+import { cacheRoot } from "./config.js";
 
-// Root of the on-disk clone/index cache. Everything ultradoc writes for a repo
-// lives under /tmp/ultradoc/<slug>/ so repeated questions reuse the clone and
-// the index instead of re-fetching.
-export function cacheRoot(): string {
-  return join(tmpdir(), "ultradoc");
+// Re-exported for compatibility: the cache root now lives in config.ts (it is a
+// persistent per-user dir, overridable with ULTRADOC_CACHE_DIR). Everything
+// ultradoc writes for a repo lives under <cacheRoot>/<slug>/.
+export { cacheRoot } from "./config.js";
+
+// The pre-1.8 location was always /tmp/ultradoc/<slug>. Best-effort one-time
+// migration so an existing clone isn't re-fetched after the cache moved; a
+// cross-device rename just fails silently and the repo re-clones.
+function migrateLegacyClone(dir: string, slug: string): void {
+  if (existsSync(dir)) return;
+  const legacy = join(tmpdir(), "ultradoc", slug);
+  if (legacy === dir || !existsSync(join(legacy, ".git"))) return;
+  try {
+    mkdirSync(cacheRoot(), { recursive: true });
+    renameSync(legacy, dir);
+  } catch {
+    /* cross-device or perms — the repo will just re-clone */
+  }
 }
 
 // Parse any repo identifier into a RepoRef. Accepts:
@@ -84,6 +98,7 @@ export function ensureClone(ref: RepoRef, opts: { refresh?: boolean; branch?: st
   if (ref.isLocal) return resolve(ref.raw);
 
   const dir = join(cacheRoot(), ref.slug);
+  migrateLegacyClone(dir, ref.slug);
   const alreadyCloned = existsSync(join(dir, ".git"));
 
   if (alreadyCloned && !opts.refresh) return dir;
