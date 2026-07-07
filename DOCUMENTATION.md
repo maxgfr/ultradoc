@@ -24,21 +24,25 @@ writes a **citation-checked** answer.
 cli.ts            parseArgs (loud on unknown flags) + subcommand dispatch
 ask.ts            orchestrator: buildContext → runSources → writeDossier
 types.ts          shared types + VERSION (synced on release)
-clone.ts          resolveRepo (any git URL) + ensureClone (/tmp cache) + origin
-walk.ts           ignore-aware file walk + safe text reader
-util.ts           sh/have, keywords + rankedKeywords, slugify, RRF
+config.ts         cacheRoot() + envInt/envStr + LIMITS (all ULTRADOC_* overrides)
+clone.ts          resolveRepo (any git URL) + ensureClone (persistent cache) + origin
+cache.ts          `cache status|clean`: inspect/clear the persistent cache
+walk.ts           ignore-aware file walk + safe text reader (walkDetailed reports truncation)
+util.ts           sh/have, keywords + rankedKeywords, slugify, RRF, mapLimit
 overview.ts       cached markdown digest of a repo (packages, layout, API, docs)
 index/
-  structural.ts   build/load the deterministic index (languages, symbols, docs)
+  structural.ts   build/load the commit-validated index (languages, symbols, docs, stats)
   workspaces.ts   monorepo package discovery (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle)
-  search.ts       ripgrep (+ JS fallback) fused with symbol ranking → excerpts
-  semantic.ts     optional Qdrant + local-embeddings client; Docker control
+  search.ts       ripgrep (+ JS fallback) fused with symbol ranking → excerpts (RANKING consts)
+  semantic.ts     optional Qdrant + local-embeddings client; symbol-boundary chunks; Docker control
+  compose.ts      embedded docker-compose stack, materialized into the cache dir
 lang/             per-language symbol extractors (registry by extension)
-providers/        issue/PR APIs per host (github, gitlab, generic) + registry
-sources/          one module per evidence source (code, docs, issues, …) + fetch
+providers/        issue/PR APIs per host (github, gitlab, gitea, generic) + shared helpers + registry
+sources/          one module per evidence source (code, docs, issues, …) + fetch (bounded retries)
 dossier.ts        assign ids, render EVIDENCE.md, persist the run (<repoDir>/.ultradoc/runs/)
-doc.ts            `doc`: deterministic outline → a dossier per section → DOC.todo worklist
-check.ts          parse + validate ANSWER.md/DOC.md citations (the grounding guarantee)
+doc.ts            `doc`: project-type-adaptive outline → a dossier per section → DOC.todo worklist
+citations.ts      citation tokenization, strict alias resolution, claim coverage (shared by check/verify)
+check.ts          validate ANSWER.md/DOC.md citations + claim coverage (the grounding guarantee)
 verify.ts         claim↔evidence worklist + the semantic support gate (check --semantic)
 ```
 

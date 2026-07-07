@@ -57,10 +57,15 @@ The dossier's top code hit is the real implementation:
 You then write `ANSWER.md` citing the evidence, and prove it's grounded:
 
 ```bash
-node scripts/ultradoc.mjs check --run <dossier-dir>
+node scripts/ultradoc.mjs check --run <dossier-dir>   # add --strict for ask answers
 #   citations: 3 · resolved: 3 · dangling: 0
+#   coverage:  3/3 claim(s) cited (100%)
 #   ✓ answer is grounded — every citation resolves to evidence
 ```
+
+`check` fails on a fabricated citation **and** when too much prose is uncited
+(the coverage gate) — so an answer can't be mostly memory around one real
+reference. `--strict` requires every claim to be cited.
 
 A fabricated `[E99]` or an answer with no citations → **non-zero exit**.
 
@@ -96,7 +101,7 @@ the right layer (e.g. `Alamofire` → `Validation.swift`, `neovim` → `event/lo
 
 ```
 question + repo URL
-  → clone any git URL into /tmp (cached, shallow)
+  → clone any git URL into a persistent per-user cache (shallow; `ultradoc cache status`)
   → index deterministically: ripgrep + a per-language symbol index
       (optional Tier 2: local vector search — Qdrant + Ollama, in Docker, no key)
   → retrieve evidence: code · issues · PRs · docs · releases · git history · discussions · StackOverflow · web
@@ -125,7 +130,7 @@ Two retrieval tiers:
 | Source | How (all keyless / free) |
 |--------|--------------------------|
 | Code | `git clone` (any host) + ripgrep + symbol index |
-| Issues / PRs | GitHub via your existing `gh` login (or public REST); GitLab public REST |
+| Issues / PRs | GitHub via your existing `gh` login (or public REST, optional `GITHUB_TOKEN`); GitLab & Gitea/Forgejo/Codeberg public REST |
 | Docs | in-repo README/docs/** + an optional `--docs-url` fetch |
 | StackOverflow | the keyless StackExchange API |
 | Web | local SearXNG → DuckDuckGo scrape → your built-in WebSearch (whatever's available) |
@@ -140,10 +145,11 @@ Two retrieval tiers:
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
 | `overview` | Generate a cached markdown digest of the repo (packages, layout, public API, docs map) |
 | `doc` | Generate a grounded **reference doc**: a section outline + a dossier per section + a `DOC.todo` worklist you fill into a cited `DOC.md` |
-| `check --run <dir>` | Validate `ANSWER.md` (or a `doc` run's `DOC.md`) citations against the dossier (`--semantic` also folds in `verify`'s verdicts) |
+| `check --run <dir>` | Validate `ANSWER.md`/`DOC.md` citations **and** claim coverage against the dossier (`--strict` requires every claim cited; `--semantic` folds in `verify`'s verdicts) |
 | `verify --run <dir>` | Emit a claim↔evidence worklist for adversarial support-checking, then gate on refuted/unsupported claims |
 | `index` | Build/print the structural index for a repo |
 | `semantic up\|down\|status` | Manage the optional local Docker stack |
+| `cache status\|clean` | Inspect or clear the persistent clone/index cache |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
 code,issues,prs,docs,releases,history,discussions,web,so`, `--ref <branch>`
@@ -197,7 +203,7 @@ documentation map:
 
 ```bash
 node scripts/ultradoc.mjs overview --repo https://github.com/socialgouv/code-du-travail-numerique
-# → /tmp/ultradoc/<slug>/.ultradoc/OVERVIEW.md  (reused while the commit is unchanged)
+# → <cache>/<slug>/.ultradoc/OVERVIEW.md  (reused while the commit is unchanged)
 ```
 
 An agent reads `OVERVIEW.md` once to orient itself (and pick a `--package`),
@@ -219,7 +225,7 @@ from memory.
 
 ```bash
 pnpm install
-pnpm test            # vitest — unit + offline integration (149 tests)
+pnpm test            # vitest — unit + offline integration (238 tests)
 pnpm run typecheck
 pnpm run build       # bundles src/ → scripts/ultradoc.mjs (committed, zero-dep)
 pnpm run check:build # asserts the committed bundle is reproducible
