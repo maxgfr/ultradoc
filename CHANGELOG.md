@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.8.2](https://github.com/maxgfr/ultradoc/compare/v1.8.1...v1.8.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* **check:** stop false commit-drift warnings when a shallow clone is deepened ([ca9894a](https://github.com/maxgfr/ultradoc/commit/ca9894ad6be8bf03da6d097cb71c7f64b122711a))
+
 ## [1.8.1](https://github.com/maxgfr/ultradoc/compare/v1.8.0...v1.8.1) (2026-07-07)
 
 
