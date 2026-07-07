@@ -3347,6 +3347,8 @@ async function runDoc(options, opts = {}) {
 // src/check.ts
 import { existsSync as existsSync7, readFileSync as readFileSync6 } from "fs";
 import { basename as basename4, join as join13 } from "path";
+
+// src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
@@ -3355,33 +3357,18 @@ var SHAPE = {
   typed: /^(code|docs|web|so|release|commit|history|discussion):\S+$/
 };
 var TYPED_SOURCE = { commit: "history" };
-function resolveAnswerPath(dir, answerFile) {
-  if (answerFile) {
-    const p = join13(dir, answerFile);
-    return existsSync7(p) ? p : null;
-  }
-  for (const name of ["ANSWER.md", "DOC.md"]) {
-    const p = join13(dir, name);
-    if (existsSync7(p)) return p;
-  }
-  return null;
-}
 function isCitation(tok) {
   return SHAPE.id.test(tok) || SHAPE.numbered.test(tok) || SHAPE.soref.test(tok) || SHAPE.typed.test(tok);
 }
-function resolves(tok, evidence, ids, refs) {
-  if (SHAPE.id.test(tok)) return ids.has(tok);
-  if (refs.has(tok)) return true;
+function resolveAlias(tok, evidence) {
   const colon = tok.indexOf(":");
-  if (colon > 0) {
-    const prefix = tok.slice(0, colon);
-    const payload = tok.slice(colon + 1);
-    const source = TYPED_SOURCE[prefix] ?? prefix;
-    return evidence.some(
-      (e) => e.source === source && (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))
-    );
-  }
-  return false;
+  if (colon <= 0) return [];
+  const prefix = tok.slice(0, colon);
+  const payload = tok.slice(colon + 1);
+  const source = TYPED_SOURCE[prefix] ?? prefix;
+  return evidence.filter(
+    (e) => e.source === source && (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))
+  );
 }
 function stripHtmlComments(text) {
   return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
@@ -3496,19 +3483,27 @@ function citedEvidenceIds(text, evidence) {
       continue;
     }
     for (const e of evidence) if (e.ref === tok) push(e.id);
-    const colon = tok.indexOf(":");
-    if (colon > 0) {
-      const prefix = tok.slice(0, colon);
-      const payload = tok.slice(colon + 1);
-      const source = TYPED_SOURCE[prefix] ?? prefix;
-      for (const e of evidence) {
-        if (e.source === source && (e.ref.includes(payload) || payload.includes(e.ref) || (e.location?.includes(payload) ?? false) || (e.url?.includes(payload) ?? false))) {
-          push(e.id);
-        }
-      }
-    }
+    for (const e of resolveAlias(tok, evidence)) push(e.id);
   }
   return out;
+}
+
+// src/check.ts
+function resolveAnswerPath(dir, answerFile) {
+  if (answerFile) {
+    const p = join13(dir, answerFile);
+    return existsSync7(p) ? p : null;
+  }
+  for (const name of ["ANSWER.md", "DOC.md"]) {
+    const p = join13(dir, name);
+    if (existsSync7(p)) return p;
+  }
+  return null;
+}
+function resolves(tok, evidence, ids, refs) {
+  if (SHAPE.id.test(tok)) return ids.has(tok);
+  if (refs.has(tok)) return true;
+  return resolveAlias(tok, evidence).length > 0;
 }
 function applySemantic(dir, result) {
   const p = join13(dir, "VERIFY.json");
