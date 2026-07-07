@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [1.8.0](https://github.com/maxgfr/ultradoc/compare/v1.7.2...v1.8.0) (2026-07-07)
+
+
+### Bug Fixes
+
+* **net:** stamp the real version in the User-Agent; name ranking constants ([937ea25](https://github.com/maxgfr/ultradoc/commit/937ea2579f3fc5c2c11bf6303c635c63489e4b64))
+* **semantic:** embed the compose stack so semantic up works from any install ([e3c93d5](https://github.com/maxgfr/ultradoc/commit/e3c93d5966f144e3c4307d16434b3b3cb30f3b9e))
+
+
+### Features
+
+* **cache:** persistent cache root, cache subcommand, extdocs TTL ([6266144](https://github.com/maxgfr/ultradoc/commit/626614480adf168cae4519b5175b9052078e374f))
+* **check:** claim-coverage gate, strict typed aliases, fence-aware citations ([ff05182](https://github.com/maxgfr/ultradoc/commit/ff05182cded8b5e69bd4a54a570a3795f2d355e4))
+* **config:** env-overridable limits (ULTRADOC_MAX_FILES, …) ([d897870](https://github.com/maxgfr/ultradoc/commit/d8978702fa3234bf8d963c37bf501055e3e705ce))
+* **doc:** adaptive outline (CLI Commands section) + DOC.md section-coverage check ([78661b5](https://github.com/maxgfr/ultradoc/commit/78661b569e7a0cb503bbde98f22b107a9bd9a909))
+* **evals:** negative assertions and doc-section expectations ([55523f9](https://github.com/maxgfr/ultradoc/commit/55523f91afb32c01450a3a2fa2eea9d2b760e48a))
+* **index:** commit-validated index + truncation stats surfaced as notes (schema v4) ([4366ee4](https://github.com/maxgfr/ultradoc/commit/4366ee41e44a3ecff335bba16189f9f6aa3a2e4a))
+* **lang:** export-list, CJS, and default-export detection for JS/TS ([198f4e6](https://github.com/maxgfr/ultradoc/commit/198f4e61987d2b7cedc661f345a594c7ba1e89ad))
+* **net:** bounded retries, Retry-After, rate-limit surfacing, GITHUB_TOKEN ([e5add55](https://github.com/maxgfr/ultradoc/commit/e5add556b46464093313a3d60b4b0160714adcfd))
+* **providers:** GitLab relaxation + scoring parity, Gitea/Codeberg support ([1d63632](https://github.com/maxgfr/ultradoc/commit/1d63632d398b9614063d1ecaba5ae7946bf81470))
+* **search:** top-3 symbol ranking, named ranking constants, rg path scoping ([9210390](https://github.com/maxgfr/ultradoc/commit/9210390ca36bc8864ebe4c682d28864bd54a1936))
+* **semantic:** symbol-boundary chunking and parallel embedding ([72b15ee](https://github.com/maxgfr/ultradoc/commit/72b15ee41e45cbe9c5ddf47ae0c7dc9867747dbc))
+
 ## [1.7.2](https://github.com/maxgfr/ultradoc/compare/v1.7.1...v1.7.2) (2026-06-28)
 
 
