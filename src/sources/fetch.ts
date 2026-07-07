@@ -1,9 +1,9 @@
-import type { EvidenceItem } from "../types.js";
+import { type EvidenceItem, VERSION } from "../types.js";
 import { buildMatcher } from "../util.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
-const UA = "ultradoc/0.x (+https://github.com/maxgfr/ultradoc)";
+const UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 
 export interface HttpResult {
   ok: boolean;

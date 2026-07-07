@@ -1994,7 +1994,7 @@ import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync
 import { join as join10, dirname as dirname2 } from "path";
 
 // src/sources/fetch.ts
-var UA = "ultradoc/0.x (+https://github.com/maxgfr/ultradoc)";
+var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 var RETRY_MAX = 2;
 var RETRY_BASE_MS = 500;
 var RETRY_AFTER_CAP_MS = 1e4;
@@ -2549,6 +2549,8 @@ async function codeSource(ctx) {
 // src/sources/docs.ts
 import { join as join11 } from "path";
 import { existsSync as existsSync6, readFileSync as readFileSync5, statSync as statSync5, writeFileSync as writeFileSync5, mkdirSync as mkdirSync6 } from "fs";
+var DOCS_ENTRY_BOOST = 1.2;
+var DOCS_ROOT_BOOST = 1.5;
 function extdocsTtlMs() {
   return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
 }
@@ -2601,7 +2603,7 @@ async function docsSource(ctx) {
     }
     if (covered.size === 0) continue;
     const inDocsRoot = ctx.index.docsRoot ? rel.startsWith(ctx.index.docsRoot + "/") : false;
-    const boost = (/readme|getting|guide|usage|tutorial/i.test(rel) ? 1.2 : 1) * (inDocsRoot ? 1.5 : 1);
+    const boost = (/readme|getting|guide|usage|tutorial/i.test(rel) ? DOCS_ENTRY_BOOST : 1) * (inDocsRoot ? DOCS_ROOT_BOOST : 1);
     scored.push({ rel, score: covered.size * 3 * boost + bestHits * 0.5, anchor: bestLine, lines });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
@@ -3219,30 +3221,33 @@ async function stackoverflowSource(ctx) {
   }
   try {
     const data = JSON.parse(r.body);
-    const items = (data.items ?? []).map((it) => {
-      const body = htmlToText(String(it.body ?? "")).slice(0, 1200);
-      const accepted = it.is_answered ? "answered" : "unanswered";
-      return {
-        source: "so",
-        // htmlToText keeps headings as markdown "#" markers — strip them from
-        // one-line titles where they'd just be noise.
-        title: htmlToText(String(it.title ?? "(question)")).replace(/^#{1,6}\s+/, "").slice(0, 160),
-        ref: `so:${it.question_id}`,
-        location: it.link,
-        score: Number(it.score ?? 0),
-        snippet: `score: ${it.score ?? 0} \xB7 ${accepted} \xB7 answers: ${it.answer_count ?? 0}` + (it.tags?.length ? ` \xB7 tags: ${it.tags.slice(0, 6).join(", ")}` : "") + `
-
-${body || "(no body)"}`,
-        url: it.link,
-        meta: { questionId: it.question_id, isAnswered: it.is_answered, answerCount: it.answer_count }
-      };
-    });
+    const items = soItems(data);
     const notes = data.quota_remaining !== void 0 && data.quota_remaining < 20 ? [`StackExchange anonymous quota low (${data.quota_remaining} left).`] : [];
     if (items.length === 0) notes.push("No StackOverflow questions matched.");
     return { source: "so", items, notes };
   } catch {
     return { source: "so", items: [], notes: ["StackOverflow search returned an unparseable response."] };
   }
+}
+function soItems(data) {
+  return (data.items ?? []).map((it) => {
+    const body = htmlToText(String(it.body ?? "")).slice(0, 1200);
+    const accepted = it.is_answered ? "answered" : "unanswered";
+    return {
+      source: "so",
+      // htmlToText keeps headings as markdown "#" markers — strip them from
+      // one-line titles where they'd just be noise.
+      title: htmlToText(String(it.title ?? "(question)")).replace(/^#{1,6}\s+/, "").slice(0, 160),
+      ref: `so:${it.question_id}`,
+      location: it.link,
+      score: Number(it.score ?? 0),
+      snippet: `score: ${it.score ?? 0} \xB7 ${accepted} \xB7 answers: ${it.answer_count ?? 0}` + (it.tags?.length ? ` \xB7 tags: ${it.tags.slice(0, 6).join(", ")}` : "") + `
+
+${body || "(no body)"}`,
+      url: it.link,
+      meta: { questionId: it.question_id, isAnswered: it.is_answered, answerCount: it.answer_count }
+    };
+  });
 }
 
 // src/sources/web.ts
@@ -3532,11 +3537,16 @@ function readmeAbout(repoDir, docFiles) {
   }
   return out;
 }
-function layout(repoDir) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const f of walk(repoDir)) {
-    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
-    counts.set(top, (counts.get(top) ?? 0) + 1);
+function layout(repoDir, index) {
+  let counts;
+  if (index.topDirs) {
+    counts = new Map(Object.entries(index.topDirs).map(([top, n]) => [top === "." ? "(root)" : top + "/", n]));
+  } else {
+    counts = /* @__PURE__ */ new Map();
+    for (const f of walk(repoDir)) {
+      const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
+      counts.set(top, (counts.get(top) ?? 0) + 1);
+    }
   }
   return [...counts.entries()].map(([dir, files]) => ({ dir, files })).sort((a, b) => b.files - a.files || a.dir.localeCompare(b.dir)).slice(0, 15);
 }
@@ -3591,7 +3601,7 @@ function renderOverview(index, ref, repoDir) {
   }
   out.push("## Layout");
   out.push("");
-  for (const l of layout(repoDir)) out.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
+  for (const l of layout(repoDir, index)) out.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
   out.push("");
   out.push("## Public API");
   out.push("");

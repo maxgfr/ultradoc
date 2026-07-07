@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { httpGet } from "../src/sources/fetch.js";
+import { VERSION } from "../src/types.js";
 
 // Build a minimal fetch Response stand-in with the fields httpGet reads.
 function res(status: number, body = "", headers: Record<string, string> = {}): Response {
@@ -66,5 +67,13 @@ describe("httpGet retry policy", () => {
     await httpGet("https://x/api", { headers: { authorization: "Bearer T" } });
     const passed = fetchMock.mock.calls[0]![1] as RequestInit;
     expect((passed.headers as Record<string, string>).authorization).toBe("Bearer T");
+  });
+
+  it("sends a User-Agent stamped with the real version", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res(200, "ok"));
+    vi.stubGlobal("fetch", fetchMock);
+    await httpGet("https://x/api");
+    const passed = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect((passed.headers as Record<string, string>)["user-agent"]).toContain(`ultradoc/${VERSION}`);
   });
 });

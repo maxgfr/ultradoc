@@ -35,11 +35,18 @@ function readmeAbout(repoDir: string, docFiles: string[]): string[] {
 }
 
 // Top-level directories by file count — a cheap structural map of the tree.
-function layout(repoDir: string): { dir: string; files: number }[] {
-  const counts = new Map<string, number>();
-  for (const f of walk(repoDir)) {
-    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
-    counts.set(top, (counts.get(top) ?? 0) + 1);
+// Uses the index's cached topDirs histogram (built during indexing) instead of
+// re-walking; falls back to a walk for a pre-v4 index without the field.
+function layout(repoDir: string, index: StructuralIndex): { dir: string; files: number }[] {
+  let counts: Map<string, number>;
+  if (index.topDirs) {
+    counts = new Map(Object.entries(index.topDirs).map(([top, n]) => [top === "." ? "(root)" : top + "/", n]));
+  } else {
+    counts = new Map();
+    for (const f of walk(repoDir)) {
+      const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) + "/" : "(root)";
+      counts.set(top, (counts.get(top) ?? 0) + 1);
+    }
   }
   return [...counts.entries()]
     .map(([dir, files]) => ({ dir, files }))
@@ -113,7 +120,7 @@ export function renderOverview(index: StructuralIndex, ref: RepoRef, repoDir: st
 
   out.push("## Layout");
   out.push("");
-  for (const l of layout(repoDir)) out.push(`- \`${l.dir}\` — ${l.files} files`);
+  for (const l of layout(repoDir, index)) out.push(`- \`${l.dir}\` — ${l.files} files`);
   out.push("");
 
   out.push("## Public API");

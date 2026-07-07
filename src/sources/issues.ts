@@ -4,8 +4,8 @@ import { providerFor } from "../providers/registry.js";
 
 // Resolve the host/owner/repo to query for issues/PRs. For a remote repo that's
 // the repo itself; for a LOCAL checkout we read its `origin` remote so a local
-// question can still pull the project's issues and PRs.
-function remoteRef(ctx: RunContext): RepoRef {
+// question can still pull the project's issues and PRs. Exported for testing.
+export function remoteRef(ctx: RunContext): RepoRef {
   if (!ctx.repoRef.isLocal && ctx.repoRef.owner && ctx.repoRef.repo) return ctx.repoRef;
   const origin = originUrl(ctx.repoDir);
   if (origin) {

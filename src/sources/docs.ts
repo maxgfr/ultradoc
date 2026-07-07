@@ -8,6 +8,11 @@ import { fetchAndExtract, excerptsFromText, nearestHeading } from "./fetch.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
+// Ranking boosts for in-repo docs: an entry-point doc (README/guide/…) and one
+// inside the canonical docs tree outrank scattered .md files.
+const DOCS_ENTRY_BOOST = 1.2;
+const DOCS_ROOT_BOOST = 1.5;
+
 // How long a cached external-docs page is trusted before a refetch (a docs site
 // updates, and the page is keyed by URL only). Overridable; default one week.
 function extdocsTtlMs(): number {
@@ -88,7 +93,7 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
     // Boost the canonical docs tree (discovered once at index time) and the
     // usual entry-point docs, so real documentation outranks scattered .md.
     const inDocsRoot = ctx.index.docsRoot ? rel.startsWith(ctx.index.docsRoot + "/") : false;
-    const boost = (/readme|getting|guide|usage|tutorial/i.test(rel) ? 1.2 : 1) * (inDocsRoot ? 1.5 : 1);
+    const boost = (/readme|getting|guide|usage|tutorial/i.test(rel) ? DOCS_ENTRY_BOOST : 1) * (inDocsRoot ? DOCS_ROOT_BOOST : 1);
     scored.push({ rel, score: covered.size * 3 * boost + bestHits * 0.5, anchor: bestLine, lines });
   }
 
