@@ -1,6 +1,6 @@
 import type { RunContext, SourceResult, EvidenceItem } from "../types.js";
 import { sh, have, rankedKeywords } from "../util.js";
-import { rerank } from "../providers/github.js";
+import { rerank, withRankScores } from "../providers/shared.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -103,10 +103,4 @@ export async function discussionsSource(ctx: RunContext): Promise<SourceResult> 
     items: merged,
     notes: merged.length ? [] : ["No discussions matched the question (or the repo has none)."],
   };
-}
-
-// GraphQL search exposes no relevance score, so persist the rerank order as a
-// descending score — the dossier sorts by score when assembling sources.
-function withRankScores(items: RawItem[]): RawItem[] {
-  return items.map((it, i) => ({ ...it, score: items.length - i }));
 }

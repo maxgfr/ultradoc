@@ -89,8 +89,10 @@ Grounding:
 
 Environment (all optional, keyless by default):
   GITHUB_TOKEN               Raise the GitHub REST rate limit on the keyless fallback.
+  GITLAB_TOKEN               Read private GitLab projects / lift limits (PRIVATE-TOKEN).
   ULTRADOC_CACHE_DIR         Override the clone/index cache root (persistent per-user).
   ULTRADOC_EXTDOCS_TTL_HOURS External-docs cache freshness before refetch (default 168).
+  ULTRADOC_MAX_FILES, …      Raise index/scan/retrieval caps (see references).
 `;
 
 const COMMANDS = new Set([

@@ -12,7 +12,9 @@ honestly (the dossier says so) rather than pretending a search happened.
   Install/login: `gh auth login`.
 - **Fallback:** the public REST search endpoint
   `https://api.github.com/search/issues`, unauthenticated. Works for public
-  repos at a low rate (~10 search req/min); fine for a handful of queries.
+  repos at a low rate (~10 search req/min); fine for a handful of queries. Set
+  `GITHUB_TOKEN` (optional) to lift that limit. A rate-limited response
+  short-circuits the relaxation loop (with a note) instead of burning quota.
 - **Query shape:** `repo:<owner>/<repo> type:issue|pr <keywords>`, sorted by
   recently updated.
 - **Progressive relaxation:** GitHub free-text search ANDs its terms, so a query
@@ -45,12 +47,23 @@ honestly (the dossier says so) rather than pretending a search happened.
 
 ## GitLab (`gitlab.com`, self-managed)
 
-- Public REST v4, unauthenticated read of public projects.
+- Public REST v4, unauthenticated read of public projects (optional `GITLAB_TOKEN`
+  sent as `PRIVATE-TOKEN` to read private projects / lift limits).
 - Project addressed by URL-encoded full path, so **subgroups** work:
   `/api/v4/projects/<group%2Fsub%2Frepo>/issues` and `/merge_requests`.
-- `search=<keywords>`, ordered by `updated_at`.
+- `search=<keywords>`, ordered by `updated_at`, with the **same progressive
+  relaxation** as GitHub (top-3 → top-2 → pooled single terms) and a
+  keyword-coverage rerank — GitLab's `search` is substring-ish, so ANDing many
+  keywords over-constrains. Results are re-scored by rank (GitLab exposes none).
 
-## Other hosts (Bitbucket, Gitea, bare URLs, …)
+## Gitea / Forgejo / Codeberg
+
+- Stable keyless REST v1: `GET /api/v1/repos/{owner}/{repo}/issues?q=&type=issues|pulls&state=all`.
+- Auto-selected for `codeberg.org` and any host whose domain contains
+  `gitea`/`forgejo`. Same relaxation ladder + coverage rerank + rank scoring as
+  GitLab.
+
+## Other hosts (Bitbucket, bare URLs, …)
 
 - No issue/PR API is queried. The code is still cloned and indexed; the dossier
   notes that issues/PRs are not retrievable for that host. To add a host, drop a

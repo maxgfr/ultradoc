@@ -1,6 +1,7 @@
 import type { RepoRef, EvidenceItem } from "../types.js";
 import { github } from "./github.js";
 import { gitlab } from "./gitlab.js";
+import { gitea } from "./gitea.js";
 import { generic } from "./generic.js";
 
 export type RawItem = Omit<EvidenceItem, "id">;
@@ -16,7 +17,7 @@ export interface Provider {
   search: (ref: RepoRef, question: string, kind: IssueKind, perSource: number) => Promise<{ items: RawItem[]; notes: string[] }>;
 }
 
-const PROVIDERS: Provider[] = [github, gitlab];
+const PROVIDERS: Provider[] = [github, gitlab, gitea];
 
 export function providerFor(host: string): Provider {
   return PROVIDERS.find((p) => p.matches(host)) ?? generic;

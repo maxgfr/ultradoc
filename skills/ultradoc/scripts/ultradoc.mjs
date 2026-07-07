@@ -1472,8 +1472,8 @@ function discoverWorkspaces(root) {
   }
   return [...byDir.values()].sort((a, b) => a.dir.localeCompare(b.dir));
 }
-function resolvePackage(packages, query2) {
-  const q = query2.toLowerCase().replace(/\/+$/, "");
+function resolvePackage(packages, query4) {
+  const q = query4.toLowerCase().replace(/\/+$/, "");
   const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
   if (exact) return exact;
   const short = packages.filter((p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q);
@@ -2645,6 +2645,35 @@ function ghAuthHeaders() {
   const token = process.env.GITHUB_TOKEN?.trim();
   return token ? { authorization: `Bearer ${token}` } : {};
 }
+function gitlabAuthHeaders() {
+  const token = process.env.GITLAB_TOKEN?.trim();
+  return token ? { "private-token": token } : {};
+}
+function rerank(items, ranked) {
+  const terms = ranked.map((t) => t.toLowerCase());
+  const coverage2 = (it) => {
+    const hay = `${it.title} ${it.snippet}`.toLowerCase();
+    let c2 = 0;
+    for (const t of terms) if (hay.includes(t)) c2++;
+    return c2;
+  };
+  return items.map((it) => ({ it, c: coverage2(it), s: it.score })).sort((a, b) => b.c - a.c || b.s - a.s).map((x) => x.it);
+}
+function uniqueAttempts(lists) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const l of lists) {
+    const key = l.join(" ");
+    if (l.length && !seen.has(key)) {
+      seen.add(key);
+      out.push(l);
+    }
+  }
+  return out;
+}
+function withRankScores(items) {
+  return items.map((it, i) => ({ ...it, score: items.length - i }));
+}
 
 // src/sources/releases.ts
 var CHANGELOG_RE = /(^|\/)(changelog|changes|history|news|releases?)(\.[a-z0-9]+)?$/i;
@@ -2913,30 +2942,41 @@ var github = {
     return { items: [], notes: lastError ? [lastError] : [`No ${kind}s matched the question.`] };
   }
 };
-function rerank(items, ranked) {
-  const terms = ranked.map((t) => t.toLowerCase());
-  const coverage2 = (it) => {
-    const hay = `${it.title} ${it.snippet}`.toLowerCase();
-    let c2 = 0;
-    for (const t of terms) if (hay.includes(t)) c2++;
-    return c2;
-  };
-  return items.map((it) => ({ it, c: coverage2(it), s: it.score })).sort((a, b) => b.c - a.c || b.s - a.s).map((x) => x.it);
-}
-function uniqueAttempts(lists) {
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const l of lists) {
-    const key = l.join("\0");
-    if (l.length && !seen.has(key)) {
-      seen.add(key);
-      out.push(l);
-    }
-  }
-  return out;
-}
 
 // src/providers/gitlab.ts
+async function query2(ref, terms, kind, perSource) {
+  const proj = encodeURIComponent(`${ref.owner}/${ref.repo}`);
+  const path = kind === "issue" ? "issues" : "merge_requests";
+  const search2 = encodeURIComponent(terms.join(" "));
+  const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search2}&per_page=${perSource}&order_by=updated_at&sort=desc`;
+  const r = await httpGet(url, { accept: "application/json", headers: gitlabAuthHeaders(), retries: 2 });
+  if (!r.ok) return { items: [], error: `GitLab ${kind} search unavailable (status ${r.status}).` };
+  try {
+    const arr = JSON.parse(r.body);
+    if (!Array.isArray(arr)) return { items: [], error: `GitLab ${kind} search returned no array.` };
+    const marker = kind === "issue" ? "#" : "!";
+    const items = arr.map((it) => {
+      const num = it.iid ?? it.id;
+      const body = String(it.description ?? "").replace(/\r/g, "").trim().slice(0, 1200);
+      return {
+        source: kind,
+        title: `${marker}${num} ${it.title} [${it.state}]`,
+        ref: `${kind}#${num}`,
+        location: it.web_url,
+        score: 0,
+        // GitLab exposes no relevance score; withRankScores sets it
+        snippet: `state: ${it.state} \xB7 updated: ${it.updated_at ?? "?"}
+
+${body || "(no description)"}`,
+        url: it.web_url,
+        meta: { iid: num, state: it.state }
+      };
+    });
+    return { items };
+  } catch {
+    return { items: [], error: `GitLab ${kind} search returned an unparseable response.` };
+  }
+}
 var gitlab = {
   name: "gitlab",
   matches: (host) => /gitlab/i.test(host),
@@ -2944,38 +2984,86 @@ var gitlab = {
     if (!ref.owner || !ref.repo) {
       return { items: [], notes: ["No project path resolved; cannot query GitLab issues/MRs."] };
     }
-    const proj = encodeURIComponent(`${ref.owner}/${ref.repo}`);
-    const path = kind === "issue" ? "issues" : "merge_requests";
-    const search2 = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
-    const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search2}&per_page=${perSource}&order_by=updated_at&sort=desc`;
-    const r = await httpGet(url, { accept: "application/json", retries: 2 });
-    if (!r.ok) {
-      return { items: [], notes: [`GitLab ${kind} search unavailable (status ${r.status}).`] };
+    const ranked = rankedKeywords(question);
+    if (ranked.length === 0) return { items: [], notes: [`No keywords to search ${kind}s.`] };
+    let lastError;
+    for (const terms of uniqueAttempts([ranked.slice(0, 3), ranked.slice(0, 2)])) {
+      const { items, error } = await query2(ref, terms, kind, perSource * 2);
+      if (error) lastError = error;
+      if (items.length) return { items: withRankScores(rerank(items, ranked)).slice(0, perSource), notes: [] };
     }
-    try {
-      const arr = JSON.parse(r.body);
-      if (!Array.isArray(arr)) return { items: [], notes: [`GitLab ${kind} search returned no array.`] };
-      const marker = kind === "issue" ? "#" : "!";
-      const items = arr.map((it) => {
-        const num = it.iid ?? it.id;
-        const body = String(it.description ?? "").replace(/\r/g, "").trim().slice(0, 1200);
-        return {
-          source: kind,
-          title: `${marker}${num} ${it.title} [${it.state}]`,
-          ref: `${kind}#${num}`,
-          location: it.web_url,
-          score: 0,
-          snippet: `state: ${it.state} \xB7 updated: ${it.updated_at ?? "?"}
+    const seen = /* @__PURE__ */ new Map();
+    for (const t of ranked.slice(0, 2)) {
+      const { items, error } = await query2(ref, [t], kind, perSource * 2);
+      if (error) lastError = error;
+      for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
+    }
+    const merged = withRankScores(rerank([...seen.values()], ranked)).slice(0, perSource);
+    if (merged.length) return { items: merged, notes: [] };
+    return { items: [], notes: lastError ? [lastError] : [`No ${kind}s matched the question.`] };
+  }
+};
+
+// src/providers/gitea.ts
+function toItems2(arr, kind) {
+  const marker = kind === "issue" ? "#" : "!";
+  return (arr ?? []).map((it) => {
+    const num = it.number;
+    const labels = (it.labels ?? []).map((l) => typeof l === "string" ? l : l.name).filter(Boolean).join(", ");
+    const body = String(it.body ?? "").replace(/\r/g, "").trim().slice(0, 1200);
+    return {
+      source: kind,
+      title: `${marker}${num} ${it.title} [${it.state}]`,
+      ref: `${kind}#${num}`,
+      location: it.html_url,
+      score: 0,
+      // Gitea exposes no relevance score; withRankScores sets it
+      snippet: `state: ${it.state}${labels ? ` \xB7 labels: ${labels}` : ""} \xB7 updated: ${it.updated_at ?? "?"}
 
 ${body || "(no description)"}`,
-          url: it.web_url,
-          meta: { iid: num, state: it.state }
-        };
-      });
-      return { items, notes: [] };
-    } catch {
-      return { items: [], notes: [`GitLab ${kind} search returned an unparseable response.`] };
+      url: it.html_url,
+      meta: { number: num, state: it.state }
+    };
+  });
+}
+async function query3(ref, terms, kind, perSource) {
+  const type = kind === "issue" ? "issues" : "pulls";
+  const q = encodeURIComponent(terms.join(" "));
+  const url = `https://${ref.host}/api/v1/repos/${ref.owner}/${ref.repo}/issues?q=${q}&type=${type}&state=all&limit=${perSource}`;
+  const r = await httpGet(url, { accept: "application/json", retries: 2 });
+  if (!r.ok) return { items: [], error: `Gitea ${kind} search unavailable (status ${r.status}).` };
+  try {
+    const arr = JSON.parse(r.body);
+    if (!Array.isArray(arr)) return { items: [], error: `Gitea ${kind} search returned no array.` };
+    return { items: toItems2(arr, kind) };
+  } catch {
+    return { items: [], error: `Gitea ${kind} search returned an unparseable response.` };
+  }
+}
+var gitea = {
+  name: "gitea",
+  matches: (host) => /(^|\.)codeberg\.org$/i.test(host) || /gitea|forgejo/i.test(host),
+  async search(ref, question, kind, perSource) {
+    if (!ref.owner || !ref.repo) {
+      return { items: [], notes: ["No owner/repo resolved; cannot query Gitea issues/PRs."] };
     }
+    const ranked = rankedKeywords(question);
+    if (ranked.length === 0) return { items: [], notes: [`No keywords to search ${kind}s.`] };
+    let lastError;
+    for (const terms of uniqueAttempts([ranked.slice(0, 3), ranked.slice(0, 2)])) {
+      const { items, error } = await query3(ref, terms, kind, perSource * 2);
+      if (error) lastError = error;
+      if (items.length) return { items: withRankScores(rerank(items, ranked)).slice(0, perSource), notes: [] };
+    }
+    const seen = /* @__PURE__ */ new Map();
+    for (const t of ranked.slice(0, 2)) {
+      const { items, error } = await query3(ref, [t], kind, perSource * 2);
+      if (error) lastError = error;
+      for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
+    }
+    const merged = withRankScores(rerank([...seen.values()], ranked)).slice(0, perSource);
+    if (merged.length) return { items: merged, notes: [] };
+    return { items: [], notes: lastError ? [lastError] : [`No ${kind}s matched the question.`] };
   }
 };
 
@@ -2986,13 +3074,15 @@ var generic = {
   async search(ref, _question, kind) {
     return {
       items: [],
-      notes: [`No public ${kind} API for host "${ref.host}". The code was cloned and indexed; issues/PRs are not retrievable for this host.`]
+      notes: [
+        `No public ${kind} API for host "${ref.host}". The code was cloned and indexed; issues/PRs are not retrievable for this host (a self-hosted Gitea/Forgejo is auto-detected when its domain contains 'gitea'/'forgejo').`
+      ]
     };
   }
 };
 
 // src/providers/registry.ts
-var PROVIDERS = [github, gitlab];
+var PROVIDERS = [github, gitlab, gitea];
 function providerFor(host) {
   return PROVIDERS.find((p) => p.matches(host)) ?? generic;
 }
@@ -3115,9 +3205,6 @@ async function discussionsSource(ctx) {
     notes: merged.length ? [] : ["No discussions matched the question (or the repo has none)."]
   };
 }
-function withRankScores(items) {
-  return items.map((it, i) => ({ ...it, score: items.length - i }));
-}
 
 // src/sources/stackoverflow.ts
 async function stackoverflowSource(ctx) {
@@ -3160,8 +3247,8 @@ ${body || "(no body)"}`,
 
 // src/sources/web.ts
 var SEARXNG_BASE = process.env.ULTRADOC_SEARXNG || "http://localhost:8888";
-async function viaSearxng(query2, n) {
-  const url = `${SEARXNG_BASE.replace(/\/$/, "")}/search?q=${encodeURIComponent(query2)}&format=json`;
+async function viaSearxng(query4, n) {
+  const url = `${SEARXNG_BASE.replace(/\/$/, "")}/search?q=${encodeURIComponent(query4)}&format=json`;
   const r = await httpGet(url, { accept: "application/json", timeoutMs: 8e3 });
   if (!r.ok) return null;
   try {
@@ -3191,22 +3278,22 @@ function parseDuckDuckGoResults(html, n) {
   }
   return urls;
 }
-async function viaDuckDuckGo(query2, n) {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query2)}`;
+async function viaDuckDuckGo(query4, n) {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query4)}`;
   const r = await httpGet(url, { accept: "text/html", timeoutMs: 12e3, retries: 2 });
   if (!r.ok || !r.body) return null;
   const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
 }
-async function discover(query2, engine, n) {
+async function discover(query4, engine, n) {
   const notes = [];
   if (engine === "searxng" || engine === "auto") {
-    const s = await viaSearxng(query2, n);
+    const s = await viaSearxng(query4, n);
     if (s?.length) return { urls: s, via: "searxng", notes };
     if (engine === "searxng") notes.push(`SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`);
   }
   if (engine === "ddg" || engine === "auto") {
-    const d = await viaDuckDuckGo(query2, n);
+    const d = await viaDuckDuckGo(query4, n);
     if (d?.length) return { urls: d, via: "duckduckgo", notes };
     if (engine === "ddg") notes.push("DuckDuckGo returned no results.");
   }
@@ -3244,9 +3331,9 @@ async function webFetchUrls(urls, question, perSource) {
 async function webSource(ctx) {
   const kws = keywords(ctx.options.question).slice(0, 8).join(" ");
   const project = ctx.repoRef.repo ?? "";
-  const query2 = `${project} ${kws}`.trim();
-  if (!query2) return { source: "web", items: [], notes: ["No keywords to search the web."] };
-  const { urls, via, notes } = await discover(query2, ctx.options.webEngine, ctx.options.perSource);
+  const query4 = `${project} ${kws}`.trim();
+  if (!query4) return { source: "web", items: [], notes: ["No keywords to search the web."] };
+  const { urls, via, notes } = await discover(query4, ctx.options.webEngine, ctx.options.perSource);
   if (urls.length === 0) return { source: "web", items: [], notes };
   const fetched = await webFetchUrls(urls, ctx.options.question, ctx.options.perSource);
   return {
@@ -3580,7 +3667,7 @@ function topExportedSymbols(index, prefix, n) {
 function buildOutline(index, name, scopePkg) {
   const sections = [];
   let n = 0;
-  const add = (title, query2, sources) => sections.push({ id: `S${++n}`, title, query: query2, sources });
+  const add = (title, query4, sources) => sections.push({ id: `S${++n}`, title, query: query4, sources });
   add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
   add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
   if (index.packages.length && !scopePkg) {
@@ -4447,8 +4534,10 @@ Grounding:
 
 Environment (all optional, keyless by default):
   GITHUB_TOKEN               Raise the GitHub REST rate limit on the keyless fallback.
+  GITLAB_TOKEN               Read private GitLab projects / lift limits (PRIVATE-TOKEN).
   ULTRADOC_CACHE_DIR         Override the clone/index cache root (persistent per-user).
   ULTRADOC_EXTDOCS_TTL_HOURS External-docs cache freshness before refetch (default 168).
+  ULTRADOC_MAX_FILES, \u2026      Raise index/scan/retrieval caps (see references).
 `;
 var COMMANDS = /* @__PURE__ */ new Set([
   "ask",
