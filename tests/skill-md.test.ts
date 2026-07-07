@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
 import { VERSION } from "../src/types.js";
+
+// Matches scripts/verify-skill-bundle.mjs: Claude Code's skill matcher caps the
+// description at 1024 chars; the repo guards a little under it.
+const DESC_MAX = 1000;
 
 // Guards that the published SKILL.md stays installable via `npx skills add`.
 // The `skills` CLI discovers a skill by reading SKILL.md, extracting the
@@ -30,11 +34,14 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     expect(() => parse(frontmatter)).not.toThrow();
   });
 
-  it("exposes a non-empty name and description", () => {
+  it("exposes a non-empty name and description under the length guard", () => {
     const data = parse(frontmatter) as Record<string, unknown>;
     expect(data.name).toBe("ultradoc");
     expect(typeof data.description).toBe("string");
-    expect((data.description as string).length).toBeGreaterThan(0);
+    const desc = data.description as string;
+    expect(desc.length).toBeGreaterThan(0);
+    // Caught locally by `pnpm test` too, not only by verify:bundle in CI.
+    expect(desc.length).toBeLessThanOrEqual(DESC_MAX);
   });
 
   it("keeps version in lockstep across SKILL.md, package.json and src/types.ts", () => {
@@ -48,5 +55,23 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     const body = match?.[2] ?? "";
     expect(body).toContain("references/orchestration.md");
     expect(existsSync(join(SKILL_DIR, "references", "orchestration.md"))).toBe(true);
+  });
+
+  it("mentions every reference file, and every mentioned reference exists", () => {
+    const body = match?.[2] ?? "";
+    const refDir = join(SKILL_DIR, "references");
+    const onDisk = readdirSync(refDir).filter((f) => f.endsWith(".md"));
+    // Every shipped reference is pointed to (progressive disclosure), …
+    for (const f of onDisk) expect(body).toContain(`references/${f}`);
+    // … and every mentioned reference actually exists (no dangling pointer).
+    const mentioned = [...body.matchAll(/references\/([\w-]+\.md)/g)].map((m) => m[1]!);
+    for (const f of new Set(mentioned)) expect(existsSync(join(refDir, f))).toBe(true);
+  });
+
+  it("stays lean (progressive disclosure into references/)", () => {
+    const body = match?.[2] ?? "";
+    const words = body.split(/\s+/).filter(Boolean).length;
+    // A soft structural guard against re-inflating what belongs in references/.
+    expect(words).toBeLessThanOrEqual(2100);
   });
 });
