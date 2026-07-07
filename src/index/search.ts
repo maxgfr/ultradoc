@@ -28,6 +28,25 @@ const MAX_KEYWORDS = 8;
 const MAX_EXCERPT_LINES = 30; // hard cap on one excerpt
 const EXCERPT_PAD = 8; // how far an excerpt may grow past the hit region
 
+// Named ranking constants (previously scattered magic numbers). Tuning these
+// changes result ordering — the offline evals (evals/run.mjs) guard against a
+// regression.
+export const RANKING = {
+  BM25_K1: 1.2,
+  // b=0.3: code corpora mix tiny config files with huge implementation files,
+  // and full-strength length normalization (b=0.75) buries the big files where
+  // the answer lives (e.g. matomo's js/piwik.js).
+  BM25_B: 0.3,
+  LOW_SIGNAL_PENALTY: 0.45, // tests/docs/examples down-weight
+  STEM_EXACT_BOOST: 1.3, // file stem == a query keyword (retry.ts for "retry")
+  STEM_SUBTOKEN_BOOST: 1.15, // file stem shares a subtoken with a keyword
+  EXPORTED_BOOST: 1.5, // an exported symbol outranks a private one
+  SCORE_SCALE: 1000, // readability of the reported score; ordering unchanged
+  // Per-file contribution of its 1st/2nd/3rd best-matching symbol, so a file
+  // that defines several relevant symbols outranks one with a single weak match.
+  SYMBOL_DECAY: [1, 0.5, 0.25],
+} as const;
+
 // Lexical search via ripgrep (`rg --json`), one call with the matcher's
 // patterns OR-ed together (accent-insensitive classes over escaped literals —
 // hence no -F). Hits are attributed back to canonical keywords, so "Réessais"
@@ -63,7 +82,10 @@ function rgSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<st
   ];
   if (scope) args.push("-g", `${scope}/**`);
   for (const p of matcher.patterns) args.push("-e", p.source);
-  args.push(root);
+  // Pass the scoped subtree as the search path so ripgrep never traverses
+  // sibling packages of a big monorepo (the glob alone still lets rg walk the
+  // whole tree). rel is computed against `root`, so paths stay repo-relative.
+  args.push(scope ? join(root, scope) : root);
 
   const res = sh("rg", args, { timeoutMs: 60_000 });
   const byFile = new Map<string, FileHits>();
@@ -196,34 +218,50 @@ export function expandWindow(lines: string[], start: number, end: number, anchor
   return { start: s, end: e };
 }
 
-// Rank declared symbols by name similarity to the query keywords. Exact name
-// matches and exported symbols score highest — this is what lets "what does
+// Score one declared symbol by name similarity to the query keywords. Exact
+// name matches and exported symbols score highest — this is what lets "what does
 // retryRequest do?" jump straight to the definition.
-function symbolScores(index: StructuralIndex, matcher: KeywordMatcher): Map<string, { score: number; sym: CodeSymbol }> {
-  const byFile = new Map<string, { score: number; sym: CodeSymbol }>();
-  for (const sym of index.symbols) {
-    const name = foldTerm(sym.name);
-    let s = 0;
-    for (const ek of matcher.expanded) {
-      // Best variant wins per keyword. Subtokens count at half weight so a
-      // generic identifier part ("get", "page") can't dominate the typed term.
-      let best = 0;
-      for (const v of ek.variants) {
-        const vt = foldTerm(v.text);
-        let vs = 0;
-        if (name === vt) vs = 6;
-        else if (name.startsWith(vt) || vt.startsWith(name)) vs = 3;
-        else if (name.includes(vt) || vt.includes(name)) vs = 1.5;
-        if (v.kind === "subtoken") vs *= 0.5;
-        if (vs > best) best = vs;
-      }
-      s += best;
+function scoreSymbol(sym: CodeSymbol, matcher: KeywordMatcher): number {
+  const name = foldTerm(sym.name);
+  let s = 0;
+  for (const ek of matcher.expanded) {
+    // Best variant wins per keyword. Subtokens count at half weight so a
+    // generic identifier part ("get", "page") can't dominate the typed term.
+    let best = 0;
+    for (const v of ek.variants) {
+      const vt = foldTerm(v.text);
+      let vs = 0;
+      if (name === vt) vs = 6;
+      else if (name.startsWith(vt) || vt.startsWith(name)) vs = 3;
+      else if (name.includes(vt) || vt.includes(name)) vs = 1.5;
+      if (v.kind === "subtoken") vs *= 0.5;
+      if (vs > best) best = vs;
     }
+    s += best;
+  }
+  if (s === 0) return 0;
+  return sym.exported ? s * RANKING.EXPORTED_BOOST : s;
+}
+
+// Rank each file by its best-matching symbols. A file's score sums its top few
+// symbol scores under SYMBOL_DECAY, so a file defining several relevant symbols
+// outranks one with a single weak match. `sym` is the top symbol, used to anchor
+// the excerpt at its definition.
+function symbolScores(index: StructuralIndex, matcher: KeywordMatcher): Map<string, { score: number; sym: CodeSymbol }> {
+  const perFile = new Map<string, { score: number; sym: CodeSymbol }[]>();
+  for (const sym of index.symbols) {
+    const s = scoreSymbol(sym, matcher);
     if (s === 0) continue;
-    if (sym.exported) s *= 1.5;
-    const key = sym.file;
-    const prev = byFile.get(key);
-    if (!prev || s > prev.score) byFile.set(key, { score: s, sym });
+    const arr = perFile.get(sym.file) ?? [];
+    arr.push({ score: s, sym });
+    perFile.set(sym.file, arr);
+  }
+  const byFile = new Map<string, { score: number; sym: CodeSymbol }>();
+  for (const [file, arr] of perFile) {
+    arr.sort((a, b) => b.score - a.score);
+    let fileScore = 0;
+    for (let i = 0; i < arr.length && i < RANKING.SYMBOL_DECAY.length; i++) fileScore += arr[i]!.score * RANKING.SYMBOL_DECAY[i]!;
+    byFile.set(file, { score: fileScore, sym: arr[0]!.sym });
   }
   return byFile;
 }
@@ -278,10 +316,7 @@ export function searchCode(
       }
       return { key: rel, tf: lexical.get(rel)!.kwCounts, len };
     });
-  // b=0.3: code corpora mix tiny config files with huge implementation files,
-  // and the full-strength length normalization (b=0.75) buries exactly the big
-  // files where the answer lives (e.g. matomo's js/piwik.js).
-  const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, 1.2, 0.3);
+  const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, RANKING.BM25_K1, RANKING.BM25_B);
 
   // Fuse the BM25 ranking with the symbol-index ranking via RRF — the same
   // scale-free fusion the semantic tier uses — then apply the low-signal
@@ -312,9 +347,8 @@ export function searchCode(
     // (0.45 × 1.3 < 1).
     const stem = (rel.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
     const stemParts = [foldTerm(stem), ...subtokens(stem).map(foldTerm)];
-    const nameBoost = canonSet.has(stemParts[0]!) ? 1.3 : stemParts.some((p) => canonSet.has(p)) ? 1.15 : 1;
-    // ×1000 only for readability of the reported score; ordering is unchanged.
-    const score = base * 1000 * (lowSignal ? 0.45 : 1) * nameBoost;
+    const nameBoost = canonSet.has(stemParts[0]!) ? RANKING.STEM_EXACT_BOOST : stemParts.some((p) => canonSet.has(p)) ? RANKING.STEM_SUBTOKEN_BOOST : 1;
+    const score = base * RANKING.SCORE_SCALE * (lowSignal ? RANKING.LOW_SIGNAL_PENALTY : 1) * nameBoost;
     scored.push({ rel, score, fh: lexical.get(rel), sym: symbols.get(rel)?.sym });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
@@ -325,31 +359,7 @@ export function searchCode(
     const content = readText(join(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
-
-    // Pick the excerpt anchor: a matching symbol definition wins; else the
-    // densest lexical region; else the first line. The seed window then grows
-    // to natural boundaries (blank lines) instead of a fixed margin.
-    let start: number;
-    let end: number;
-    let label: string;
-    if (f.sym) {
-      const w = expandWindow(lines, Math.max(1, f.sym.line - 1), Math.min(lines.length, f.sym.line + 18), f.sym.line);
-      start = w.start;
-      end = w.end;
-      label = `${f.sym.kind} ${f.sym.name}`;
-    } else if (f.fh) {
-      const region = regionsFor(f.fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
-      const w = expandWindow(lines, region.start, region.end, region.anchor);
-      start = w.start;
-      end = w.end;
-      label = "match";
-    } else {
-      start = 1;
-      end = Math.min(lines.length, 20);
-      label = "match";
-    }
-
-    const excerpt = lines.slice(start - 1, end).join("\n");
+    const { start, end, label } = excerptFor(lines, matcher, f.sym, f.fh);
     const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${start}-L${end}`;
     items.push({
       source: "code",
@@ -357,11 +367,28 @@ export function searchCode(
       ref: f.rel,
       location: `${f.rel}:${start}-${end}`,
       score: Number(f.score.toFixed(3)),
-      snippet: excerpt,
+      snippet: lines.slice(start - 1, end).join("\n"),
       url,
       meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name },
     });
   }
 
   return { items, notes, fallback: usedRg ? undefined : "js-scan" };
+}
+
+// Choose the excerpt window for one result: a matching symbol definition wins
+// (anchored at its line); else the densest lexical region; else the file head.
+// The seed window grows to natural (blank-line) boundaries, capped at
+// MAX_EXCERPT_LINES. Returns 1-based inclusive line numbers + a label.
+function excerptFor(lines: string[], matcher: KeywordMatcher, sym?: CodeSymbol, fh?: FileHits): { start: number; end: number; label: string } {
+  if (sym) {
+    const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, sym.line + 18), sym.line);
+    return { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
+  }
+  if (fh) {
+    const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
+    const w = expandWindow(lines, region.start, region.end, region.anchor);
+    return { start: w.start, end: w.end, label: "match" };
+  }
+  return { start: 1, end: Math.min(lines.length, 20), label: "match" };
 }
