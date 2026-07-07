@@ -23,5 +23,13 @@
     "args": { "package": "@sample/api" },
     "expect": [{ "source": "code", "refIncludes": "packages/api/", "topN": 1 }],
     "minItems": 1
+  },
+  {
+    "id": "doc-cli-outline",
+    "mode": "doc",
+    "repo": "tests/fixtures/sample-cli",
+    "expect": [{ "source": "code", "refIncludes": "src/main.ts" }],
+    "expectSections": ["Commands"],
+    "minItems": 1
   }
 ]

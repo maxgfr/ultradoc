@@ -2,5 +2,8 @@
   "name": "sample-cli",
   "version": "0.1.0",
   "description": "A tiny demo command-line tool used as a retrieval test fixture",
-  "main": "src/main.ts"
+  "main": "src/main.ts",
+  "bin": {
+    "sample": "src/main.ts"
+  }
 }

@@ -5,6 +5,7 @@ import { runSources } from "./sources/registry.js";
 import { renderEvidenceMarkdown, SOURCE_ORDER } from "./dossier.js";
 import { ensureOverview } from "./overview.js";
 import { indexDir } from "./index/structural.js";
+import { readText } from "./walk.js";
 import { slugify } from "./util.js";
 import { LIMITS } from "./config.js";
 import type { AskOptions, DocPlan, DocSection, DossierMeta, EvidenceItem, RunContext, SourceKind, StructuralIndex, WorkspacePackage } from "./types.js";
@@ -61,11 +62,54 @@ function topExportedSymbols(index: StructuralIndex, prefix: string | undefined, 
   return names;
 }
 
-// Build the deterministic documentation outline. Every section carries a
-// retrieval query and the sources to ground it on; runDoc fills evidenceIds.
-// A monorepo (unscoped) gets one section per package; a single repo or a
-// scoped run gets a single "Public API" section grounded on its top symbols.
-export function buildOutline(index: StructuralIndex, name: string, scopePkg?: WorkspacePackage): Omit<DocSection, "evidenceIds">[] {
+// Deterministic project-type signals used to adapt the doc outline. Read from a
+// few manifests + the symbol index — no LLM.
+export interface ProjectTraits {
+  isCli: boolean; // ships an executable (bin / [project.scripts] / [[bin]] / func main)
+  isLib: boolean; // exposes an importable API (exported symbols)
+  hasConfigSurface: boolean; // has configuration worth documenting
+}
+
+export function detectProjectTraits(repoDir: string, index: StructuralIndex): ProjectTraits {
+  const bases = new Map(index.configFiles.map((f) => [f.split("/").pop()!.toLowerCase(), f]));
+  const readCfg = (base: string): string => {
+    const rel = bases.get(base);
+    return rel ? readText(join(repoDir, rel)) : "";
+  };
+
+  let isCli = false;
+  // Node: a package.json "bin" field.
+  const pkg = readCfg("package.json");
+  if (pkg) {
+    try {
+      if ((JSON.parse(pkg) as { bin?: unknown }).bin) isCli = true;
+    } catch {
+      if (/"bin"\s*:/.test(pkg)) isCli = true;
+    }
+  }
+  // Python: a console-scripts table.
+  if (/\[project\.scripts\]|\[tool\.poetry\.scripts\]/.test(readCfg("pyproject.toml"))) isCli = true;
+  // Rust: an explicit binary target.
+  if (/\[\[bin\]\]/.test(readCfg("cargo.toml"))) isCli = true;
+  // Go / Rust / C: a program entry point among the extracted symbols.
+  if (index.symbols.some((s) => s.name === "main" && (/\.go$/.test(s.file) || /(^|\/)main\.rs$/.test(s.file)))) isCli = true;
+
+  const isLib = index.symbols.some((s) => s.exported && !s.name.startsWith("_"));
+
+  const hasConfigSurface =
+    bases.has(".env.example") ||
+    index.configFiles.some((f) => /(^|\/)(config|settings)\.(json|ya?ml|toml|ini|js|ts)$/i.test(f)) ||
+    index.symbols.some((s) => s.exported && /config|options?|settings/i.test(s.name)) ||
+    index.configFiles.length > 0;
+
+  return { isCli, isLib, hasConfigSurface };
+}
+
+// Build the deterministic documentation outline, adapted to the project type.
+// Every section carries a retrieval query and the sources to ground it on;
+// runDoc fills evidenceIds. A monorepo (unscoped) gets one section per package;
+// otherwise a CLI gets a "Commands" section and a library gets "Public API".
+export function buildOutline(index: StructuralIndex, name: string, scopePkg?: WorkspacePackage, traits?: ProjectTraits): Omit<DocSection, "evidenceIds">[] {
   const sections: Omit<DocSection, "evidenceIds">[] = [];
   let n = 0;
   const add = (title: string, query: string, sources: SourceKind[]) => sections.push({ id: `S${++n}`, title, query, sources });
@@ -73,18 +117,26 @@ export function buildOutline(index: StructuralIndex, name: string, scopePkg?: Wo
   add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
   add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
 
+  if (traits?.isCli) {
+    add("Commands", `${name} command subcommand flags options usage help argv arguments`, ["code", "docs"]);
+  }
+
   if (index.packages.length && !scopePkg) {
     // Monorepo: a section per workspace package (cap to keep the doc focused).
     for (const pkg of index.packages.slice(0, LIMITS.docPackages)) {
       const syms = topExportedSymbols(index, pkg.dir, 5);
       add(`Package: ${pkg.name}`, `${pkg.name} ${pkg.dir} ${syms.join(" ")}`.trim(), ["code", "docs"]);
     }
-  } else {
+  } else if (traits ? traits.isLib : true) {
+    // Library API — kept for any repo unless traits say it's a pure CLI.
     const syms = topExportedSymbols(index, scopePkg?.dir, 6);
     add("Public API", `${name} public API exports main entry ${syms.join(" ")}`.trim(), ["code", "docs"]);
   }
 
-  add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
+  // Configuration — skipped only when the project has no config surface at all.
+  if (!traits || traits.hasConfigSurface) {
+    add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
+  }
   add("Architecture & internals", `${name} architecture design internals how it works module structure`, ["docs", "code"]);
   return sections;
 }
@@ -198,7 +250,8 @@ export function defaultDocDir(repoDir: string, scopePkg?: WorkspacePackage): str
 export async function runDoc(options: AskOptions, opts: { sourcesOverride?: SourceKind[] } = {}): Promise<DocResult> {
   const ctx = buildContext(options);
   const name = ctx.repoRef.repo ?? basename(ctx.repoDir);
-  const outline = buildOutline(ctx.index, name, ctx.scopePkg);
+  const traits = detectProjectTraits(ctx.repoDir, ctx.index);
+  const outline = buildOutline(ctx.index, name, ctx.scopePkg, traits);
 
   // Ground each section independently (clone + index are cached; only retrieval
   // re-runs). Sections are independent, so retrieve them concurrently.

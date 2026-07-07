@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { claimCoverage, collectCitations, resolveAlias, SHAPE } from "./citations.js";
+import { claimCoverage, codeMask, collectCitations, resolveAlias, SHAPE } from "./citations.js";
 import { headCommit } from "./clone.js";
-import type { CheckResult, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
+import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
 export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
@@ -66,6 +66,39 @@ function staleDossierWarning(dir: string): string | undefined {
   } catch {
     /* meta unreadable — no guard */
   }
+  return undefined;
+}
+
+// Markdown ATX headings in the answer, outside code fences (so a `#` inside a
+// fenced code block isn't mistaken for a section heading).
+function headingsOf(answer: string): string[] {
+  const lines = answer.split("\n");
+  const fenced = codeMask(lines);
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    const m = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(lines[i]!);
+    if (m) out.push(m[1]!.trim().toLowerCase());
+  }
+  return out;
+}
+
+// When validating a DOC.md whose run has a DOC.plan.json, every planned section
+// title must appear as a heading — a doc that silently drops a planned section
+// isn't complete. Returns an error message when sections are missing.
+function missingDocSections(dir: string, answerPath: string, answer: string): string | undefined {
+  if (basename(answerPath) !== "DOC.md") return undefined;
+  const planPath = join(dir, "DOC.plan.json");
+  if (!existsSync(planPath)) return undefined;
+  let plan: DocPlan;
+  try {
+    plan = JSON.parse(readFileSync(planPath, "utf8")) as DocPlan;
+  } catch {
+    return undefined;
+  }
+  const headings = headingsOf(answer);
+  const missing = (plan.sections ?? []).map((s) => s.title).filter((title) => !headings.some((h) => h.includes(title.toLowerCase())));
+  if (missing.length) return `DOC.md is missing planned section(s): ${missing.join(", ")}. Write each section from DOC.todo.md or drop it from the plan.`;
   return undefined;
 }
 
@@ -209,6 +242,8 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     if (opts.strict) errors.push(msg);
     else warnings.push(msg);
   }
+  const missingSections = missingDocSections(dir, answerPath, answer);
+  if (missingSections) errors.push(missingSections);
   if (citations.length > 0 && citedIds.size === 0) {
     warnings.push("No evidence ids were cited (only typed aliases). Prefer citing ids like [E1].");
   } else if (uncited.length) {

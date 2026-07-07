@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, existsSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runDoc, buildOutline, DEFAULT_DOC_SOURCES } from "../src/doc.js";
+import { runDoc, buildOutline, detectProjectTraits, DEFAULT_DOC_SOURCES } from "../src/doc.js";
 import { checkRun } from "../src/check.js";
 import { buildIndex } from "../src/index/structural.js";
 import type { AskOptions, StructuralIndex } from "../src/types.js";
@@ -20,6 +20,28 @@ function baseOpts(out: string): AskOptions {
     out,
   };
 }
+
+describe("detectProjectTraits + adaptive outline", () => {
+  it("detects a CLI by its package.json bin and adds a Commands section", () => {
+    const dir = resolve("tests/fixtures/sample-cli");
+    const index = buildIndex(dir, "sample-cli");
+    const traits = detectProjectTraits(dir, index);
+    expect(traits.isCli).toBe(true);
+    const titles = buildOutline(index, "sample-cli", undefined, traits).map((s) => s.title);
+    expect(titles).toContain("Commands");
+  });
+
+  it("detects a library by its exported symbols (no Commands section)", () => {
+    const dir = resolve("tests/fixtures/sample-lib");
+    const index = buildIndex(dir, "sample-lib");
+    const traits = detectProjectTraits(dir, index);
+    expect(traits.isLib).toBe(true);
+    expect(traits.isCli).toBe(false);
+    const titles = buildOutline(index, "sample-lib", undefined, traits).map((s) => s.title);
+    expect(titles).toContain("Public API");
+    expect(titles).not.toContain("Commands");
+  });
+});
 
 describe("buildOutline", () => {
   it("produces a deterministic single-repo outline grounded on real symbols", () => {
@@ -88,12 +110,13 @@ describe("runDoc (offline integration)", () => {
     expect(r.evidence.some((e) => e.source === "docs")).toBe(true);
 
     // A DOC.md citing real ids passes check (which auto-detects DOC.md when no
-    // ANSWER.md is present).
+    // ANSWER.md is present). It must cover every planned section heading.
     const cite = r.evidence
       .slice(0, 2)
       .map((e) => `[${e.id}]`)
       .join(" ");
-    writeFileSync(join(out, "DOC.md"), `# doc\n\n## Overview\nA grounded claim ${cite}.\n`);
+    const body = r.plan.sections.map((s) => `## ${s.title}\nA grounded claim ${cite}.`).join("\n\n");
+    writeFileSync(join(out, "DOC.md"), `# doc\n\n${body}\n`);
     const ok = checkRun(out);
     expect(ok.ok).toBe(true);
     expect(ok.dangling).toEqual([]);

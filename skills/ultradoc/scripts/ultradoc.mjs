@@ -3664,22 +3664,49 @@ function topExportedSymbols(index, prefix, n) {
   }
   return names;
 }
-function buildOutline(index, name, scopePkg) {
+function detectProjectTraits(repoDir, index) {
+  const bases = new Map(index.configFiles.map((f) => [f.split("/").pop().toLowerCase(), f]));
+  const readCfg = (base) => {
+    const rel = bases.get(base);
+    return rel ? readText(join14(repoDir, rel)) : "";
+  };
+  let isCli = false;
+  const pkg = readCfg("package.json");
+  if (pkg) {
+    try {
+      if (JSON.parse(pkg).bin) isCli = true;
+    } catch {
+      if (/"bin"\s*:/.test(pkg)) isCli = true;
+    }
+  }
+  if (/\[project\.scripts\]|\[tool\.poetry\.scripts\]/.test(readCfg("pyproject.toml"))) isCli = true;
+  if (/\[\[bin\]\]/.test(readCfg("cargo.toml"))) isCli = true;
+  if (index.symbols.some((s) => s.name === "main" && (/\.go$/.test(s.file) || /(^|\/)main\.rs$/.test(s.file)))) isCli = true;
+  const isLib = index.symbols.some((s) => s.exported && !s.name.startsWith("_"));
+  const hasConfigSurface = bases.has(".env.example") || index.configFiles.some((f) => /(^|\/)(config|settings)\.(json|ya?ml|toml|ini|js|ts)$/i.test(f)) || index.symbols.some((s) => s.exported && /config|options?|settings/i.test(s.name)) || index.configFiles.length > 0;
+  return { isCli, isLib, hasConfigSurface };
+}
+function buildOutline(index, name, scopePkg, traits) {
   const sections = [];
   let n = 0;
   const add = (title, query4, sources) => sections.push({ id: `S${++n}`, title, query: query4, sources });
   add("Overview", `${name} overview introduction purpose what is`, ["docs", "code"]);
   add("Installation & usage", `${name} install setup usage getting started example quickstart`, ["docs", "code"]);
+  if (traits?.isCli) {
+    add("Commands", `${name} command subcommand flags options usage help argv arguments`, ["code", "docs"]);
+  }
   if (index.packages.length && !scopePkg) {
     for (const pkg of index.packages.slice(0, LIMITS.docPackages)) {
       const syms = topExportedSymbols(index, pkg.dir, 5);
       add(`Package: ${pkg.name}`, `${pkg.name} ${pkg.dir} ${syms.join(" ")}`.trim(), ["code", "docs"]);
     }
-  } else {
+  } else if (traits ? traits.isLib : true) {
     const syms = topExportedSymbols(index, scopePkg?.dir, 6);
     add("Public API", `${name} public API exports main entry ${syms.join(" ")}`.trim(), ["code", "docs"]);
   }
-  add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
+  if (!traits || traits.hasConfigSurface) {
+    add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
+  }
   add("Architecture & internals", `${name} architecture design internals how it works module structure`, ["docs", "code"]);
   return sections;
 }
@@ -3751,7 +3778,8 @@ function defaultDocDir(repoDir, scopePkg) {
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
   const name = ctx.repoRef.repo ?? basename3(ctx.repoDir);
-  const outline = buildOutline(ctx.index, name, ctx.scopePkg);
+  const traits = detectProjectTraits(ctx.repoDir, ctx.index);
+  const outline = buildOutline(ctx.index, name, ctx.scopePkg, traits);
   const perSection = await Promise.all(
     outline.map(async (section) => {
       const sources = opts.sourcesOverride ?? section.sources;
@@ -4078,6 +4106,32 @@ function staleDossierWarning(dir) {
   }
   return void 0;
 }
+function headingsOf(answer) {
+  const lines = answer.split("\n");
+  const fenced = codeMask(lines);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    const m = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+    if (m) out.push(m[1].trim().toLowerCase());
+  }
+  return out;
+}
+function missingDocSections(dir, answerPath, answer) {
+  if (basename4(answerPath) !== "DOC.md") return void 0;
+  const planPath = join15(dir, "DOC.plan.json");
+  if (!existsSync8(planPath)) return void 0;
+  let plan;
+  try {
+    plan = JSON.parse(readFileSync7(planPath, "utf8"));
+  } catch {
+    return void 0;
+  }
+  const headings = headingsOf(answer);
+  const missing = (plan.sections ?? []).map((s) => s.title).filter((title) => !headings.some((h) => h.includes(title.toLowerCase())));
+  if (missing.length) return `DOC.md is missing planned section(s): ${missing.join(", ")}. Write each section from DOC.todo.md or drop it from the plan.`;
+  return void 0;
+}
 function dossierRepoDir(dir) {
   let d = dir;
   for (let i = 0; i < 6; i++) {
@@ -4185,6 +4239,8 @@ function checkRun(dir, opts = {}) {
     if (opts.strict) errors.push(msg);
     else warnings.push(msg);
   }
+  const missingSections = missingDocSections(dir, answerPath, answer);
+  if (missingSections) errors.push(missingSections);
   if (citations.length > 0 && citedIds.size === 0) {
     warnings.push("No evidence ids were cited (only typed aliases). Prefer citing ids like [E1].");
   } else if (uncited.length) {

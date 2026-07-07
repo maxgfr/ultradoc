@@ -205,6 +205,39 @@ describe("checkRun — claim coverage gate", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("fails a DOC.md that is missing a planned section", () => {
+    writeFileSync(
+      join(dir, "DOC.plan.json"),
+      JSON.stringify({
+        sections: [
+          { id: "S1", title: "Overview" },
+          { id: "S2", title: "Commands" },
+        ],
+      }),
+    );
+    writeFileSync(join(dir, "DOC.md"), "# Doc\n\n## Overview\nA grounded overview of the tool [E1].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/missing planned section\(s\): Commands/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("passes a DOC.md whose headings cover every planned section", () => {
+    writeFileSync(
+      join(dir, "DOC.plan.json"),
+      JSON.stringify({
+        sections: [
+          { id: "S1", title: "Overview" },
+          { id: "S2", title: "Commands" },
+        ],
+      }),
+    );
+    writeFileSync(join(dir, "DOC.md"), "# Doc\n\n## Overview\nGrounded overview here [E1].\n\n## Commands\nThe command surface is documented here [pr#5].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("warns when the dossier commit differs from the repo HEAD", () => {
     // A tiny git repo whose HEAD moves after the dossier was built.
     const git = (args: string[]) => execFileSync("git", ["-C", dir, ...args], { stdio: "pipe" });
