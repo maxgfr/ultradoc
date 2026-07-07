@@ -4291,7 +4291,7 @@ function formatCheckReport(r, dir) {
 }
 
 // src/verify.ts
-import { readFileSync as readFileSync8, writeFileSync as writeFileSync8 } from "fs";
+import { existsSync as existsSync9, readFileSync as readFileSync8, writeFileSync as writeFileSync8 } from "fs";
 import { join as join16 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
@@ -4305,7 +4305,9 @@ function claimStrings(text) {
   return out;
 }
 function runVerify(dir, opts = {}) {
-  const evidence = JSON.parse(readFileSync8(join16(dir, "evidence.json"), "utf8"));
+  const evidencePath = join16(dir, "evidence.json");
+  if (!existsSync9(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
+  const evidence = JSON.parse(readFileSync8(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
@@ -4375,6 +4377,9 @@ _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence
   return out.join("\n");
 }
 function applyVerdicts(dir, verdictsPath) {
+  if (!existsSync9(verdictsPath)) {
+    throw new Error(`No verdicts file at ${verdictsPath} \u2014 adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
+  }
   const raw = JSON.parse(readFileSync8(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
   const verdicts = [];
@@ -4446,7 +4451,7 @@ function formatVerifyReport(r) {
 }
 
 // src/cache.ts
-import { existsSync as existsSync9, readdirSync as readdirSync4, rmSync, statSync as statSync6 } from "fs";
+import { existsSync as existsSync10, readdirSync as readdirSync4, rmSync, statSync as statSync6 } from "fs";
 import { join as join17 } from "path";
 function dirSize(dir) {
   let total = 0;
@@ -4507,7 +4512,7 @@ function cacheClean(opts) {
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
     const dir = join17(root, slug);
-    if (existsSync9(dir)) {
+    if (existsSync10(dir)) {
       rmSync(dir, { recursive: true, force: true });
       removed.push(slug);
     }

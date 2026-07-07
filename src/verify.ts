@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
 import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
@@ -36,7 +36,9 @@ function claimStrings(text: string): string[] {
 // Capped at maxVerify (highest-score evidence first). Writes VERIFY.todo.json
 // (machine worklist) + VERIFY.md (human checklist).
 export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): VerifyWorklist {
-  const evidence: EvidenceItem[] = JSON.parse(readFileSync(join(dir, "evidence.json"), "utf8"));
+  const evidencePath = join(dir, "evidence.json");
+  if (!existsSync(evidencePath)) throw new Error(`No evidence.json in ${dir} — run \`ultradoc ask\` first.`);
+  const evidence: EvidenceItem[] = JSON.parse(readFileSync(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e] as const));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} — write the answer first.`);
@@ -126,6 +128,9 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
 // persist VERIFY.json (the gate result + the full list, which `check --semantic`
 // and `render` read).
 export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
+  if (!existsSync(verdictsPath)) {
+    throw new Error(`No verdicts file at ${verdictsPath} — adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
+  }
   const raw = JSON.parse(readFileSync(verdictsPath, "utf8"));
   const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
   const verdicts: Verdict[] = [];
