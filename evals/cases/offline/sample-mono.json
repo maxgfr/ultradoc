@@ -14,6 +14,16 @@
     "expect": [{ "source": "code", "refIncludes": "packages/api/", "topN": 1 }]
   },
   {
+    "id": "mono-package-scope-negative",
+    "repo": "tests/fixtures/sample-mono",
+    "question": "how is a page rendered (renderPage)?",
+    "args": { "sources": "code", "package": "@sample/api" },
+    "expect": [
+      { "source": "code", "refIncludes": "packages/api/", "topN": 1 },
+      { "source": "code", "mustNotInclude": "packages/web/" }
+    ]
+  },
+  {
     "id": "mono-docs-readme",
     "repo": "tests/fixtures/sample-mono",
     "question": "what packages does this monorepo contain?",

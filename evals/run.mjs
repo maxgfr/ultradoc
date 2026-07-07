@@ -88,6 +88,12 @@ function runCase(c, outRoot) {
     // Items are already ranked within each source; rank = position among the
     // items of the expected source (or among all items when no source given).
     const pool = ex.source ? evidence.filter((i) => i.source === ex.source) : evidence;
+    // Negative assertion: the ref must NOT appear (proves e.g. --package scoping
+    // doesn't leak sibling packages). Excluded from recall/MRR aggregates.
+    if (ex.mustNotInclude) {
+      const hit = pool.some((i) => i.ref.includes(ex.mustNotInclude));
+      return { ...ex, negate: true, found: hit, rank: null, ok: !hit, mrr: 0 };
+    }
     const matches = (i) =>
       (ex.refIncludes && i.ref.includes(ex.refIncludes)) ||
       (ex.refPattern && new RegExp(ex.refPattern, "i").test(i.ref));
@@ -97,14 +103,28 @@ function runCase(c, outRoot) {
     return { ...ex, found, rank: found ? rank + 1 : null, ok: inTopN, mrr: found ? 1 / (rank + 1) : 0 };
   });
 
+  // doc mode: assert the plan produced the expected section headings.
+  let sections = [];
+  if (mode === "doc" && (c.expectSections ?? []).length) {
+    let plan;
+    try {
+      plan = JSON.parse(readFileSync(join(out, "DOC.plan.json"), "utf8"));
+    } catch {
+      plan = { sections: [] };
+    }
+    const titles = (plan.sections ?? []).map((s) => String(s.title).toLowerCase());
+    sections = c.expectSections.map((want) => ({ want, ok: titles.some((t) => t.includes(want.toLowerCase())) }));
+  }
+
   const minOk = evidence.length >= (c.minItems ?? 1);
   return {
     id: c.id,
-    ok: minOk && expects.every((e) => e.ok),
+    ok: minOk && expects.every((e) => e.ok) && sections.every((s) => s.ok),
     ms,
     items: evidence.length,
     minOk,
     expects,
+    sections,
   };
 }
 
@@ -122,20 +142,27 @@ for (const c of cases) {
   r.suite = c.suite;
   results.push(r);
   if (!AS_JSON) {
-    const exp = r.expects.map((e) => `${e.ok ? "✓" : "✗"} ${e.refIncludes ?? e.refPattern}${e.found ? `@${e.rank}` : " (absent)"}`).join("  ");
+    const exp = r.expects
+      .map((e) => {
+        if (e.negate) return `${e.ok ? "✓" : "✗"} !${e.mustNotInclude}${e.found ? " (leaked)" : ""}`;
+        return `${e.ok ? "✓" : "✗"} ${e.refIncludes ?? e.refPattern}${e.found ? `@${e.rank}` : " (absent)"}`;
+      })
+      .concat((r.sections ?? []).map((s) => `${s.ok ? "✓" : "✗"} §${s.want}`))
+      .join("  ");
     console.log(`${r.ok ? "PASS" : "FAIL"}  [${c.suite}] ${r.id}  (${r.ms}ms, ${r.items ?? 0} items)  ${exp}${r.error ? `  ERROR: ${r.error}` : ""}`);
   }
 }
 if (!KEEP) rmSync(outRoot, { recursive: true, force: true });
 
-const allExpects = results.flatMap((r) => r.expects);
+// Positive expects only feed recall/MRR; negative assertions are pass/fail.
+const posExpects = results.flatMap((r) => r.expects).filter((e) => !e.negate);
 const summary = {
   suite: SUITE,
   cases: results.length,
   passed: results.filter((r) => r.ok).length,
-  recall: allExpects.length ? allExpects.filter((e) => e.found).length / allExpects.length : 0,
-  recallTopN: allExpects.length ? allExpects.filter((e) => e.ok).length / allExpects.length : 0,
-  mrr: allExpects.length ? allExpects.reduce((s, e) => s + e.mrr, 0) / allExpects.length : 0,
+  recall: posExpects.length ? posExpects.filter((e) => e.found).length / posExpects.length : 0,
+  recallTopN: posExpects.length ? posExpects.filter((e) => e.ok).length / posExpects.length : 0,
+  mrr: posExpects.length ? posExpects.reduce((s, e) => s + e.mrr, 0) / posExpects.length : 0,
   results,
 };
 writeFileSync(join(ROOT, "evals", "last-run.json"), JSON.stringify(summary, null, 2));
