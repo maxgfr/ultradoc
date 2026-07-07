@@ -735,6 +735,55 @@ function scan(rel, content, lang, rules) {
   }
   return out;
 }
+var EXPORT_LIST_RE = /export\s*\{([^}]*)\}\s*(from\b)?/g;
+var CJS_OBJECT_RE = /module\.exports\s*=\s*\{([^}]*)\}/g;
+var DEFAULT_ID_RE = /(^|\n)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*(?=\n|$)/g;
+function applyExportLists(content, symbols, rel, lang) {
+  const byName = /* @__PURE__ */ new Map();
+  for (const s of symbols) if (!byName.has(s.name)) byName.set(s.name, s);
+  const markExported = (name) => {
+    const s = byName.get(name);
+    if (s) s.exported = true;
+    return s;
+  };
+  const handleList = (inner, cjs) => {
+    for (const raw of inner.split(",")) {
+      const part = raw.trim();
+      if (!part) continue;
+      const asMatch = /^([\w$]+)\s+as\s+([\w$]+)$/.exec(part);
+      if (asMatch) {
+        const orig = asMatch[1];
+        const alias = asMatch[2];
+        if (orig === "default" || alias === "default") continue;
+        const base = markExported(orig);
+        if (base && !byName.has(alias)) {
+          const clone = { ...base, name: alias, exported: true };
+          symbols.push(clone);
+          byName.set(alias, clone);
+        }
+        continue;
+      }
+      const name = /^([\w$]+)/.exec(cjs ? part : part.split(":")[0].trim())?.[1];
+      if (name && name !== "default") markExported(name);
+    }
+  };
+  let m;
+  EXPORT_LIST_RE.lastIndex = 0;
+  while (m = EXPORT_LIST_RE.exec(content)) {
+    if (m[2]) continue;
+    handleList(m[1] ?? "", false);
+  }
+  CJS_OBJECT_RE.lastIndex = 0;
+  while (m = CJS_OBJECT_RE.exec(content)) handleList(m[1] ?? "", true);
+  DEFAULT_ID_RE.lastIndex = 0;
+  while (m = DEFAULT_ID_RE.exec(content)) {
+    const name = m[2];
+    if (!markExported(name)) {
+      symbols.push({ name, kind: "default", file: rel, line: 1, signature: `export default ${name}`, exported: true, lang });
+      byName.set(name, symbols[symbols.length - 1]);
+    }
+  }
+}
 var EXT_LANG = {
   ".ts": "typescript",
   ".tsx": "typescript",
@@ -806,6 +855,7 @@ function extToLang(ext) {
 var RULES = [
   { re: /^\s*export\s+(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: true },
   { re: /^\s*export\s+default\s+(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: true },
+  { re: /^\s*export\s+default\s+(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: true },
   { re: /^\s*(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: false },
   { re: /^\s*export\s+(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: true },
   { re: /^\s*(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: false },
@@ -817,15 +867,33 @@ var RULES = [
   { re: /^\s*export\s+const\s+enum\s+(?<name>[\w$]+)/, kind: "enum", exported: true },
   // exported const/let bound to an arrow fn or value
   { re: /^\s*export\s+(?:const|let|var)\s+(?<name>[\w$]+)\s*[:=]/, kind: "const", exported: true },
+  // CommonJS named exports: `exports.foo = …`, `module.exports.foo = …`
+  { re: /^\s*exports\.(?<name>[\w$]+)\s*=/, kind: "const", exported: true },
+  { re: /^\s*module\.exports\.(?<name>[\w$]+)\s*=/, kind: "const", exported: true },
   // top-level const arrow function (not exported)
   { re: /^\s*(?:const|let)\s+(?<name>[\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=]+)?=>/, kind: "const", exported: false }
 ];
+var ANON_DEFAULT_RE = /^\s*export\s+default\s+(?:async\s+)?(?:function|class)?\s*(?:\(|\{|extends\b)/;
+var NAMED_DEFAULT_RE = /^\s*export\s+default\s+(?:async\s+)?(?:function|class)\s+(?!extends\b)[\w$]+/;
+function stemOf(rel) {
+  return (rel.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+}
 var jsTs = {
   lang: "javascript/typescript",
   exts: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
   extract(rel, content) {
     const lang = rel.match(/\.(ts|tsx|mts|cts)$/) ? "typescript" : "javascript";
-    return scan(rel, content, lang, RULES);
+    const symbols = scan(rel, content, lang, RULES);
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (ANON_DEFAULT_RE.test(line) && !NAMED_DEFAULT_RE.test(line)) {
+        symbols.push({ name: stemOf(rel), kind: "default", file: rel, line: i + 1, signature: line.trim().slice(0, 200), exported: true, lang });
+        break;
+      }
+    }
+    applyExportLists(content, symbols, rel, lang);
+    return symbols;
   }
 };
 

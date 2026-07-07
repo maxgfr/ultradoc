@@ -127,6 +127,53 @@ load_plugin() {
     expect(kby.evict).toMatchObject({ exported: false });
   });
 
+  it("marks symbols exported via an export list, including `as` aliases", () => {
+    const src = `function alpha() {}
+class Beta {}
+function gamma() {}
+export { alpha, Beta as PublicBeta };
+export { something } from "./other.js";`;
+    const s = extractSymbols("m.ts", ".ts", src);
+    const by = Object.fromEntries(s.map((x) => [x.name, x]));
+    expect(by.alpha).toMatchObject({ exported: true }); // flipped by the list
+    expect(by.Beta).toMatchObject({ exported: true });
+    expect(by.PublicBeta).toMatchObject({ kind: "class", exported: true }); // alias added
+    expect(by.gamma).toMatchObject({ exported: false }); // not in any list
+    expect(by.something).toBeUndefined(); // re-export from another module — ignored
+  });
+
+  it("extracts CommonJS named and object exports", () => {
+    const src = `function build() {}
+exports.render = function () {};
+module.exports.parse = function () {};
+function helper() {}
+module.exports = { build, helper };`;
+    const s = extractSymbols("m.js", ".js", src);
+    const by = Object.fromEntries(s.map((x) => [x.name, x]));
+    expect(by.render).toMatchObject({ exported: true });
+    expect(by.parse).toMatchObject({ exported: true });
+    expect(by.build).toMatchObject({ exported: true }); // via module.exports = { build, … }
+    expect(by.helper).toMatchObject({ exported: true });
+  });
+
+  it("names an anonymous default export after the file stem", () => {
+    const anonFn = extractSymbols("createServer.ts", ".ts", `export default function () {\n  return 1;\n}`);
+    expect(anonFn.find((s) => s.name === "createServer")).toMatchObject({ kind: "default", exported: true });
+
+    const anonClass = extractSymbols("Widget.ts", ".ts", `export default class extends Base {}`);
+    expect(anonClass.find((s) => s.name === "Widget")).toMatchObject({ kind: "default", exported: true });
+
+    const named = extractSymbols("x.ts", ".ts", `export default class Foo {}`);
+    expect(named.find((s) => s.name === "Foo")).toMatchObject({ kind: "class", exported: true });
+    expect(named.find((s) => s.name === "x")).toBeUndefined(); // no stem symbol when named
+  });
+
+  it("flags a default-exported existing identifier", () => {
+    const src = `function handler() {}\nexport default handler;`;
+    const s = extractSymbols("h.ts", ".ts", src);
+    expect(s.find((x) => x.name === "handler")).toMatchObject({ exported: true });
+  });
+
   it("returns [] for an unknown extension but still labels the language", () => {
     expect(extractSymbols("a.txt", ".txt", "hello")).toEqual([]);
     expect(languageOf(".ts")).toBe("javascript/typescript");
