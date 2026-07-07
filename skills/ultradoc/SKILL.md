@@ -26,11 +26,11 @@ One committed, dependency-free bundle: `node scripts/ultradoc.mjs <command>`.
 No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
 
 - `ask --repo <url|path> --q "<question>" [--sources ...] [--package <p>] [--semantic] [--docs-url <u>]`
-  Clone (any git URL, cached in `/tmp/ultradoc/<slug>`), index, retrieve from all
-  selected sources, and write an **evidence dossier** (`EVIDENCE.md`,
-  `evidence.json`, `meta.json`) to a run folder — persisted beside the clone
-  under `<clone>/.ultradoc/runs/<id>` (a stable, commit-pinned home reused across
-  questions), unless you pass `--out`. Default sources:
+  Clone (any git URL, cached per-user — `ultradoc cache status` shows where),
+  index, retrieve from all selected sources, and write an **evidence dossier**
+  (`EVIDENCE.md`, `evidence.json`, `meta.json`) to a run folder — persisted
+  beside the clone under `<clone>/.ultradoc/runs/<id>` (a stable, commit-pinned
+  home reused across questions), unless you pass `--out`. Default sources:
   `code,issues,prs,docs` (add `web,so` when the repo alone won't answer it;
   add `releases,history` for "when was X added/changed" questions, and
   `discussions` for community Q&A — needs the gh CLI).
@@ -54,12 +54,16 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   section merged into a single `evidence.json`, and a `DOC.todo.md` worklist.
   You write the cited prose into `DOC.md`; `check` validates it like an answer.
   Persisted under `<clone>/.ultradoc/doc/`. See "Generate a documentation" below.
-- `check --run <dossier-dir>` — validate `ANSWER.md`'s (or a `doc` run's
-  `DOC.md`'s) citations against the dossier's `evidence.json`. Exit non-zero ⇒
-  ungrounded. `--answer <file>` validates a specific file.
+- `check --run <dossier-dir> [--strict]` — validate `ANSWER.md`'s (or a `doc`
+  run's `DOC.md`'s) citations against the dossier's `evidence.json`, and that the
+  prose is covered (enough claims cite evidence). Exit non-zero ⇒ ungrounded.
+  Use `--strict` for `ask` answers (require every claim cited); `--answer <file>`
+  validates a specific file.
 - `index --repo <...>` — build/print the structural index (debugging/inspection);
   lists discovered workspace packages for a monorepo.
 - `semantic up|down|status` — optional local vector backend (see below).
+- `cache status | clean --all|--repo <url|path>` — inspect or clear the
+  persistent clone/index cache.
 
 ## Workflow
 
@@ -70,44 +74,41 @@ the independent drills in one message; fan out to subagents or a workflow if
 available) and do it inline otherwise. Iterate in rounds until the evidence is
 complete; don't return until it is. See `references/orchestration.md`.
 
+**When a command fails, recover — don't guess:**
+
+| symptom | what to do |
+|---|---|
+| `git clone failed` (404 / auth) | check the URL; a private repo → ask the user for a local checkout and pass `--repo <path>` |
+| offline / every network source notes a failure | answer from `code,docs,releases,history` only, and state the gap in the answer |
+| a note says GitHub is **rate-limited** | set `GITHUB_TOKEN` (or `gh auth login`), or continue with the other sources and say so |
+| huge repo, slow index / a "truncated" note | scope with `--package`; raise `ULTRADOC_MAX_FILES` only if a file is genuinely missing |
+| the **question** is ambiguous (which repo? which behavior?) | ask the user before retrieving — never guess the repo |
+| the dossier is empty/off-topic twice in a row | re-phrase per `references/retrieval-playbook.md`; it's the wording, not a missing answer |
+
 1. **Resolve the target.** Identify the project and the precise question. If you
    only have a name, find the canonical repo URL (use your WebSearch, or ask the
    user if ambiguous). Note any version/branch the user cares about (`--ref`).
 
-   *Multiple questions about the same repo?* Run `overview --repo <url>` once
-   and read the cached `OVERVIEW.md` it prints: it maps the repo (packages,
-   layout, public API, docs) so follow-up questions reuse the same clone+index
-   instead of re-orienting from scratch. Never cite it — it is navigation, not
-   evidence.
+   *Multiple questions about the same repo?* Run `overview --repo <url>` once and
+   read the cached `OVERVIEW.md` it prints — a navigation map (packages, layout,
+   public API, docs) that lets follow-ups reuse the clone+index. Never cite it.
 
-   *Monorepo?* If `ask`/`index`/`overview` reports workspace packages (e.g.
-   `socialgouv/code-du-travail-numerique` → `@cdt/frontend`,
-   `@socialgouv/modeles-social`, …), pick the package whose name/dir matches the
-   subsystem the question is about and add `--package <name|dir>` so retrieval
-   doesn't drown in the other packages. If no package name obviously matches,
-   run one unscoped `ask` first, see which package the top hits cluster in, then
-   re-run scoped to it. An unknown package name fails loudly and lists what
-   exists.
+   *Monorepo?* When workspace packages are reported, add `--package <name|dir>`
+   for the subsystem in question so retrieval doesn't drown in the other
+   packages; no obvious match → run one unscoped `ask`, see where the top hits
+   cluster, then re-run scoped (see the playbook's "Scope monorepos").
 
-2. **Retrieve.** First, think like a developer and derive 2–3 **query
-   variants** for the question — the engine searches literally, so phrasing
-   matters:
-   - the natural-language phrasing ("retry backoff"),
-   - the identifier forms the codebase probably uses (`retryBackoff`,
-     `retry_backoff`, `MAX_RETRIES`),
-   - the literal error message, option or flag name if the user quoted one.
+2. **Retrieve.** Derive 2–3 **query variants** — the engine searches literally,
+   so phrasing decides what surfaces: the natural-language phrasing, the
+   identifier forms the codebase probably uses (`retryBackoff`, `MAX_RETRIES`),
+   and any literal error string / flag the user quoted. Spend variants on
+   **synonyms and identifiers**, not inflections (the engine already folds
+   plurals/accents and splits identifiers). Conceptual "why designed this way"
+   questions lead with `docs`/`discussions`/`web` (or `--semantic`), not `code`.
+   See `references/retrieval-playbook.md` for the full variant table.
 
    *Multi-part question?* Split it into sub-questions now — each needs its own
    evidence or an explicit "unknown" at the end. Track coverage per sub-question.
-
-   The engine already folds plurals and accents ("retries"/"retry",
-   "délai"/"delai"), splits identifiers into subtokens, and boosts files named
-   after a keyword — so spend your variants on **synonyms and identifiers**
-   ("heartbeat" vs `ping`, "pool" vs `connectionLimit`), not on inflections of
-   the same word. And know when lexical search will be thin: it needs words
-   that literally appear in the repo. For conceptual or "why was it designed
-   this way" questions, lead with `docs`, `discussions`, `web` (or
-   `--semantic`) instead of expecting `code` to carry the answer.
 
    Run `ask` with the best variant and the sources that fit:
    ```
@@ -127,37 +128,23 @@ complete; don't return until it is. See `references/orchestration.md`.
    id (`[E1]`, `[E2]`, …), a provenance `ref`, and a snippet. This is your
    evidence — read the actual code/issue/PR/doc text.
 
-4. **Drill down on gaps.** A sub-question is *thin* when it has fewer than ~2
-   on-topic items, or no item actually contains the symbol/behavior asked about.
-   Don't wait until a dossier looks thin to drill the variants — run the variant
-   drills in parallel from the start (drills are near-free: the clone and index
-   are cached). Fan them out across sources:
-   - `code --repo <...> --q "<symbol or behavior>"` to pull more code regions.
-   - `issues`/`prs` to read related discussion and in-progress changes.
-   - `releases` (changelog + release notes) and `history` (git pickaxe) when
-     the question is *when/why/which version* something changed.
-   - `discussions` for community Q&A and design threads (needs the gh CLI).
-   - `web` (or your WebSearch → `web --url <u>`) for external references.
-   Follow `references/retrieval-playbook.md` for how to iterate and
-   `references/orchestration.md` for how to run the drills in parallel.
+4. **Drill down on gaps.** Fan the variant drills out **in parallel from the
+   start** (drills are near-free — the clone and index are cached); iterate in
+   rounds only when a fan-out surfaces new leads, and stop after ~3 rounds or
+   once every sub-question has ≥2 on-topic supporting items. Drill across
+   sources: `code --q "<symbol/behavior>"` for more code, `issues`/`prs` for
+   discussion and in-progress changes, `releases`/`history` for *when/why/which
+   version*, `discussions` for community Q&A (needs `gh`), `web` for external
+   refs. See `references/retrieval-playbook.md` (how to iterate + triage) and
+   `references/orchestration.md` (how to parallelize).
 
-   **Triage before writing.** Retrieval is recall-oriented, so the dossier
-   will contain off-topic items that merely share keywords. The test: an item
-   bears on the question only if its snippet **names the symbol/behavior asked
-   about or describes the same mechanism** — sharing a keyword is not enough.
-   List which evidence ids pass that test and ignore the rest — an off-topic
-   item must not be cited just because it exists. If after triage fewer than
-   ~2 items support the core claim, go back and retrieve more.
-
-   **Re-query instead of re-reading.** If the top 3 code items are off-topic,
-   don't keep reading down the list — re-run `code --q` with the next
-   identifier-shaped variant from step 2. Two off-topic dossiers in a row mean
-   the wording is wrong, not that the repo lacks the answer.
-
-   **Loop until dry.** Drill in rounds (cap ~3). Stop when a round surfaces no
-   new on-topic evidence, or when every sub-question has ≥2 supporting items —
-   then triage and write. A sub-question still unsupported after the cap is an
-   explicit unknown, never filled from memory.
+   Two key rules from the playbook: **triage before writing** — cite an item only
+   if its snippet names the symbol/behavior or describes the same mechanism, not
+   just a shared keyword; and **re-query instead of re-reading** — two off-topic
+   dossiers in a row mean the wording is wrong, so re-run with the next
+   identifier variant rather than reading further down the list. A sub-question
+   still unsupported after the cap is an explicit unknown, never filled from
+   memory.
 
 5. **Write the answer.** Create `ANSWER.md` in the same run folder. Be precise
    and concise. **Cite every factual claim** with the evidence id it rests on,
@@ -168,9 +155,11 @@ complete; don't return until it is. See `references/orchestration.md`.
    unknown — do not fill it from memory.
 
 6. **Validate (two layers).**
-   - *Structural:* `node scripts/ultradoc.mjs check --run <dossier-dir>`. It
-     fails on any citation that doesn't resolve to evidence, or on an answer with
-     no citations. Fix and re-run until it passes.
+   - *Structural:* `node scripts/ultradoc.mjs check --run <dossier-dir> --strict`.
+     It fails on any citation that doesn't resolve to evidence, on an answer with
+     no citations, and (with `--strict`) on any uncited claim — so the answer
+     can't be mostly memory around one real reference. Fix and re-run until it
+     passes.
    - *Semantic (adversarial support-check):* `node scripts/ultradoc.mjs verify
      --run <dossier-dir>` writes a claim↔evidence worklist (`VERIFY.todo.json` +
      `VERIFY.md`). Judge each pair as a **skeptic**: default to
