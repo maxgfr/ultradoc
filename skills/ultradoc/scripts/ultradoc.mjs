@@ -4774,8 +4774,8 @@ function printEvidence(p, evidence, meta) {
     process.stdout.write(renderEvidenceMarkdown(evidence, meta) + "\n");
   }
 }
-async function main() {
-  const p = parseArgs(process.argv.slice(2));
+async function run(argv = process.argv.slice(2)) {
+  const p = parseArgs(argv);
   switch (p.command) {
     case "ask": {
       const opts = buildAskOptions(p);
@@ -5045,8 +5045,9 @@ function isInvokedDirectly() {
   return import.meta.url === pathToFileURL(argv1).href;
 }
 if (isInvokedDirectly()) {
-  main().catch((e) => fail(e.message));
+  run().catch((e) => fail(e.message));
 }
 export {
-  parseArgs
+  parseArgs,
+  run
 };

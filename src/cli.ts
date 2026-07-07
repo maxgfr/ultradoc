@@ -291,8 +291,8 @@ function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMark
   }
 }
 
-async function main(): Promise<void> {
-  const p = parseArgs(process.argv.slice(2));
+export async function run(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const p = parseArgs(argv);
 
   switch (p.command) {
     case "ask": {
@@ -592,5 +592,5 @@ function isInvokedDirectly(): boolean {
 }
 
 if (isInvokedDirectly()) {
-  main().catch((e) => fail((e as Error).message));
+  run().catch((e) => fail((e as Error).message));
 }
