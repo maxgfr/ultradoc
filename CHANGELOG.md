@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [1.8.1](https://github.com/maxgfr/ultradoc/compare/v1.8.0...v1.8.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **verify:** actionable error when evidence.json or verdicts file is missing ([b284ece](https://github.com/maxgfr/ultradoc/commit/b284ece401f10aea9e499a0754fdca4af00bdaff))
+
 # [1.8.0](https://github.com/maxgfr/ultradoc/compare/v1.7.2...v1.8.0) (2026-07-07)
 
 
