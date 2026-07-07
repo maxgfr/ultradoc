@@ -177,6 +177,17 @@ export function headCommit(dir: string): string | undefined {
   return res.ok ? res.stdout.trim() : undefined;
 }
 
+// Whether two abbreviated commit SHAs name the same revision. `git rev-parse
+// --short` auto-grows the abbreviation as the object database grows — so after a
+// shallow clone is deepened (e.g. by the history source), the SAME commit reads
+// as `ba00676` at build time and `ba006766` later. Git guarantees a `--short`
+// value is unambiguous when produced, so one being a prefix of the other means
+// they resolve to the same object; a naive `!==` would report false drift.
+export function sameCommit(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
+}
+
 // The `origin` remote URL of a working tree, if any. Lets a question asked
 // against a LOCAL checkout still resolve the host's issues/PRs API.
 export function originUrl(dir: string): string | undefined {

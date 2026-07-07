@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { claimCoverage, codeMask, collectCitations, resolveAlias, SHAPE } from "./citations.js";
-import { headCommit } from "./clone.js";
+import { headCommit, sameCommit } from "./clone.js";
 import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
@@ -60,7 +60,7 @@ function staleDossierWarning(dir: string): string | undefined {
     const repoDir = meta.repoDir && existsSync(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
     if (!repoDir) return undefined;
     const head = headCommit(repoDir);
-    if (head && head !== meta.commit) {
+    if (head && !sameCommit(head, meta.commit)) {
       return `dossier was built at ${meta.commit} but the tree is now at ${head} — line-anchored citations may have drifted; re-run \`ask\`.`;
     }
   } catch {

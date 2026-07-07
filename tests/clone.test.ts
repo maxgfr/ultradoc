@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveRepo } from "../src/clone.js";
+import { resolveRepo, sameCommit } from "../src/clone.js";
 
 describe("resolveRepo", () => {
   it("parses an https GitHub URL", () => {
@@ -27,5 +27,28 @@ describe("resolveRepo", () => {
     const r = resolveRepo("tests/fixtures/sample-lib");
     expect(r.isLocal).toBe(true);
     expect(r.host).toBe("local");
+  });
+});
+
+describe("sameCommit", () => {
+  // Regression: `git rev-parse --short` grows the abbreviation as the object DB
+  // grows (a shallow clone deepened by the history source), so the same commit
+  // reads as `ba00676` then `ba006766`. A naive !== reported false drift.
+  it("treats a shorter abbrev as the same commit as its longer form", () => {
+    expect(sameCommit("ba00676", "ba006766")).toBe(true);
+    expect(sameCommit("ba006766", "ba00676")).toBe(true);
+    expect(sameCommit("ba006766fb964571723138708eacaba0f55759cd", "ba00676")).toBe(true);
+  });
+
+  it("is true for identical shas and false for different ones", () => {
+    expect(sameCommit("deadbee", "deadbee")).toBe(true);
+    expect(sameCommit("ba00676", "ba00677")).toBe(false);
+    expect(sameCommit("abc1234", "def5678")).toBe(false);
+  });
+
+  it("is false when either sha is missing", () => {
+    expect(sameCommit(undefined, "ba00676")).toBe(false);
+    expect(sameCommit("ba00676", undefined)).toBe(false);
+    expect(sameCommit(undefined, undefined)).toBe(false);
   });
 });

@@ -543,6 +543,10 @@ function headCommit(dir) {
   const res = sh("git", ["-C", dir, "rev-parse", "--short", "HEAD"]);
   return res.ok ? res.stdout.trim() : void 0;
 }
+function sameCommit(a, b) {
+  if (!a || !b) return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
+}
 function originUrl(dir) {
   const res = sh("git", ["-C", dir, "remote", "get-url", "origin"]);
   return res.ok && res.stdout.trim() ? res.stdout.trim() : void 0;
@@ -1584,7 +1588,7 @@ function loadIndex(root) {
     const idx = JSON.parse(readFileSync2(p, "utf8"));
     if (idx.schemaVersion !== SCHEMA_VERSION) return void 0;
     const head = headCommit(root);
-    if (idx.commit && head && idx.commit !== head) return void 0;
+    if (idx.commit && head && !sameCommit(idx.commit, head)) return void 0;
     return idx;
   } catch {
     return void 0;
@@ -4109,7 +4113,7 @@ function staleDossierWarning(dir) {
     const repoDir = meta.repoDir && existsSync8(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
     if (!repoDir) return void 0;
     const head = headCommit(repoDir);
-    if (head && head !== meta.commit) {
+    if (head && !sameCommit(head, meta.commit)) {
       return `dossier was built at ${meta.commit} but the tree is now at ${head} \u2014 line-anchored citations may have drifted; re-run \`ask\`.`;
     }
   } catch {

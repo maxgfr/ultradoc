@@ -4,7 +4,7 @@ import type { StructuralIndex, CodeSymbol } from "../types.js";
 import { walkDetailed, readText } from "../walk.js";
 import { LIMITS } from "../config.js";
 import { extractSymbols, languageOf } from "../lang/registry.js";
-import { headCommit } from "../clone.js";
+import { headCommit, sameCommit } from "../clone.js";
 import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
 import { discoverWorkspaces } from "./workspaces.js";
 
@@ -134,7 +134,7 @@ export function loadIndex(root: string): StructuralIndex | undefined {
     // (or any tree that changed) must rebuild, else citations point at stale
     // lines. Non-git trees (no HEAD) keep the cached index. buildIndex is cheap.
     const head = headCommit(root);
-    if (idx.commit && head && idx.commit !== head) return undefined;
+    if (idx.commit && head && !sameCommit(idx.commit, head)) return undefined;
     return idx;
   } catch {
     return undefined;
