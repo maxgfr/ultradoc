@@ -182,13 +182,19 @@ describe("drill commands (print evidence, write nothing)", () => {
 
   // Every network-backed source must degrade gracefully offline: exit 0, no
   // throw, still emits a dossier (evidence may be empty with an honest note).
+  // These run against a NO-REMOTE git repo so the remote-backed sources
+  // (issues/prs/releases/discussions) resolve "no remote" instantly instead of
+  // reaching GitHub via the `gh` CLI — which the fetch stub can't intercept and
+  // which is authenticated in CI. so/web don't use a remote; the fetch stub
+  // forces them down their degradation path. The generous timeout absorbs the
+  // bounded httpGet retry backoff.
   for (const cmd of ["issues", "prs", "releases", "discussions", "so", "web"]) {
     it(`${cmd} degrades gracefully with no network`, async () => {
-      const r = await runCli([cmd, "--repo", LIB, "--q", "retry backoff exponential"]);
+      const r = await runCli([cmd, "--repo", gitRepo, "--q", "retry backoff exponential"]);
       expect(r.error).toBeUndefined();
       expect(r.exitCode).toBe(0);
       expect(r.stdout).toContain("# Evidence dossier");
-    });
+    }, 20_000);
   }
 
   it("history finds the commit that introduced a symbol (real git repo)", async () => {
@@ -199,11 +205,11 @@ describe("drill commands (print evidence, write nothing)", () => {
   });
 
   it("web --url degrades gracefully when the page can't be fetched", async () => {
-    const r = await runCli(["web", "--repo", LIB, "--url", "https://example.com/docs/retry"]);
+    const r = await runCli(["web", "--repo", gitRepo, "--url", "https://example.com/docs/retry"]);
     expect(r.exitCode).toBe(0);
     expect(r.error).toBeUndefined();
     expect(r.stdout).toContain("# Evidence dossier");
-  });
+  }, 20_000);
 });
 
 describe("overview (cached repo digest)", () => {
