@@ -81,8 +81,11 @@ Grounding:
   'ask' writes EVIDENCE.md + evidence.json. Write your answer to ANSWER.md in the
   same folder, citing evidence ids like [E1]. Then run:
     ultradoc check --run <dossier-dir>
-  It fails if any citation does not resolve to retrieved evidence — the
-  mechanical guard against answering from memory.
+  It fails if any citation does not resolve to retrieved evidence, or if too much
+  prose is uncited — the mechanical guard against answering from memory.
+
+Environment (all optional, keyless by default):
+  GITHUB_TOKEN         Raise the GitHub REST rate limit on the keyless fallback.
 `;
 
 const COMMANDS = new Set([

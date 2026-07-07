@@ -52,7 +52,7 @@ export function parseDuckDuckGoResults(html: string, n: number): string[] {
 // wraps result links through a redirector carrying the real URL in `uddg`.
 async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12000 });
+  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12000, retries: 2 });
   if (!r.ok || !r.body) return null;
   const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;

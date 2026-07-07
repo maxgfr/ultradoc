@@ -20,7 +20,7 @@ export async function stackoverflowSource(ctx: RunContext): Promise<SourceResult
     `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance` +
     `&q=${q}&site=stackoverflow&filter=withbody&pagesize=${ctx.options.perSource}${pat}`;
 
-  const r = await httpGet(url, { accept: "application/json" });
+  const r = await httpGet(url, { accept: "application/json", retries: 2 });
   if (!r.ok) {
     return { source: "so", items: [], notes: [`StackOverflow search unavailable (status ${r.status}).`] };
   }

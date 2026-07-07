@@ -3,6 +3,7 @@ import type { RunContext, SourceResult, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
 import { keywords as extractKeywords, sh, have } from "../util.js";
 import { httpGet } from "./fetch.js";
+import { ghAuthHeaders } from "../providers/shared.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -62,7 +63,11 @@ async function githubReleases(ctx: RunContext, kws: string[]): Promise<{ items: 
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, { accept: "application/vnd.github+json" });
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, {
+      accept: "application/vnd.github+json",
+      headers: ghAuthHeaders(),
+      retries: 2,
+    });
     if (!r.ok) {
       notes.push(`GitHub releases API unavailable (status ${r.status}); used the changelog only.`);
       return { items: [], notes };

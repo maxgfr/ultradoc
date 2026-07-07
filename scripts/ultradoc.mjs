@@ -1826,6 +1826,26 @@ import { fileURLToPath } from "url";
 
 // src/sources/fetch.ts
 var UA = "ultradoc/0.x (+https://github.com/maxgfr/ultradoc)";
+var RETRY_MAX = 2;
+var RETRY_BASE_MS = 500;
+var RETRY_AFTER_CAP_MS = 1e4;
+var RETRYABLE_STATUS = /* @__PURE__ */ new Set([429, 502, 503, 504]);
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function detectRateLimited(status, headers) {
+  if (status === 429) return true;
+  return status === 403 && headers.get("x-ratelimit-remaining") === "0";
+}
+function parseRetryAfter(headers) {
+  const h = headers.get("retry-after");
+  if (!h) return void 0;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.min(Math.max(0, secs) * 1e3, RETRY_AFTER_CAP_MS);
+  const when = Date.parse(h);
+  if (Number.isFinite(when)) return Math.min(Math.max(0, when - Date.now()), RETRY_AFTER_CAP_MS);
+  return void 0;
+}
 async function readCapped(res, max) {
   const reader = res.body?.getReader?.();
   if (!reader) {
@@ -1851,7 +1871,7 @@ async function readCapped(res, max) {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
-async function httpGet(url, opts = {}) {
+async function httpGetOnce(url, opts) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
   const max = opts.maxBytes ?? 4 * 1024 * 1024;
@@ -1859,21 +1879,35 @@ async function httpGet(url, opts = {}) {
     const res = await fetch(url, {
       signal: ctrl.signal,
       redirect: "follow",
-      headers: { "user-agent": UA, accept: opts.accept ?? "*/*" }
+      headers: { "user-agent": UA, accept: opts.accept ?? "*/*", ...opts.headers ?? {} }
     });
     const contentType = res.headers.get("content-type") ?? "";
+    const rateLimited = detectRateLimited(res.status, res.headers);
+    const retryAfterMs = parseRetryAfter(res.headers);
     const declared = Number(res.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > max) {
       ctrl.abort();
-      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap` };
+      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap`, rateLimited, retryAfterMs };
     }
     const body = await readCapped(res, max);
-    return { ok: res.ok, status: res.status, body, contentType };
+    return { ok: res.ok, status: res.status, body, contentType, rateLimited, retryAfterMs };
   } catch (e) {
     return { ok: false, status: 0, body: "", contentType: "", error: e.message };
   } finally {
     clearTimeout(t);
   }
+}
+async function httpGet(url, opts = {}) {
+  const retries = Math.max(0, Math.min(opts.retries ?? 0, RETRY_MAX));
+  let res = await httpGetOnce(url, opts);
+  for (let attempt = 0; attempt < retries; attempt++) {
+    if (res.ok || res.status === 403) return res;
+    if (res.status !== 0 && !RETRYABLE_STATUS.has(res.status)) return res;
+    const backoff = Math.min(RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * 250), RETRY_AFTER_CAP_MS);
+    await sleep(res.retryAfterMs ?? backoff);
+    res = await httpGetOnce(url, opts);
+  }
+  return res;
 }
 async function httpJson(method, url, body, opts = {}) {
   const ctrl = new AbortController();
@@ -1932,7 +1966,7 @@ function htmlToText(html) {
   return s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
 }
 async function fetchAndExtract(url) {
-  const res = await httpGet(url, { accept: "text/html,text/plain,*/*" });
+  const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
     return { text: "", note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
@@ -2281,6 +2315,14 @@ async function docsSource(ctx) {
 
 // src/sources/releases.ts
 import { join as join10 } from "path";
+
+// src/providers/shared.ts
+function ghAuthHeaders() {
+  const token = process.env.GITHUB_TOKEN?.trim();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+// src/sources/releases.ts
 var CHANGELOG_RE = /(^|\/)(changelog|changes|history|news|releases?)(\.[a-z0-9]+)?$/i;
 var VERSION_HEADING_RE = /^(#{1,4}\s*\[?v?\d+\.\d+|v?\d+\.\d+(\.\d+)?\s*[/(—-])/;
 function changelogSections(file, content) {
@@ -2319,7 +2361,11 @@ async function githubReleases(ctx, kws) {
     if (res.ok) body = res.stdout;
   }
   if (!body) {
-    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, { accept: "application/vnd.github+json" });
+    const r = await httpGet(`https://api.github.com/repos/${ref.owner}/${ref.repo}/releases?per_page=20`, {
+      accept: "application/vnd.github+json",
+      headers: ghAuthHeaders(),
+      retries: 2
+    });
     if (!r.ok) {
       notes.push(`GitHub releases API unavailable (status ${r.status}); used the changelog only.`);
       return { items: [], notes };
@@ -2498,12 +2544,10 @@ async function query(ref, terms, kind, perSource) {
     }
   }
   const url = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=${perSource}&sort=updated&order=desc`;
-  const r = await httpGet(url, { accept: "application/vnd.github+json" });
+  const r = await httpGet(url, { accept: "application/vnd.github+json", headers: ghAuthHeaders(), retries: 2 });
   if (!r.ok) {
-    return {
-      items: [],
-      error: `GitHub ${kind} search unavailable (status ${r.status}). Run \`gh auth login\` for higher-rate access.`
-    };
+    const hint = r.rateLimited ? `GitHub search rate-limited (keyless ~10/min). Set GITHUB_TOKEN, run \`gh auth login\`, or retry in ~60s.` : `GitHub ${kind} search unavailable (status ${r.status}). Run \`gh auth login\` for higher-rate access.`;
+    return { items: [], error: hint, rateLimited: r.rateLimited };
   }
   try {
     return { items: toItems(JSON.parse(r.body).items, kind) };
@@ -2522,15 +2566,17 @@ var github = {
     if (ranked.length === 0) return { items: [], notes: [`No keywords to search ${kind}s.`] };
     let lastError;
     for (const terms of uniqueAttempts([ranked.slice(0, 3), ranked.slice(0, 2)])) {
-      const { items, error } = await query(ref, terms, kind, perSource * 2);
+      const { items, error, rateLimited } = await query(ref, terms, kind, perSource * 2);
       if (error) lastError = error;
       if (items.length) return { items: rerank(items, ranked).slice(0, perSource), notes: [] };
+      if (rateLimited) return { items: [], notes: [error] };
     }
     const seen = /* @__PURE__ */ new Map();
-    for (const t of ranked.slice(0, 4)) {
-      const { items, error } = await query(ref, [t], kind, perSource * 2);
+    for (const t of ranked.slice(0, 3)) {
+      const { items, error, rateLimited } = await query(ref, [t], kind, perSource * 2);
       if (error) lastError = error;
       for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
+      if (rateLimited) break;
     }
     const merged = rerank([...seen.values()], ranked).slice(0, perSource);
     if (merged.length) return { items: merged, notes: [] };
@@ -2572,7 +2618,7 @@ var gitlab = {
     const path = kind === "issue" ? "issues" : "merge_requests";
     const search2 = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
     const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search2}&per_page=${perSource}&order_by=updated_at&sort=desc`;
-    const r = await httpGet(url, { accept: "application/json" });
+    const r = await httpGet(url, { accept: "application/json", retries: 2 });
     if (!r.ok) {
       return { items: [], notes: [`GitLab ${kind} search unavailable (status ${r.status}).`] };
     }
@@ -2750,7 +2796,7 @@ async function stackoverflowSource(ctx) {
   const q = encodeURIComponent(kws);
   const pat = process.env.STACK_PAT ? `&access_token=${process.env.STACK_PAT}` : "";
   const url = `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${q}&site=stackoverflow&filter=withbody&pagesize=${ctx.options.perSource}${pat}`;
-  const r = await httpGet(url, { accept: "application/json" });
+  const r = await httpGet(url, { accept: "application/json", retries: 2 });
   if (!r.ok) {
     return { source: "so", items: [], notes: [`StackOverflow search unavailable (status ${r.status}).`] };
   }
@@ -2817,7 +2863,7 @@ function parseDuckDuckGoResults(html, n) {
 }
 async function viaDuckDuckGo(query2, n) {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query2)}`;
-  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12e3 });
+  const r = await httpGet(url, { accept: "text/html", timeoutMs: 12e3, retries: 2 });
   if (!r.ok || !r.body) return null;
   const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
@@ -3979,8 +4025,11 @@ Grounding:
   'ask' writes EVIDENCE.md + evidence.json. Write your answer to ANSWER.md in the
   same folder, citing evidence ids like [E1]. Then run:
     ultradoc check --run <dossier-dir>
-  It fails if any citation does not resolve to retrieved evidence \u2014 the
-  mechanical guard against answering from memory.
+  It fails if any citation does not resolve to retrieved evidence, or if too much
+  prose is uncited \u2014 the mechanical guard against answering from memory.
+
+Environment (all optional, keyless by default):
+  GITHUB_TOKEN         Raise the GitHub REST rate limit on the keyless fallback.
 `;
 var COMMANDS = /* @__PURE__ */ new Set([
   "ask",

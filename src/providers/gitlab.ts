@@ -18,7 +18,7 @@ export const gitlab: Provider = {
     const search = encodeURIComponent(rankedKeywords(question).slice(0, 4).join(" "));
     const url = `https://${ref.host}/api/v4/projects/${proj}/${path}` + `?search=${search}&per_page=${perSource}&order_by=updated_at&sort=desc`;
 
-    const r = await httpGet(url, { accept: "application/json" });
+    const r = await httpGet(url, { accept: "application/json", retries: 2 });
     if (!r.ok) {
       return { items: [], notes: [`GitLab ${kind} search unavailable (status ${r.status}).`] };
     }

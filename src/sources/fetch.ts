@@ -11,6 +11,46 @@ export interface HttpResult {
   body: string;
   contentType: string;
   error?: string;
+  rateLimited?: boolean; // 429, or 403 with x-ratelimit-remaining: 0 (GitHub)
+  retryAfterMs?: number; // parsed Retry-After, capped
+}
+
+export interface HttpGetOptions {
+  timeoutMs?: number;
+  accept?: string;
+  maxBytes?: number;
+  headers?: Record<string, string>; // extra request headers (e.g. authorization)
+  retries?: number; // opt-in bounded retries for transient failures (default 0)
+}
+
+// Bounded, jittered retry policy. GET is idempotent, so retrying transient
+// failures is safe; 403 is NEVER retried (on GitHub it means rate-limited, and
+// retrying only burns the remaining quota faster).
+const RETRY_MAX = 2;
+const RETRY_BASE_MS = 500;
+const RETRY_AFTER_CAP_MS = 10_000;
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// A GitHub-style rate-limit signal: an explicit 429, or a 403 with the
+// remaining-quota header at 0 (how the unauthenticated search API reports it).
+function detectRateLimited(status: number, headers: Headers): boolean {
+  if (status === 429) return true;
+  return status === 403 && headers.get("x-ratelimit-remaining") === "0";
+}
+
+// Parse a Retry-After header (delta-seconds or HTTP-date) into a capped ms delay.
+function parseRetryAfter(headers: Headers): number | undefined {
+  const h = headers.get("retry-after");
+  if (!h) return undefined;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.min(Math.max(0, secs) * 1000, RETRY_AFTER_CAP_MS);
+  const when = Date.parse(h);
+  if (Number.isFinite(when)) return Math.min(Math.max(0, when - Date.now()), RETRY_AFTER_CAP_MS);
+  return undefined;
 }
 
 // Stream a fetch Response body, keeping at most `max` bytes and cancelling the
@@ -43,11 +83,11 @@ export async function readCapped(res: Response, max: number): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-// Minimal HTTP GET on top of Node's built-in fetch (Node ≥18) — no
-// dependencies. Times out, sends a UA, and bounds the body so a huge page can't
-// blow up memory: it rejects early when the server declares an oversized
-// Content-Length, otherwise streams and stops at maxBytes.
-export async function httpGet(url: string, opts: { timeoutMs?: number; accept?: string; maxBytes?: number } = {}): Promise<HttpResult> {
+// One GET attempt: times out, sends a UA (+ any extra headers), and bounds the
+// body so a huge page can't blow up memory — rejects early on an oversized
+// declared Content-Length, otherwise streams and stops at maxBytes. Surfaces a
+// rate-limit signal and any Retry-After hint for the caller/retry loop.
+async function httpGetOnce(url: string, opts: HttpGetOptions): Promise<HttpResult> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 20_000);
   const max = opts.maxBytes ?? 4 * 1024 * 1024;
@@ -55,22 +95,41 @@ export async function httpGet(url: string, opts: { timeoutMs?: number; accept?: 
     const res = await fetch(url, {
       signal: ctrl.signal,
       redirect: "follow",
-      headers: { "user-agent": UA, accept: opts.accept ?? "*/*" },
+      headers: { "user-agent": UA, accept: opts.accept ?? "*/*", ...(opts.headers ?? {}) },
     });
     const contentType = res.headers.get("content-type") ?? "";
+    const rateLimited = detectRateLimited(res.status, res.headers);
+    const retryAfterMs = parseRetryAfter(res.headers);
     // Don't even start streaming a body the server says is over the cap.
     const declared = Number(res.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > max) {
       ctrl.abort();
-      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap` };
+      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap`, rateLimited, retryAfterMs };
     }
     const body = await readCapped(res, max);
-    return { ok: res.ok, status: res.status, body, contentType };
+    return { ok: res.ok, status: res.status, body, contentType, rateLimited, retryAfterMs };
   } catch (e) {
     return { ok: false, status: 0, body: "", contentType: "", error: (e as Error).message };
   } finally {
     clearTimeout(t);
   }
+}
+
+// Minimal HTTP GET on top of Node's built-in fetch (Node ≥18) — no
+// dependencies. With `opts.retries` (default 0), retries transient failures
+// (network error, 429/502/503/504) with a jittered backoff that honours
+// Retry-After; a 403 is returned immediately (rate limit — never retried).
+export async function httpGet(url: string, opts: HttpGetOptions = {}): Promise<HttpResult> {
+  const retries = Math.max(0, Math.min(opts.retries ?? 0, RETRY_MAX));
+  let res = await httpGetOnce(url, opts);
+  for (let attempt = 0; attempt < retries; attempt++) {
+    if (res.ok || res.status === 403) return res;
+    if (res.status !== 0 && !RETRYABLE_STATUS.has(res.status)) return res;
+    const backoff = Math.min(RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * 250), RETRY_AFTER_CAP_MS);
+    await sleep(res.retryAfterMs ?? backoff);
+    res = await httpGetOnce(url, opts);
+  }
+  return res;
 }
 
 // JSON request/response helper for the local vector backend (Qdrant / Ollama).
@@ -152,7 +211,7 @@ export function htmlToText(html: string): string {
 // Fetch a URL and return its readable text (HTML stripped to prose). Used by
 // the external-docs and web sources.
 export async function fetchAndExtract(url: string): Promise<{ text: string; note?: string }> {
-  const res = await httpGet(url, { accept: "text/html,text/plain,*/*" });
+  const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
     return { text: "", note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
