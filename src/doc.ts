@@ -217,6 +217,12 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
 
   const { evidence, sectionIds } = mergeEvidence(perSection);
   const sections: DocSection[] = outline.map((s) => ({ ...s, evidenceIds: sectionIds.get(s.id) ?? [] }));
+  const docNotes: string[] = [];
+  if (!ctx.scopePkg && ctx.index.packages.length > LIMITS.docPackages) {
+    docNotes.push(
+      `This monorepo has ${ctx.index.packages.length} packages; sections cover the first ${LIMITS.docPackages}. Re-run \`doc --package <name>\` for the rest, or raise ULTRADOC_MAX_DOC_PACKAGES.`,
+    );
+  }
   // Report the sources actually retrieved (the override when --sources was
   // given), not each section's defaults — so meta.json and EVIDENCE.md don't
   // mislabel provenance.
@@ -242,7 +248,7 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
     semantic: options.semantic,
     evidenceCount: evidence.length,
     builtAt: plan.builtAt,
-    notes: [...new Set(perSection.flatMap((p) => p.notes))],
+    notes: [...new Set([...docNotes, ...perSection.flatMap((p) => p.notes)])],
   };
 
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);

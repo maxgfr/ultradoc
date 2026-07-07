@@ -637,13 +637,17 @@ var BINARY_EXT = /* @__PURE__ */ new Set([
   ".min.js",
   ".map"
 ]);
-function walk(root, opts = {}) {
+function walkDetailed(root, opts = {}) {
   const maxFileBytes = opts.maxFileBytes ?? LIMITS.maxFileBytes;
   const maxFiles = opts.maxFiles ?? LIMITS.maxFiles;
   const out = [];
+  let truncated = false;
   const stack = [root];
   while (stack.length) {
-    if (out.length >= maxFiles) break;
+    if (out.length >= maxFiles) {
+      truncated = true;
+      break;
+    }
     const dir = stack.pop();
     let entries;
     try {
@@ -673,7 +677,10 @@ function walk(root, opts = {}) {
       out.push({ rel: relative(root, abs).split(sep).join("/"), abs, size: st.size, ext });
     }
   }
-  return out;
+  return { files: out, truncated };
+}
+function walk(root, opts = {}) {
+  return walkDetailed(root, opts).files;
 }
 function readText(abs) {
   try {
@@ -1394,7 +1401,7 @@ function resolvePackage(packages, query2) {
 }
 
 // src/index/structural.ts
-var SCHEMA_VERSION = 3;
+var SCHEMA_VERSION = 4;
 var DOC_BASENAME = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
 var DOC_EXT = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
 var DOC_DIR2 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
@@ -1437,19 +1444,24 @@ function isConfig(rel) {
   return CONFIG_BASENAME.has(rel.split("/").pop().toLowerCase());
 }
 function buildIndex(root, slug, opts = {}) {
-  const files = walk(root, { maxFiles: opts.maxFiles });
+  const { files, truncated } = walkDetailed(root, { maxFiles: opts.maxFiles });
   const languages = {};
   const symbols = [];
   const docFiles = [];
   const configFiles = [];
+  const topDirs = {};
+  let symbolCapHits = 0;
   for (const f of files) {
     const lang = languageOf(f.ext);
     languages[lang] = (languages[lang] ?? 0) + 1;
+    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) : ".";
+    topDirs[top] = (topDirs[top] ?? 0) + 1;
     if (isDoc(f.rel, f.ext)) docFiles.push(f.rel);
     if (isConfig(f.rel)) configFiles.push(f.rel);
     const content = readText(f.abs);
     if (!content) continue;
     const syms = extractSymbols(f.rel, f.ext, content);
+    if (syms.length > LIMITS.symbolsPerFile) symbolCapHits++;
     for (const s of syms.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
   }
   const sortedDocs = docFiles.sort();
@@ -1471,6 +1483,8 @@ function buildIndex(root, slug, opts = {}) {
     // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
     // questions can be scoped to one package with --package.
     packages: discoverWorkspaces(root),
+    topDirs,
+    stats: { truncated, symbolCapHits },
     schemaVersion: SCHEMA_VERSION
   };
   try {
@@ -1486,6 +1500,8 @@ function loadIndex(root) {
   try {
     const idx = JSON.parse(readFileSync2(p, "utf8"));
     if (idx.schemaVersion !== SCHEMA_VERSION) return void 0;
+    const head = headCommit(root);
+    if (idx.commit && head && idx.commit !== head) return void 0;
     return idx;
   } catch {
     return void 0;
@@ -2332,14 +2348,27 @@ ${up.stderr}`, code: 1 };
 }
 
 // src/sources/code.ts
+function indexCoverageNotes(index) {
+  const notes = [];
+  if (index.stats?.truncated) {
+    notes.push(`Index capped at ${LIMITS.maxFiles} files \u2014 some of this repo was not indexed. Raise ULTRADOC_MAX_FILES for full coverage.`);
+  }
+  if (index.stats?.symbolCapHits) {
+    notes.push(
+      `${index.stats.symbolCapHits} file(s) hit the ${LIMITS.symbolsPerFile}-symbol cap. Raise ULTRADOC_MAX_SYMBOLS_PER_FILE if a symbol seems missing.`
+    );
+  }
+  return notes;
+}
 async function codeSource(ctx) {
   const lexical = searchCode(ctx.repoDir, ctx.repoRef, ctx.index, ctx.options.question, ctx.options.perSource, ctx.scopeDir);
+  const coverage2 = indexCoverageNotes(ctx.index);
   const fallbacks = [];
   if (lexical.fallback === "js-scan") {
     fallbacks.push("code: ripgrep missing \u2014 used the built-in JS scanner");
   }
   if (!ctx.options.semantic) {
-    return { source: "code", items: lexical.items, notes: lexical.notes, fallbacks };
+    return { source: "code", items: lexical.items, notes: [...coverage2, ...lexical.notes], fallbacks };
   }
   const sem = await semanticSearch(ctx);
   if (ctx.scopeDir) sem.items = sem.items.filter((it) => it.ref.startsWith(ctx.scopeDir + "/"));
@@ -2348,7 +2377,7 @@ async function codeSource(ctx) {
     return {
       source: "code",
       items: lexical.items,
-      notes: [...lexical.notes, ...sem.notes],
+      notes: [...coverage2, ...lexical.notes, ...sem.notes],
       fallbacks
     };
   }
@@ -2362,7 +2391,7 @@ async function codeSource(ctx) {
   return {
     source: "code",
     items: ranked,
-    notes: [...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
+    notes: [...coverage2, ...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
     fallbacks
   };
 }
@@ -2528,6 +2557,11 @@ async function githubReleases(ctx, kws) {
   if (!Array.isArray(releases) || releases.length === 0) {
     notes.push("The repo has no GitHub releases; used the changelog only.");
     return { items: [], notes };
+  }
+  if (releases.length >= perPage) {
+    notes.push(
+      `Checked the ${perPage} most recent GitHub releases only \u2014 a feature added in an older release may be missed here (the changelog half still covers it). Raise ULTRADOC_MAX_RELEASES.`
+    );
   }
   const items = githubReleaseItems(releases, kws);
   if (items.length === 0) notes.push("No GitHub release notes matched the question's keywords.");
@@ -3495,6 +3529,12 @@ async function runDoc(options, opts = {}) {
   );
   const { evidence, sectionIds } = mergeEvidence(perSection);
   const sections = outline.map((s) => ({ ...s, evidenceIds: sectionIds.get(s.id) ?? [] }));
+  const docNotes = [];
+  if (!ctx.scopePkg && ctx.index.packages.length > LIMITS.docPackages) {
+    docNotes.push(
+      `This monorepo has ${ctx.index.packages.length} packages; sections cover the first ${LIMITS.docPackages}. Re-run \`doc --package <name>\` for the rest, or raise ULTRADOC_MAX_DOC_PACKAGES.`
+    );
+  }
   const usedSources = [...new Set(perSection.flatMap((p) => opts.sourcesOverride ?? p.section.sources))];
   const plan = {
     repo: ctx.repoRef.raw,
@@ -3516,7 +3556,7 @@ async function runDoc(options, opts = {}) {
     semantic: options.semantic,
     evidenceCount: evidence.length,
     builtAt: plan.builtAt,
-    notes: [...new Set(perSection.flatMap((p) => p.notes))]
+    notes: [.../* @__PURE__ */ new Set([...docNotes, ...perSection.flatMap((p) => p.notes)])]
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
   mkdirSync8(dir, { recursive: true });
@@ -4593,7 +4633,8 @@ async function main() {
               docsRoot: ctx.index.docsRoot,
               docsUrl: ctx.index.docsUrl,
               packages: ctx.index.packages,
-              languages: ctx.index.languages
+              languages: ctx.index.languages,
+              stats: ctx.index.stats
             },
             null,
             2
@@ -4601,10 +4642,12 @@ async function main() {
         );
         return;
       }
+      const st = ctx.index.stats;
+      const truncated = st?.truncated ? ` \xB7 \u26A0 truncated at ${ctx.index.fileCount} files (raise ULTRADOC_MAX_FILES)` : "";
       const lines = [
         `ultradoc: indexed ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
         `  path:     ${ctx.repoDir}`,
-        `  files:    ${ctx.index.fileCount} \xB7 symbols: ${ctx.index.symbols.length} \xB7 docs: ${ctx.index.docFiles.length} \xB7 config: ${ctx.index.configFiles.length}`,
+        `  files:    ${ctx.index.fileCount} \xB7 symbols: ${ctx.index.symbols.length} \xB7 docs: ${ctx.index.docFiles.length} \xB7 config: ${ctx.index.configFiles.length}${truncated}`,
         `  langs:    ${langs.join(" \xB7 ")}`,
         ...ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : [],
         ...ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : [],

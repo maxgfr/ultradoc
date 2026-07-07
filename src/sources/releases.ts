@@ -89,6 +89,11 @@ async function githubReleases(ctx: RunContext, kws: string[]): Promise<{ items: 
     return { items: [], notes };
   }
 
+  if (releases.length >= perPage) {
+    notes.push(
+      `Checked the ${perPage} most recent GitHub releases only — a feature added in an older release may be missed here (the changelog half still covers it). Raise ULTRADOC_MAX_RELEASES.`,
+    );
+  }
   const items = githubReleaseItems(releases, kws);
   if (items.length === 0) notes.push("No GitHub release notes matched the question's keywords.");
   return { items, notes };

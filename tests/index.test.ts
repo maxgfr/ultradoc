@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { buildIndex } from "../src/index/structural.js";
+import { buildIndex, loadIndex, ensureIndex } from "../src/index/structural.js";
 import { searchCode } from "../src/index/search.js";
 import { resolveRepo } from "../src/clone.js";
 import type { StructuralIndex } from "../src/types.js";
@@ -27,6 +28,50 @@ describe("structural index", () => {
     expect(names.has("retryRequest")).toBe(true);
     expect(names.has("computeBackoff")).toBe(true);
     expect(names.has("HttpClient")).toBe(true);
+  });
+
+  it("records coverage stats and a top-level dir histogram", () => {
+    expect(idx.stats).toBeDefined();
+    expect(idx.stats!.truncated).toBe(false);
+    expect(idx.topDirs).toBeDefined();
+    expect(idx.topDirs!.src).toBeGreaterThan(0);
+  });
+});
+
+describe("index caching", () => {
+  it("marks the index truncated when the file cap is hit", () => {
+    // The cap is checked per-directory, so the first dir's files land before the
+    // walk stops; the point is that truncation is reported, not silent.
+    const idx = buildIndex(FIXTURE, REF.slug, { maxFiles: 1 });
+    expect(idx.stats!.truncated).toBe(true);
+    const full = buildIndex(FIXTURE, REF.slug);
+    expect(idx.fileCount).toBeLessThan(full.fileCount);
+  });
+
+  it("rebuilds a persisted index once the repo HEAD moves", () => {
+    const repo = mkdtempSync(join(tmpdir(), "ultradoc-commit-"));
+    const git = (args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" });
+    git(["init", "-q"]);
+    git(["config", "user.email", "t@t.t"]);
+    git(["config", "user.name", "t"]);
+    mkdirSync(join(repo, "src"), { recursive: true });
+    writeFileSync(join(repo, "src", "a.ts"), "export const a = 1;\n");
+    git(["add", "."]);
+    git(["commit", "-q", "-m", "one"]);
+    const ref = resolveRepo(repo);
+    const first = buildIndex(repo, ref.slug); // persists index.json at commit #1
+    expect(loadIndex(repo)?.commit).toBe(first.commit);
+
+    // A second commit moves HEAD; the persisted index is now stale.
+    writeFileSync(join(repo, "src", "b.ts"), "export const b = 2;\n");
+    git(["add", "."]);
+    git(["commit", "-q", "-m", "two"]);
+    expect(loadIndex(repo)).toBeUndefined(); // commit mismatch → rebuild
+
+    const rebuilt = ensureIndex(repo, ref.slug);
+    expect(rebuilt.commit).not.toBe(first.commit);
+    expect(rebuilt.symbols.some((s) => s.name === "b")).toBe(true);
+    rmSync(repo, { recursive: true, force: true });
   });
 });
 

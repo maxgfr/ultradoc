@@ -120,16 +120,26 @@ export interface WalkedFile {
   ext: string;
 }
 
-// Recursively list source-like files under `root`, applying ignore rules. Pure
-// filesystem walk — no git dependency, so it works on any directory.
-export function walk(root: string, opts: WalkOptions = {}): WalkedFile[] {
+export interface WalkResult {
+  files: WalkedFile[];
+  truncated: boolean; // the maxFiles cap was hit — the listing is partial
+}
+
+// Recursively list source-like files under `root`, applying ignore rules, and
+// report whether the file cap truncated the listing. Pure filesystem walk — no
+// git dependency, so it works on any directory.
+export function walkDetailed(root: string, opts: WalkOptions = {}): WalkResult {
   const maxFileBytes = opts.maxFileBytes ?? LIMITS.maxFileBytes;
   const maxFiles = opts.maxFiles ?? LIMITS.maxFiles;
   const out: WalkedFile[] = [];
+  let truncated = false;
 
   const stack: string[] = [root];
   while (stack.length) {
-    if (out.length >= maxFiles) break;
+    if (out.length >= maxFiles) {
+      truncated = true;
+      break;
+    }
     const dir = stack.pop()!;
     let entries: string[];
     try {
@@ -159,7 +169,12 @@ export function walk(root: string, opts: WalkOptions = {}): WalkedFile[] {
       out.push({ rel: relative(root, abs).split(sep).join("/"), abs, size: st.size, ext });
     }
   }
-  return out;
+  return { files: out, truncated };
+}
+
+// The common case: just the file listing (truncation reported by walkDetailed).
+export function walk(root: string, opts: WalkOptions = {}): WalkedFile[] {
+  return walkDetailed(root, opts).files;
 }
 
 // Read a file as UTF-8, returning "" on any error (unreadable, vanished). Skips

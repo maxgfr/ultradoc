@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StructuralIndex, CodeSymbol } from "../types.js";
-import { walk, readText } from "../walk.js";
+import { walkDetailed, readText } from "../walk.js";
 import { LIMITS } from "../config.js";
 import { extractSymbols, languageOf } from "../lang/registry.js";
 import { headCommit } from "../clone.js";
 import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
 import { discoverWorkspaces } from "./workspaces.js";
 
-const SCHEMA_VERSION = 3;
+// v4: added `stats` (truncation honesty) and `topDirs` (overview layout). Old
+// indexes auto-rebuild.
+const SCHEMA_VERSION = 4;
 
 // Files that are documentation: conventional top-level docs, anything under a
 // docs tree, and prose extensions. Used to feed the `docs` source and to weight
@@ -63,15 +65,19 @@ function isConfig(rel: string): boolean {
 // histogram, declared symbols, and the doc/config file lists. No LLM, no
 // network. Persisted under <root>/.ultradoc/index.json for reuse.
 export function buildIndex(root: string, slug: string, opts: { maxFiles?: number; project?: string[] } = {}): StructuralIndex {
-  const files = walk(root, { maxFiles: opts.maxFiles });
+  const { files, truncated } = walkDetailed(root, { maxFiles: opts.maxFiles });
   const languages: Record<string, number> = {};
   const symbols: CodeSymbol[] = [];
   const docFiles: string[] = [];
   const configFiles: string[] = [];
+  const topDirs: Record<string, number> = {};
+  let symbolCapHits = 0;
 
   for (const f of files) {
     const lang = languageOf(f.ext);
     languages[lang] = (languages[lang] ?? 0) + 1;
+    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) : ".";
+    topDirs[top] = (topDirs[top] ?? 0) + 1;
     if (isDoc(f.rel, f.ext)) docFiles.push(f.rel);
     if (isConfig(f.rel)) configFiles.push(f.rel);
 
@@ -81,6 +87,7 @@ export function buildIndex(root: string, slug: string, opts: { maxFiles?: number
     if (!content) continue;
     const syms = extractSymbols(f.rel, f.ext, content);
     // Cap symbols per file to avoid a generated/giant file dominating.
+    if (syms.length > LIMITS.symbolsPerFile) symbolCapHits++;
     for (const s of syms.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
   }
 
@@ -103,6 +110,8 @@ export function buildIndex(root: string, slug: string, opts: { maxFiles?: number
     // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
     // questions can be scoped to one package with --package.
     packages: discoverWorkspaces(root),
+    topDirs,
+    stats: { truncated, symbolCapHits },
     schemaVersion: SCHEMA_VERSION,
   };
 
@@ -121,6 +130,11 @@ export function loadIndex(root: string): StructuralIndex | undefined {
   try {
     const idx = JSON.parse(readFileSync(p, "utf8")) as StructuralIndex;
     if (idx.schemaVersion !== SCHEMA_VERSION) return undefined;
+    // Commit-validate: a local checkout whose HEAD moved under a persisted index
+    // (or any tree that changed) must rebuild, else citations point at stale
+    // lines. Non-git trees (no HEAD) keep the cached index. buildIndex is cheap.
+    const head = headCommit(root);
+    if (idx.commit && head && idx.commit !== head) return undefined;
     return idx;
   } catch {
     return undefined;

@@ -75,7 +75,17 @@ export interface StructuralIndex {
   docsRoot?: string; // canonical in-repo docs folder, e.g. "docs" (discovered)
   docsUrl?: string; // official external docs URL discovered from README/manifests
   packages: WorkspacePackage[]; // workspace packages ([] for a single-package repo)
+  topDirs?: Record<string, number>; // top-level dir -> file count (for the overview layout)
+  stats?: IndexStats; // coverage honesty: whether caps truncated the index
   schemaVersion: number;
+}
+
+// Honest signal that the index is partial: the file cap truncated the walk, or
+// some files hit the per-file symbol cap. Surfaced as retrieval notes so a
+// partial answer on a huge repo is never silent.
+export interface IndexStats {
+  truncated: boolean; // the maxFiles cap was hit
+  symbolCapHits: number; // files whose symbols were capped
 }
 
 // Which web-discovery engine to use; "auto" tries searxng → ddg → claude.

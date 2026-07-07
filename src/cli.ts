@@ -468,6 +468,7 @@ async function main(): Promise<void> {
               docsUrl: ctx.index.docsUrl,
               packages: ctx.index.packages,
               languages: ctx.index.languages,
+              stats: ctx.index.stats,
             },
             null,
             2,
@@ -475,10 +476,12 @@ async function main(): Promise<void> {
         );
         return;
       }
+      const st = ctx.index.stats;
+      const truncated = st?.truncated ? ` · ⚠ truncated at ${ctx.index.fileCount} files (raise ULTRADOC_MAX_FILES)` : "";
       const lines = [
         `ultradoc: indexed ${ctx.repoRef.raw}${ctx.index.commit ? ` @ ${ctx.index.commit}` : ""}`,
         `  path:     ${ctx.repoDir}`,
-        `  files:    ${ctx.index.fileCount} · symbols: ${ctx.index.symbols.length} · docs: ${ctx.index.docFiles.length} · config: ${ctx.index.configFiles.length}`,
+        `  files:    ${ctx.index.fileCount} · symbols: ${ctx.index.symbols.length} · docs: ${ctx.index.docFiles.length} · config: ${ctx.index.configFiles.length}${truncated}`,
         `  langs:    ${langs.join(" · ")}`,
         ...(ctx.index.docsRoot ? [`  docsRoot: ${ctx.index.docsRoot}/`] : []),
         ...(ctx.index.docsUrl ? [`  docsUrl:  ${ctx.index.docsUrl} (auto-discovered)`] : []),

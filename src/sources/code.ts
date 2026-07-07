@@ -1,13 +1,30 @@
-import type { RunContext, SourceResult } from "../types.js";
+import type { RunContext, SourceResult, StructuralIndex } from "../types.js";
+import { LIMITS } from "../config.js";
 import { searchCode } from "../index/search.js";
 import { semanticSearch } from "../index/semantic.js";
 import { rrf } from "../util.js";
+
+// Honest coverage notes when the index was capped, so a partial answer on a huge
+// repo is never silent.
+export function indexCoverageNotes(index: StructuralIndex): string[] {
+  const notes: string[] = [];
+  if (index.stats?.truncated) {
+    notes.push(`Index capped at ${LIMITS.maxFiles} files — some of this repo was not indexed. Raise ULTRADOC_MAX_FILES for full coverage.`);
+  }
+  if (index.stats?.symbolCapHits) {
+    notes.push(
+      `${index.stats.symbolCapHits} file(s) hit the ${LIMITS.symbolsPerFile}-symbol cap. Raise ULTRADOC_MAX_SYMBOLS_PER_FILE if a symbol seems missing.`,
+    );
+  }
+  return notes;
+}
 
 // The `code` source: deterministic lexical + structural search (Tier 1). When
 // `--semantic` is on and the local stack is reachable, its vector hits are
 // fused in via Reciprocal Rank Fusion; otherwise Tier 1 stands alone.
 export async function codeSource(ctx: RunContext): Promise<SourceResult> {
   const lexical = searchCode(ctx.repoDir, ctx.repoRef, ctx.index, ctx.options.question, ctx.options.perSource, ctx.scopeDir);
+  const coverage = indexCoverageNotes(ctx.index);
 
   // Typed fallback signals so meta.json can say *why* a run was slow or
   // lexical-only, without string-sniffing the notes.
@@ -17,7 +34,7 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
   }
 
   if (!ctx.options.semantic) {
-    return { source: "code", items: lexical.items, notes: lexical.notes, fallbacks };
+    return { source: "code", items: lexical.items, notes: [...coverage, ...lexical.notes], fallbacks };
   }
 
   const sem = await semanticSearch(ctx);
@@ -28,7 +45,7 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
     return {
       source: "code",
       items: lexical.items,
-      notes: [...lexical.notes, ...sem.notes],
+      notes: [...coverage, ...lexical.notes, ...sem.notes],
       fallbacks,
     };
   }
@@ -50,7 +67,7 @@ export async function codeSource(ctx: RunContext): Promise<SourceResult> {
   return {
     source: "code",
     items: ranked,
-    notes: [...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
+    notes: [...coverage, ...lexical.notes, ...sem.notes, "Fused lexical + semantic results (RRF)."],
     fallbacks,
   };
 }
