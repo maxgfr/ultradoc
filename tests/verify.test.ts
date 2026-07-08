@@ -69,6 +69,26 @@ describe("runVerify (worklist)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // Behavior claims grounded in an issue/PR must be checked against CURRENT
+  // code — a closed issue can describe behavior a later release reversed.
+  it("marks issue/PR-grounded pairs for a current-source cross-check", () => {
+    const dir = scratch();
+    const ev: EvidenceItem[] = [
+      { id: "E1", source: "code", title: "retry.ts", ref: "src/retry.ts", score: 1, snippet: "backoff doubles" },
+      { id: "E2", source: "issue", title: "null callback throws", ref: "issue#36", score: 0.9, snippet: "passing null throws a TypeError" },
+    ];
+    dossier(dir, ev, "# X\nThe backoff doubles each attempt [E1].\n\nPassing a null callback throws a TypeError [E2].");
+    const r = runVerify(dir);
+    const byId = new Map(r.pairs.map((p) => [p.evidenceId, p] as const));
+    expect(byId.get("E2")!.crossCheck).toBe(true);
+    expect(byId.get("E1")!.crossCheck).toBeUndefined();
+    const md = readFileSync(join(dir, "VERIFY.md"), "utf8");
+    expect(md).toMatch(/cross-check against CURRENT code/i);
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    expect(todo.pairs.find((p: any) => p.evidenceId === "E2").crossCheck).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("caps the worklist at maxVerify", () => {
     const dir = scratch();
     const ev: EvidenceItem[] = [0, 1, 2].map((i) => ({

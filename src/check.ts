@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { claimCoverage, codeMask, collectCitations, resolveAlias, SHAPE } from "./citations.js";
+import { citedEvidenceIds, claimCoverage, codeMask, collectCitations, extractClaimUnits, resolveAlias, SHAPE } from "./citations.js";
 import { headCommit, sameCommit } from "./clone.js";
 import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
 // Import cycle with verify.ts (which reuses check's claim parsing) — safe: both
@@ -259,6 +259,29 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
     if (opts.strict) errors.push(msg);
     else warnings.push(msg);
+  }
+  // Faithfulness lint: a claim whose ONLY support is an issue/PR cites tracker
+  // state at a point in time — the behavior may have been fixed since. Warn so
+  // the answer cross-checks current source or cites the code/fixing release.
+  const byId = new Map(evidence.map((e) => [e.id, e] as const));
+  const issueOnly: string[] = [];
+  let issueOnlyCount = 0;
+  for (const u of extractClaimUnits(answer)) {
+    for (const part of u.kind === "text" ? [u.text] : u.items) {
+      const cited = citedEvidenceIds(part, evidence)
+        .map((id) => byId.get(id))
+        .filter((e): e is EvidenceItem => !!e);
+      if (cited.length && cited.every((e) => e.source === "issue" || e.source === "pr")) {
+        issueOnlyCount++;
+        if (issueOnly.length < 3) issueOnly.push(`"${part.trim().slice(0, 120)}"`);
+      }
+    }
+  }
+  if (issueOnlyCount) {
+    warnings.push(
+      `${issueOnlyCount} claim(s) are grounded only in issue/PR evidence — a tracker thread describes behavior at a point in time; ` +
+        `cross-check the current source and cite the code or the fixing release alongside: ${issueOnly.join("; ")}`,
+    );
   }
   const missingSections = missingDocSections(dir, answerPath, answer);
   if (missingSections) errors.push(missingSections);

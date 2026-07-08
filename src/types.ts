@@ -221,6 +221,9 @@ export interface ClaimEvidencePair {
   ref: string; // the evidence item's provenance token (src/foo.ts, issue#123…)
   source: SourceKind;
   digest: string; // the cited item's snippet (claim-relevant)
+  // Set on issue/PR-grounded pairs: a tracker thread describes behavior at a
+  // point in time, so the skeptic must also cross-check the CURRENT code.
+  crossCheck?: boolean;
 }
 
 // A ClaimEvidencePair with the agent's judgement filled in.

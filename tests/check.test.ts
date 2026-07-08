@@ -255,6 +255,27 @@ describe("checkRun — claim coverage gate", () => {
   });
 });
 
+// A claim whose ONLY support is an issue/PR describes tracker state at a point
+// in time — the behavior may have been fixed since (the faithfulness-vs-
+// correctness blind spot). check surfaces it; the skeptic cross-checks it.
+describe("checkRun — issue/PR-only grounding lint", () => {
+  it("warns when a claim's only support is an issue or PR", () => {
+    answer("The library throws a TypeError when the callback option is null [E2].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/only .*issue\/PR/i);
+    expect(r.warnings.join(" ")).toMatch(/cross-check/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does not warn when the claim is corroborated by code or a release", () => {
+    answer("The library throws a TypeError when the callback option is null [E2] [E1].\n\nThe fix shipped in the next minor release [E2] [E3].");
+    const r = checkRun(dir);
+    expect(r.warnings.join(" ")).not.toMatch(/only .*issue\/PR/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 // The shipped example is the canonical artifact users copy — it must survive
 // the strictest gate.
 describe("shipped example dossier", () => {
