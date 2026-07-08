@@ -3,6 +3,9 @@ import { basename, dirname, join } from "node:path";
 import { claimCoverage, codeMask, collectCitations, resolveAlias, SHAPE } from "./citations.js";
 import { headCommit, sameCommit } from "./clone.js";
 import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
+// Import cycle with verify.ts (which reuses check's claim parsing) — safe: both
+// sides only call the other's functions at run time, never during module init.
+import { reduceVerdicts } from "./verify.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
 export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
@@ -18,6 +21,7 @@ export interface CheckOptions {
   answerFile?: string;
   coverageMin?: number; // grounding threshold (default COVERAGE_MIN_DEFAULT)
   strict?: boolean; // coverageMin = 1.0 and fence-only citations become errors
+  allowUnverified?: boolean; // --semantic without VERIFY.json warns instead of failing
 }
 
 // The grounded answer a dossier validates. `ask` writes ANSWER.md; `doc` writes
@@ -116,27 +120,41 @@ function dossierRepoDir(dir: string): string | undefined {
 }
 
 // Fold the resolved semantic-verification record (VERIFY.json) into a check
-// result when `--semantic` is requested. Strictly additive: it can only ADD a
-// failure (a refuted/unsupported claim), never relax the mechanical gate.
-// Missing VERIFY.json warns (run `verify` first) but never fails.
-function applySemantic(dir: string, result: CheckResult): void {
+// result when `--semantic` is requested. It can only ADD a failure, never relax
+// the mechanical gate — and it FAILS CLOSED: a passing semantic exit must mean
+// the support gate actually engaged, so a missing/unreadable VERIFY.json (or
+// one recording no verdicts) is an error unless --allow-unverified explicitly
+// downgrades it to a warning. The pass/fail is re-reduced from verdicts[] so a
+// doctored `ok: true` summary cannot pass the gate.
+function applySemantic(dir: string, result: CheckResult, allowUnverified = false): void {
   const p = join(dir, "VERIFY.json");
-  if (!existsSync(p)) {
-    result.warnings.push("--semantic: no VERIFY.json — run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
-    return;
-  }
-  try {
-    const sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
-    result.semantic = sem;
-    if (!sem.ok) {
+  const unverified = (what: string): void => {
+    const fix = "run `verify` then `verify --apply <verdicts.json>` first";
+    if (allowUnverified) {
+      result.warnings.push(`--semantic: ${what} — ${fix}; semantic gate skipped (--allow-unverified).`);
+    } else {
       result.ok = false;
-      result.errors.push(`Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
+      result.errors.push(`--semantic: ${what} — ${fix}, or pass --allow-unverified to skip the semantic gate explicitly.`);
     }
-    if (sem.unadjudicated?.length) {
-      result.warnings.push(`${sem.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
-    }
+  };
+  if (!existsSync(p)) return unverified("no VERIFY.json");
+  let sem: VerifyResult;
+  try {
+    sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
   } catch (e) {
-    result.warnings.push(`--semantic: VERIFY.json is unreadable (${(e as Error).message}).`);
+    return unverified(`VERIFY.json is unreadable (${(e as Error).message})`);
+  }
+  if (!Array.isArray(sem.verdicts) || sem.verdicts.length === 0) {
+    return unverified("VERIFY.json records no verdicts");
+  }
+  const reduced = reduceVerdicts(sem.verdicts);
+  result.semantic = { ...reduced, verdicts: sem.verdicts };
+  if (!reduced.ok) {
+    result.ok = false;
+    result.errors.push(`Semantic verification failed: ${reduced.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
+  }
+  if (reduced.unadjudicated?.length) {
+    result.warnings.push(`${reduced.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
   }
 }
 
@@ -263,7 +281,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     coverage,
     fencedOnly,
   };
-  if (opts.semantic) applySemantic(dir, result);
+  if (opts.semantic) applySemantic(dir, result, opts.allowUnverified);
   return result;
 }
 

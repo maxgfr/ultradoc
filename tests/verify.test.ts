@@ -145,12 +145,67 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("warns (does not fail) when --semantic is set but no VERIFY.json exists", () => {
+  // BREAKING (v2): --semantic without VERIFY.json used to warn and exit 0 — a
+  // green exit while the support gate was silently inactive. It now fails
+  // closed; --allow-unverified restores the warn-and-pass explicitly.
+  it("fails closed when --semantic is set but no VERIFY.json exists", () => {
     const dir = scratch();
     dossier(dir, EVIDENCE, ANSWER);
     const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/VERIFY\.json/);
+    expect(r.errors.join(" ")).toMatch(/--allow-unverified/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("--allow-unverified downgrades a missing VERIFY.json to a warning", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    const r = checkRun(dir, { semantic: true, allowUnverified: true });
     expect(r.ok).toBe(true);
     expect(r.warnings.join(" ").toLowerCase()).toContain("verify");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails closed when VERIFY.json is unreadable", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    writeFileSync(join(dir, "VERIFY.json"), "{ not json");
+    const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/unreadable/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Family P0-1: the gate must re-reduce ok from verdicts[], never trust the
+  // persisted summary — a doctored `ok: true` over refuted verdicts cannot pass.
+  it("re-reduces the gate from verdicts[] — a doctored ok:true cannot pass", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "refuted", E2: "supported" }));
+    const doctored = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    doctored.ok = true;
+    doctored.failures = [];
+    doctored.refuted = 0;
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify(doctored, null, 2));
+    const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/refuted or unsupported/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("treats a VERIFY.json without verdicts[] as unverified (fail-closed)", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    writeFileSync(
+      join(dir, "VERIFY.json"),
+      JSON.stringify({ ok: true, pairs: 2, adjudicated: 2, supported: 2, partial: 0, refuted: 0, unsupported: 0, failures: [], unadjudicated: [] }),
+    );
+    expect(checkRun(dir, { semantic: true }).ok).toBe(false);
+    const relaxed = checkRun(dir, { semantic: true, allowUnverified: true });
+    expect(relaxed.ok).toBe(true);
+    expect(relaxed.warnings.join(" ").toLowerCase()).toContain("verdict");
     rmSync(dir, { recursive: true, force: true });
   });
 });

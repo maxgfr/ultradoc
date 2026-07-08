@@ -25,7 +25,7 @@ Usage:
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic] [--answer <file>]
+  ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic [--allow-unverified]] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
@@ -49,7 +49,8 @@ Commands:
   check      Validate ANSWER.md (or a doc run's DOC.md) against a dossier's
              evidence.json: every citation must resolve AND enough claims must be
              cited (--strict requires all; --coverage-min tunes the threshold).
-             --semantic also folds in verify's verdicts (fails on unsupported).
+             --semantic also gates on verify's verdicts and FAILS when no
+             VERIFY.json exists (--allow-unverified downgrades to a warning).
   verify     Emit a claim↔evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
@@ -132,7 +133,7 @@ const VALUE_FLAGS = new Set([
   "answer",
   "coverage-min",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all"]);
+const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -513,6 +514,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
         coverageMin,
+        allowUnverified: p.bools.has("allow-unverified"),
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
       else process.stdout.write(formatCheckReport(res, resolve(dir)) + "\n");
