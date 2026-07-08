@@ -525,7 +525,9 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       if (!dir) fail("missing --run <dossier-dir>");
       const rdir = resolve(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve(p.values.apply));
+        // A relative verdicts path resolves against the run dir (where the
+        // verdicts file lives), not the process cwd; absolute paths pass through.
+        const result = applyVerdicts(rdir, resolve(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
