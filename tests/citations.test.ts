@@ -119,4 +119,28 @@ describe("claimCoverage", () => {
     expect(c.claims).toBe(1);
     expect(c.cited).toBe(1);
   });
+
+  // Regression: inline-code spans used to be stripped from the stored claim
+  // text, garbling the uncited-claim warnings (`makeRetriable` vanished).
+  it("preserves backticked tokens in the uncited claim text", () => {
+    const answer = "The retry doubles the delay each attempt [E1].\n\nThe `makeRetriable` helper wraps any function in retry behavior.";
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.uncited).toHaveLength(1);
+    expect(c.uncited[0]).toContain("`makeRetriable`");
+  });
+
+  it("still exempts a line that is only inline code", () => {
+    const answer = "`const wrapped = makeRetriable(fetchUser, options)`\n\nThe retry doubles the delay each attempt [E1].";
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.claims).toBe(1);
+    expect(c.cited).toBe(1);
+  });
+
+  it("still ignores a citation-shaped token inside backticks", () => {
+    const answer = "The docs mention `[E1]` but never actually cite it for real anywhere.";
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.claims).toBe(1);
+    expect(c.cited).toBe(0);
+    expect(c.uncited[0]).toContain("`[E1]`");
+  });
 });

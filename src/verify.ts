@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
 import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
+import { stripInlineCode } from "./citations.js";
 import { LIMITS } from "./config.js";
 
 // Bounds the verification loop (claim↔evidence pairs adjudicated per run).
@@ -54,7 +55,8 @@ export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: 
     if (!ids.length) {
       // An uncited claim can never be adjudicated (no evidence to weigh), so it
       // is not a verify pair — but surface it so it isn't silently accepted.
-      if (claim.trim().length >= MIN_UNCITED_LEN) uncitedClaims.push({ claimId, claim: claim.trim().slice(0, 400) });
+      // Length gates on the code-stripped form (mirrors claimCoverage).
+      if (stripInlineCode(claim).trim().length >= MIN_UNCITED_LEN) uncitedClaims.push({ claimId, claim: claim.trim().slice(0, 400) });
       continue;
     }
     for (const id of ids) {
