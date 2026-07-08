@@ -6,7 +6,7 @@ import { pathToFileURL, fileURLToPath } from "url";
 import { realpathSync } from "fs";
 
 // src/types.ts
-var VERSION = "1.8.2";
+var VERSION = "2.0.0";
 
 // src/clone.ts
 import { existsSync, statSync, mkdirSync, readdirSync, renameSync } from "fs";

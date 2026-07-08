@@ -2,6 +2,75 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.0.0](https://github.com/maxgfr/ultradoc/compare/v1.8.2...v2.0.0) (2026-07-08)
+
+
+### Features
+
+* implement ultradoc eval feedback (P1–P7, fail-closed semantic gate → v2.0.0) ([#12](https://github.com/maxgfr/ultradoc/issues/12)) ([98eebda](https://github.com/maxgfr/ultradoc/commit/98eebda37e02a47a613b0a223f4c5c039dd12d0f))
+
+
+### BREAKING CHANGES
+
+* check --semantic now exits non-zero when VERIFY.json is
+missing, unreadable, or records no verdicts. Run verify + verify --apply
+first, or pass --allow-unverified to restore the old warn-and-pass.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+* feat(verify): cross-check issue/PR-grounded claims against current source
+
+Two layers close the faithfulness-vs-correctness blind spot (eval P2) —
+a claim can be faithful to a closed issue yet contradicted by today's code:
+
+- check warns when a claim's only support is issue/PR evidence (tracker
+  state at a point in time; cite the code or the fixing release alongside).
+- verify marks issue/PR pairs crossCheck:true and VERIFY.md instructs the
+  skeptic to judge them against CURRENT code — contradiction => refuted,
+  or partial with a temporal qualifier citing the fixing release.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+* feat(check): re-validate code/docs excerpts against the pinned clone
+
+check used to prove only that [E#] resolves to an evidence id — a corrupted
+line range or a fabricated snippet still exited 0 (eval P1/L02b, the gap
+that most undermined the grounding guarantee). Every code/docs item with a
+path:start-end location is now re-opened in the pinned clone when its HEAD
+still matches the dossier commit: the range must exist and the stored
+snippet must match those lines (exact normalized equality; in-order
+subsequence >= 80% only for clip()-truncated snippets). Mismatches fail in
+both modes; a moved HEAD or evicted clone downgrades to a warning that
+names the skipped gate.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+* feat(search): rank and excerpt call sites, not just declarations
+
+Retrieval was declaration-only: a symbol's excerpt was pinned to its
+definition, and an options-callback property (onFailedAttempt) that is
+never declared as a symbol could only surface via BM25, with its
+invocation line never reaching the excerpt (eval P4, the lowest-scoring
+dimension).
+
+When a query names an identifier, a call-site pass now ranks the files
+that INVOKE it (a third RRF list, fused only when non-empty so prose
+queries are unchanged) and the excerpt either folds a nearby call region
+into the definition window or emits a second call-site excerpt when the
+invocation is far from the anchor. Call lines are already among the
+lexical hits, so there is no extra ripgrep call. Adds a p-retry-shaped
+onRetry callback to the sample-lib fixture plus offline eval pins; the 16
+prior offline expects are unchanged (0 regressions).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+* docs: document excerpt re-validation, fail-closed semantic gate, call sites
+
+Update SKILL.md + references (citation-format, orchestration, retrieval-
+playbook) for the P1-P4 behavior changes, and rebuild the bundle.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
 ## [1.8.2](https://github.com/maxgfr/ultradoc/compare/v1.8.1...v1.8.2) (2026-07-07)
 
 
