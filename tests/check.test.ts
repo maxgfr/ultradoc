@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { checkRun } from "../src/check.js";
 import type { EvidenceItem } from "../src/types.js";
 
@@ -252,5 +252,15 @@ describe("checkRun — claim coverage gate", () => {
     const r = checkRun(dir);
     expect(r.warnings.join(" ")).toMatch(/citations may have drifted/i);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// The shipped example is the canonical artifact users copy — it must survive
+// the strictest gate.
+describe("shipped example dossier", () => {
+  it("passes check --strict", () => {
+    const r = checkRun(resolve("assets/example-dossier"), { strict: true });
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
   });
 });

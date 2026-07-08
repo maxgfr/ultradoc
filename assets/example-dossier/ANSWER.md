@@ -16,5 +16,6 @@ The README documents the same policy in prose — exponential backoff that doubl
 and is capped, jitter on by default, and retries limited to network errors,
 `429`, and `5xx` [E6].
 
-_Verified against the indexed `sample-lib` fixture. Every claim above is grounded
-in the cited evidence (`ultradoc check` passes)._
+<!-- Verified against the indexed `sample-lib` fixture. Every claim above is
+grounded in the cited evidence (`ultradoc check --strict` passes). -->
+
