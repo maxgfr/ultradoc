@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import { sh, have, rrf, foldTerm, subtokens, buildMatcher, matcherFromTokens, type KeywordMatcher } from "../util.js";
+import { sh, have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFromTokens, type KeywordMatcher } from "../util.js";
 import { walk, readText } from "../walk.js";
 import { LIMITS } from "../config.js";
 import { bm25 } from "./bm25.js";
@@ -45,6 +45,13 @@ export const RANKING = {
   // Per-file contribution of its 1st/2nd/3rd best-matching symbol, so a file
   // that defines several relevant symbols outranks one with a single weak match.
   SYMBOL_DECAY: [1, 0.5, 0.25],
+  // Call-site awareness: how many identifier keywords are probed as call
+  // targets, the score of a distant call-site excerpt relative to its file's
+  // primary excerpt, and how close a call region must be to the definition to
+  // fold into one excerpt instead of a second item.
+  CALLSITE_MAX_NAMES: 4,
+  CALLSITE_SECOND_ITEM_FACTOR: 0.95,
+  CALLSITE_MERGE_GAP: 12,
 } as const;
 
 // Lexical search via ripgrep (`rg --json`), one call with the matcher's
@@ -266,6 +273,60 @@ function symbolScores(index: StructuralIndex, matcher: KeywordMatcher): Map<stri
   return byFile;
 }
 
+// Query keywords worth probing as call targets: identifier-shaped (camelCase or
+// snake_case) or exactly a declared symbol name. Deliberately strict so a prose
+// keyword ("config", "signal") never triggers the pass — those queries stay
+// byte-identical to before. Capped at CALLSITE_MAX_NAMES.
+export function callableNames(matcher: KeywordMatcher, index: StructuralIndex): string[] {
+  const declared = new Set(index.symbols.map((s) => foldTerm(s.name)));
+  const out: string[] = [];
+  for (const ek of matcher.expanded) {
+    if (out.length >= RANKING.CALLSITE_MAX_NAMES) break;
+    const orig = ek.original;
+    if (!/^[A-Za-z_$][\w$]*$/.test(orig)) continue;
+    const identifierShaped = /[a-z][A-Z]/.test(orig) || orig.includes("_");
+    if ((identifierShaped || declared.has(foldTerm(orig))) && !out.includes(orig)) out.push(orig);
+  }
+  return out;
+}
+
+// Lines in a file that INVOKE one of the probed names — `name(`, `name?.(` or
+// `obj.name(`. Declaration lines (from the symbol index) are excluded so a
+// function's own definition isn't mistaken for a call site. A type annotation
+// like `onRetry?: (…) => void` never matches (there is no `(` right after the
+// name), so an option-callback property surfaces only at its invocation.
+function callSiteHits(fh: FileHits, compiled: { name: string; re: RegExp }[], declLines: Set<number>): { lines: number[]; name?: string } {
+  const lines = new Set<number>();
+  const counts = new Map<string, number>();
+  for (const h of fh.lines) {
+    if (declLines.has(h.line)) continue;
+    for (const c of compiled) {
+      if (c.re.test(h.text)) {
+        lines.add(h.line);
+        counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  const name = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+  return { lines: [...lines].sort((a, b) => a - b), name };
+}
+
+// Merge sorted line numbers into contiguous regions (gap-tolerant).
+function mergeLines(sorted: number[], gap: number): { start: number; end: number }[] {
+  const regions: { start: number; end: number }[] = [];
+  let cur: { start: number; end: number } | null = null;
+  for (const l of sorted) {
+    if (cur && l - cur.end <= gap) cur.end = l;
+    else {
+      if (cur) regions.push(cur);
+      cur = { start: l, end: l };
+    }
+  }
+  if (cur) regions.push(cur);
+  return regions;
+}
+
 // Deterministic Tier-1 code search: fuse lexical file hits with structural
 // symbol matches, then emit one evidence excerpt per top file (anchored at the
 // matching symbol's definition when there is one, else the densest region).
@@ -290,6 +351,31 @@ export function searchCode(
   if (!usedRg) notes.push("ripgrep not found — used the slower built-in scanner.");
   const lexical = usedRg ? rgSearch(root, matcher, scope) : jsSearch(root, matcher, scope);
   const symbols = symbolScores(index, matcher);
+
+  // Call-site pass: when the query names an identifier, rank the files that
+  // INVOKE it (not just declare it) and remember the invocation lines so the
+  // excerpt can include a call site. No extra search — call lines are already
+  // among the lexical hits (the callee name is a query keyword).
+  const names = callableNames(matcher, index);
+  const callHits = new Map<string, { lines: number[]; name?: string }>();
+  let callRank: string[] = [];
+  if (names.length) {
+    const compiled = names.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
+    const nameSet = new Set(names.map(foldTerm));
+    const declByFile = new Map<string, Set<number>>();
+    for (const s of index.symbols) {
+      if (!nameSet.has(foldTerm(s.name))) continue;
+      const set = declByFile.get(s.file) ?? new Set<number>();
+      set.add(s.line);
+      declByFile.set(s.file, set);
+    }
+    for (const [rel, fh] of lexical) {
+      if (!inScope(rel)) continue;
+      const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? new Set());
+      if (hit.lines.length) callHits.set(rel, hit);
+    }
+    callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel]) => rel);
+  }
 
   // The scope filter applies here so symbol-only hits respect it too (the rg
   // glob is just an optimization).
@@ -326,7 +412,9 @@ export function searchCode(
     .filter(([rel]) => files.has(rel))
     .sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0]))
     .map(([rel]) => rel);
-  const fused = rrf([lexRank, symRank], (rel) => rel);
+  // A third rank list (call sites) joins the fusion only when it has entries, so
+  // a query with no identifier keyword produces a bit-identical ranking.
+  const fused = rrf(callRank.length ? [lexRank, symRank, callRank] : [lexRank, symRank], (rel) => rel);
 
   // Files better served by the `docs` source (README, changelog, docs/**, *.md)
   // — down-weight them in CODE search so a keyword-dense changelog can't
@@ -359,36 +447,73 @@ export function searchCode(
     const content = readText(join(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
-    const { start, end, label } = excerptFor(lines, matcher, f.sym, f.fh);
-    const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${start}-L${end}`;
-    items.push({
-      source: "code",
-      title: `${f.rel} — ${label}`,
-      ref: f.rel,
-      location: `${f.rel}:${start}-${end}`,
-      score: Number(f.score.toFixed(3)),
-      snippet: lines.slice(start - 1, end).join("\n"),
-      url,
-      meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name },
-    });
+    const call = callHits.get(f.rel);
+    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? []);
+    for (let wi = 0; wi < windows.length; wi++) {
+      if (items.length >= perSource) break;
+      const win = windows[wi]!;
+      const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
+      const label = win.callSite ? `call site${call?.name ? ` (${call.name})` : ""}` : win.label;
+      const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${win.start}-L${win.end}`;
+      items.push({
+        source: "code",
+        title: `${f.rel} — ${label}`,
+        ref: f.rel,
+        location: `${f.rel}:${win.start}-${win.end}`,
+        score: Number(score.toFixed(3)),
+        snippet: lines.slice(win.start - 1, win.end).join("\n"),
+        url,
+        meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name, ...(win.callSite ? { callSite: true } : {}) },
+      });
+    }
   }
 
   return { items, notes, fallback: usedRg ? undefined : "js-scan" };
 }
 
-// Choose the excerpt window for one result: a matching symbol definition wins
-// (anchored at its line); else the densest lexical region; else the file head.
-// The seed window grows to natural (blank-line) boundaries, capped at
-// MAX_EXCERPT_LINES. Returns 1-based inclusive line numbers + a label.
-function excerptFor(lines: string[], matcher: KeywordMatcher, sym?: CodeSymbol, fh?: FileHits): { start: number; end: number; label: string } {
+type ExcerptWindow = { start: number; end: number; label: string; callSite?: boolean };
+
+// Choose the excerpt window(s) for one result. The PRIMARY window is unchanged:
+// a matching symbol definition wins (anchored at its line); else the densest
+// lexical region; else the file head. When the query surfaced call sites in this
+// file, the best call region either folds into the primary window (if it is
+// within CALLSITE_MERGE_GAP and the merged span fits) or becomes a SECOND
+// excerpt — so a call site far from the definition is never lost. Returns 1 or 2
+// windows with 1-based inclusive line numbers.
+export function excerptWindows(
+  lines: string[],
+  matcher: KeywordMatcher,
+  sym: CodeSymbol | undefined,
+  fh: FileHits | undefined,
+  callLines: number[],
+): ExcerptWindow[] {
+  let primary: ExcerptWindow;
   if (sym) {
     const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, sym.line + 18), sym.line);
-    return { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
-  }
-  if (fh) {
+    primary = { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
+  } else if (fh) {
     const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
     const w = expandWindow(lines, region.start, region.end, region.anchor);
-    return { start: w.start, end: w.end, label: "match" };
+    primary = { start: w.start, end: w.end, label: "match" };
+  } else {
+    primary = { start: 1, end: Math.min(lines.length, 20), label: "match" };
   }
-  return { start: 1, end: Math.min(lines.length, 20), label: "match" };
+  if (!callLines.length) return [primary];
+
+  const sorted = [...new Set(callLines)].sort((a, b) => a - b);
+  const regions = mergeLines(sorted, RANKING.CALLSITE_MERGE_GAP);
+  const best = regions
+    .map((r) => ({ r, count: sorted.filter((l) => l >= r.start && l <= r.end).length }))
+    .sort((a, b) => b.count - a.count || a.r.start - b.r.start)[0]!.r;
+
+  // Distance between the call region and the primary window (0 if they overlap).
+  const gap = best.start > primary.end ? best.start - primary.end : primary.start > best.end ? primary.start - best.end : 0;
+  const mergedStart = Math.min(primary.start, best.start);
+  const mergedEnd = Math.max(primary.end, best.end);
+  if (gap <= RANKING.CALLSITE_MERGE_GAP && mergedEnd - mergedStart + 1 <= MAX_EXCERPT_LINES) {
+    const w = expandWindow(lines, mergedStart, mergedEnd, sym?.line ?? best.start);
+    return [{ start: w.start, end: w.end, label: primary.label }];
+  }
+  const cw = expandWindow(lines, best.start, best.end, best.start);
+  return [primary, { start: cw.start, end: cw.end, label: "call site", callSite: true }];
 }

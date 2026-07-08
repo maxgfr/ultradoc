@@ -40,5 +40,12 @@
     "repo": "https://github.com/expressjs/express",
     "expect": [{ "source": "code", "refPattern": "^lib/" }],
     "minItems": 8
+  },
+  {
+    "id": "p-retry-onfailedattempt-callsite",
+    "repo": "https://github.com/sindresorhus/p-retry",
+    "question": "when is the onFailedAttempt callback invoked?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "index.js", "topN": 3 }]
   }
 ]

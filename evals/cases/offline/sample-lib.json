@@ -18,6 +18,20 @@
     "expect": [{ "source": "code", "refIncludes": "src/client.ts", "topN": 3 }]
   },
   {
+    "id": "lib-retryrequest-callsite",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "where is retryRequest called?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "src/client.ts", "topN": 2 }]
+  },
+  {
+    "id": "lib-onretry-property-callsite",
+    "repo": "tests/fixtures/sample-lib",
+    "question": "when is the onRetry callback invoked?",
+    "args": { "sources": "code" },
+    "expect": [{ "source": "code", "refIncludes": "src/retry.ts", "topN": 1 }]
+  },
+  {
     "id": "lib-changelog-release",
     "repo": "tests/fixtures/sample-lib",
     "question": "when was the retry backoff added?",
