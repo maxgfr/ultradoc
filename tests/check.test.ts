@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { checkRun } from "../src/check.js";
+import { checkRun, snippetMatches, REVALIDATION } from "../src/check.js";
 import type { EvidenceItem } from "../src/types.js";
 
 const EVIDENCE: EvidenceItem[] = [
@@ -283,5 +283,236 @@ describe("shipped example dossier", () => {
     const r = checkRun(resolve("assets/example-dossier"), { strict: true });
     expect(r.errors).toEqual([]);
     expect(r.ok).toBe(true);
+  });
+});
+
+// The wrong-line / fabricated-snippet gate (eval L02b/T22): `check` re-opens
+// every code/docs excerpt in the pinned clone and fails when the cited lines
+// no longer carry the stored snippet. Resolvability is no longer guaranteed
+// only at build time.
+describe("checkRun — evidence re-validation against the pinned clone", () => {
+  const RETRY_LINES = [
+    "export interface RetryOptions {",
+    "  maxRetries: number;",
+    "  baseDelayMs: number;",
+    "}",
+    "",
+    "export function computeBackoff(attempt: number): number {",
+    "  return 200 * 2 ** attempt;",
+    "}",
+    "",
+    "export function retryRequest(fn: () => Promise<unknown>, opts: RetryOptions) {",
+    "  let attempt = 0;",
+    "  return fn();",
+    "}",
+  ];
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const d of cleanups.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  // A real pinned clone + a dossier whose E1 excerpt is an exact slice of it,
+  // exactly as `ask` builds them.
+  function makePinnedRun(opts: { lines?: [number, number]; location?: string; crlf?: boolean } = {}): {
+    repo: string;
+    run: string;
+    evidence: EvidenceItem[];
+    rewrite: (mutate: (ev: EvidenceItem[]) => void) => void;
+  } {
+    const repo = mkdtempSync(join(tmpdir(), "ud-reval-repo-"));
+    const run = mkdtempSync(join(tmpdir(), "ud-reval-run-"));
+    cleanups.push(repo, run);
+    const git = (args: string[]) => execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" });
+    mkdirSync(join(repo, "src"), { recursive: true });
+    const eol = opts.crlf ? "\r\n" : "\n";
+    writeFileSync(join(repo, "src/retry.ts"), RETRY_LINES.join(eol) + eol);
+    git(["init", "-q"]);
+    git(["config", "user.email", "t@t.t"]);
+    git(["config", "user.name", "t"]);
+    git(["add", "."]);
+    git(["commit", "-q", "-m", "pin"]);
+    const head = execFileSync("git", ["-C", repo, "rev-parse", "--short", "HEAD"]).toString().trim();
+    const [s, e] = opts.lines ?? [6, 8];
+    const evidence: EvidenceItem[] = [
+      {
+        id: "E1",
+        source: "code",
+        title: "retry",
+        ref: "src/retry.ts",
+        location: opts.location ?? `src/retry.ts:${s}-${e}`,
+        score: 1,
+        snippet: RETRY_LINES.slice(s - 1, e).join("\n"),
+      },
+    ];
+    writeFileSync(join(run, "evidence.json"), JSON.stringify(evidence));
+    writeFileSync(join(run, "meta.json"), JSON.stringify({ commit: head, repoDir: repo }));
+    writeFileSync(join(run, "ANSWER.md"), "The backoff doubles the delay on every retry attempt [E1].");
+    const rewrite = (mutate: (ev: EvidenceItem[]) => void) => {
+      mutate(evidence);
+      writeFileSync(join(run, "evidence.json"), JSON.stringify(evidence));
+    };
+    return { repo, run, evidence, rewrite };
+  }
+
+  it("passes when the cited snippet matches the pinned clone", () => {
+    const { run } = makePinnedRun();
+    const r = checkRun(run);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(r.revalidation).toMatchObject({ attempted: 1, validated: 1, failures: [] });
+  });
+
+  it("fails when the location's line range was corrupted (wrong-line citation)", () => {
+    const { run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev[0]!.location = "src/retry.ts:1-3"; // snippet still lines 6-8
+    });
+    const r = checkRun(run);
+    expect(r.ok).toBe(false);
+    expect(r.revalidation!.failures[0]!.reason).toBe("snippet-mismatch");
+    expect(r.errors.join(" ")).toMatch(/does not match those lines/);
+  });
+
+  it("fails when the stored snippet was fabricated", () => {
+    const { run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev[0]!.snippet = "export function computeBackoff(attempt: number): number {\n  return attempt; // fabricated\n}";
+    });
+    const r = checkRun(run);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/does not match those lines/);
+  });
+
+  it("fails when the line range exceeds the file", () => {
+    const { run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev[0]!.location = "src/retry.ts:100-140";
+    });
+    const r = checkRun(run);
+    expect(r.ok).toBe(false);
+    expect(r.revalidation!.failures[0]!.reason).toBe("range-out-of-bounds");
+    expect(r.errors.join(" ")).toMatch(/out of bounds/);
+  });
+
+  it("fails when the cited path escapes the pinned clone", () => {
+    const { run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev[0]!.location = "../../../etc/passwd:1-2";
+    });
+    const r = checkRun(run);
+    expect(r.ok).toBe(false);
+    expect(r.revalidation!.failures[0]!.reason).toBe("escapes-repo");
+  });
+
+  it("accepts a single-line location like path:6", () => {
+    const { run } = makePinnedRun({ lines: [6, 6], location: "src/retry.ts:6" });
+    const r = checkRun(run);
+    expect(r.ok).toBe(true);
+    expect(r.revalidation).toMatchObject({ attempted: 1, validated: 1 });
+  });
+
+  it("re-validates a CRLF file transparently", () => {
+    const { run } = makePinnedRun({ crlf: true });
+    const r = checkRun(run);
+    expect(r.ok).toBe(true);
+    expect(r.revalidation).toMatchObject({ attempted: 1, validated: 1 });
+  });
+
+  it("skips with a warning (not an error) when the clone's HEAD moved", () => {
+    const { repo, run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev[0]!.snippet = "totally fabricated after the fact";
+    });
+    writeFileSync(join(repo, "src/retry.ts"), "export const rewritten = true;\n");
+    execFileSync("git", ["-C", repo, "add", "."], { stdio: "pipe" });
+    execFileSync("git", ["-C", repo, "commit", "-q", "-m", "moved"], { stdio: "pipe" });
+    const r = checkRun(run);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/may have drifted/);
+    expect(r.warnings.join(" ")).toMatch(/re-validation skipped/);
+  });
+
+  it("warns (not fails) when the recorded clone was evicted", () => {
+    const { run, rewrite } = makePinnedRun();
+    void rewrite;
+    const gone = join(tmpdir(), `ud-gone-${Date.now()}`);
+    writeFileSync(join(run, "meta.json"), JSON.stringify({ commit: "abc1234", repoDir: gone }));
+    const r = checkRun(run);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/no longer exists/);
+  });
+
+  it("fails on a corrupted excerpt even when that item is uncited", () => {
+    const { run, evidence, rewrite } = makePinnedRun();
+    void evidence;
+    rewrite((ev) => {
+      ev.push({
+        id: "E2",
+        source: "code",
+        title: "uncited",
+        ref: "src/retry.ts",
+        location: "src/retry.ts:1-4",
+        score: 0.5,
+        snippet: "a snippet nobody sliced from this file",
+      });
+    });
+    const r = checkRun(run); // ANSWER.md cites only E1
+    expect(r.ok).toBe(false);
+    expect(r.revalidation!.failures.map((f) => f.id)).toEqual(["E2"]);
+  });
+
+  it("skips items with no location and URL-backed docs items", () => {
+    const { run, rewrite } = makePinnedRun();
+    rewrite((ev) => {
+      ev.push(
+        { id: "E2", source: "code", title: "no-loc", ref: "src/retry.ts", score: 0.5, snippet: "..." },
+        { id: "E3", source: "docs", title: "external", ref: "https://example.com/guide", location: "https://example.com/guide#~1", score: 0.4, snippet: "..." },
+      );
+    });
+    const r = checkRun(run);
+    expect(r.ok).toBe(true);
+    expect(r.revalidation).toMatchObject({ attempted: 1, validated: 1 });
+  });
+
+  it("reports the skipped gate on a hand-built dossier with no meta.json", () => {
+    // The classic unit fixture: evidence + answer, no pinned clone at all.
+    answer("Backoff doubles each attempt [E1].");
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    expect(r.revalidation?.skipped).toMatch(/meta\.json/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("snippetMatches (excerpt fuzzy-match)", () => {
+  const FILE = ["function a() {", "  return 1;", "}", "", "function b() {", "  return 2;", "}"];
+
+  it("accepts an exact slice", () => {
+    expect(snippetMatches("function a() {\n  return 1;\n}", FILE, 1, 3).ok).toBe(true);
+  });
+
+  it("accepts whitespace/CRLF-normalized equality", () => {
+    expect(snippetMatches("function a() {\r\n\treturn 1;\r\n}", FILE, 1, 3).ok).toBe(true);
+  });
+
+  it("rejects a single corrupted line in an un-clipped snippet", () => {
+    const r = snippetMatches("function a() {\n  return 42;\n}", FILE, 1, 3);
+    expect(r.ok).toBe(false);
+    expect(r.matched).toBeLessThan(r.total);
+    expect(r.total).toBe(3);
+  });
+
+  it("rejects an un-clipped snippet aimed at the wrong lines", () => {
+    expect(snippetMatches("function a() {\n  return 1;\n}", FILE, 5, 7).ok).toBe(false);
+  });
+
+  it(`accepts a clipped snippet when ≥${REVALIDATION.SNIPPET_MATCH_MIN * 100}% of its lines re-match in order`, () => {
+    const stored = "function a() {\n  return 1;\n}\nfunction b() {\n  return 2;\n… [truncated 12 chars]";
+    expect(snippetMatches(stored, FILE, 1, 7).ok).toBe(true);
+  });
+
+  it("rejects a clipped snippet whose lines mostly diverge", () => {
+    const stored = "function z() {\n  return 9;\n}\nnope\n… [truncated 12 chars]";
+    expect(snippetMatches(stored, FILE, 1, 7).ok).toBe(false);
   });
 });
