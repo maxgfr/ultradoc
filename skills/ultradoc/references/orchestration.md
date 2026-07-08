@@ -88,6 +88,14 @@ actually backs the `claim`, defaulting to *disbelief*:
 | `unsupported` | the digest is on-topic but does **not** state the claim (your default when unsure) |
 | `refuted` | the digest **contradicts** the claim |
 
+**A pair flagged `⚠ cross-check` in `VERIFY.md` is grounded in an issue or PR** —
+a tracker thread describes behavior at a point in time, and a closed thread can
+describe behavior a *later release reversed*. Judge it against the **current**
+code, not just the thread: if the current source contradicts the claim, mark it
+`refuted`; if the behavior changed, mark it `partial` and demand a temporal
+qualifier citing the fixing release. Never present stale issue-tracker behavior
+as current just because the claim is faithful to the thread.
+
 **With subagents:** one skeptic per pair (or per claim). Each **returns** its verdict
 object `{ claimId, evidenceId, verdict, note }` — it must **not write any file**. The
 orchestrator merges every returned verdict into **one** `verdicts.json` (`applyVerdicts`
