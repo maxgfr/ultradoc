@@ -3,6 +3,7 @@ export interface RetryOptions {
   baseDelayMs: number;
   maxDelayMs: number;
   jitter: boolean;
+  onRetry?: (attempt: number, delayMs: number) => void;
 }
 
 export const DEFAULT_RETRY: RetryOptions = {
@@ -40,7 +41,9 @@ export async function retryRequest<T>(
     last = await fn();
     if (!isRetryable(last.status)) break;
     if (attempt >= opts.maxRetries) break;
-    await sleep(computeBackoff(attempt, opts));
+    const delay = computeBackoff(attempt, opts);
+    opts.onRetry?.(attempt, delay);
+    await sleep(delay);
     attempt++;
   } while (true);
   return { ...last, attempts: attempt + 1 };

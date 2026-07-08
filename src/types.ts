@@ -189,6 +189,26 @@ export interface CoverageStats {
   uncited: string[]; // first 8 uncited claim texts, clipped
 }
 
+// One evidence item whose stored excerpt no longer matches the pinned clone —
+// the wrong-line / fabricated-snippet class of corruption `check` must reject.
+export interface RevalidationFailure {
+  id: string; // "E3"
+  ref: string;
+  location: string;
+  reason: "missing-file" | "range-out-of-bounds" | "snippet-mismatch" | "escapes-repo";
+  detail: string;
+}
+
+// Outcome of re-opening every code/docs excerpt against the pinned clone.
+// `skipped` names why the whole gate could not run (no meta, evicted clone,
+// moved HEAD) — a skip is never silent when there was something to validate.
+export interface RevalidationStats {
+  attempted: number; // code/docs items with a file-shaped location
+  validated: number;
+  failures: RevalidationFailure[];
+  skipped?: string;
+}
+
 export interface CheckResult {
   ok: boolean;
   citations: string[]; // grounding citation tokens found in ANSWER.md
@@ -200,6 +220,7 @@ export interface CheckResult {
   coverage?: CoverageStats; // claim-coverage stats (additive)
   fencedOnly?: string[]; // citation-shaped tokens found only inside code fences
   semantic?: VerifyResult; // populated only by `check --semantic` (folds VERIFY.json)
+  revalidation?: RevalidationStats; // excerpt re-validation against the pinned clone
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +242,9 @@ export interface ClaimEvidencePair {
   ref: string; // the evidence item's provenance token (src/foo.ts, issue#123…)
   source: SourceKind;
   digest: string; // the cited item's snippet (claim-relevant)
+  // Set on issue/PR-grounded pairs: a tracker thread describes behavior at a
+  // point in time, so the skeptic must also cross-check the CURRENT code.
+  crossCheck?: boolean;
 }
 
 // A ClaimEvidencePair with the agent's judgement filled in.

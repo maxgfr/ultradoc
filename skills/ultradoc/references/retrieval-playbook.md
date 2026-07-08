@@ -49,6 +49,11 @@ also searches `retry` + `backoff`), and boosts files literally named after a
 keyword — so don't spend variants on inflections of the same word; spend them
 on **synonyms and identifiers** the codebase might use instead.
 
+An identifier-shaped keyword also ranks **call sites**, not just declarations —
+"where is `retryRequest` called?" surfaces the callers, and an options-callback
+property (`onFailedAttempt`) surfaces its invocation line even though it is never
+declared as a symbol. So phrase a usage question with the identifier itself.
+
 ## Iterate
 
 1. Run `ask`. Read `EVIDENCE.md`.

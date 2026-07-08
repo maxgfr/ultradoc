@@ -1732,7 +1732,14 @@ var RANKING = {
   // readability of the reported score; ordering unchanged
   // Per-file contribution of its 1st/2nd/3rd best-matching symbol, so a file
   // that defines several relevant symbols outranks one with a single weak match.
-  SYMBOL_DECAY: [1, 0.5, 0.25]
+  SYMBOL_DECAY: [1, 0.5, 0.25],
+  // Call-site awareness: how many identifier keywords are probed as call
+  // targets, the score of a distant call-site excerpt relative to its file's
+  // primary excerpt, and how close a call region must be to the definition to
+  // fold into one excerpt instead of a second item.
+  CALLSITE_MAX_NAMES: 4,
+  CALLSITE_SECOND_ITEM_FACTOR: 0.95,
+  CALLSITE_MERGE_GAP: 12
 };
 function rgSearch(root, matcher, scope) {
   const args = [
@@ -1914,6 +1921,47 @@ function symbolScores(index, matcher) {
   }
   return byFile;
 }
+function callableNames(matcher, index) {
+  const declared = new Set(index.symbols.map((s) => foldTerm(s.name)));
+  const out = [];
+  for (const ek of matcher.expanded) {
+    if (out.length >= RANKING.CALLSITE_MAX_NAMES) break;
+    const orig = ek.original;
+    if (!/^[A-Za-z_$][\w$]*$/.test(orig)) continue;
+    const identifierShaped = /[a-z][A-Z]/.test(orig) || orig.includes("_");
+    if ((identifierShaped || declared.has(foldTerm(orig))) && !out.includes(orig)) out.push(orig);
+  }
+  return out;
+}
+function callSiteHits(fh, compiled, declLines) {
+  const lines = /* @__PURE__ */ new Set();
+  const counts = /* @__PURE__ */ new Map();
+  for (const h of fh.lines) {
+    if (declLines.has(h.line)) continue;
+    for (const c2 of compiled) {
+      if (c2.re.test(h.text)) {
+        lines.add(h.line);
+        counts.set(c2.name, (counts.get(c2.name) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  const name = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+  return { lines: [...lines].sort((a, b) => a - b), name };
+}
+function mergeLines(sorted, gap) {
+  const regions = [];
+  let cur = null;
+  for (const l of sorted) {
+    if (cur && l - cur.end <= gap) cur.end = l;
+    else {
+      if (cur) regions.push(cur);
+      cur = { start: l, end: l };
+    }
+  }
+  if (cur) regions.push(cur);
+  return regions;
+}
 function searchCode(root, ref, index, question, perSource, scope) {
   const notes = [];
   const inScope = (rel) => !scope || rel.startsWith(scope + "/");
@@ -1927,6 +1975,26 @@ function searchCode(root, ref, index, question, perSource, scope) {
   if (!usedRg) notes.push("ripgrep not found \u2014 used the slower built-in scanner.");
   const lexical = usedRg ? rgSearch(root, matcher, scope) : jsSearch(root, matcher, scope);
   const symbols = symbolScores(index, matcher);
+  const names = callableNames(matcher, index);
+  const callHits = /* @__PURE__ */ new Map();
+  let callRank = [];
+  if (names.length) {
+    const compiled = names.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
+    const nameSet = new Set(names.map(foldTerm));
+    const declByFile = /* @__PURE__ */ new Map();
+    for (const s of index.symbols) {
+      if (!nameSet.has(foldTerm(s.name))) continue;
+      const set = declByFile.get(s.file) ?? /* @__PURE__ */ new Set();
+      set.add(s.line);
+      declByFile.set(s.file, set);
+    }
+    for (const [rel, fh] of lexical) {
+      if (!inScope(rel)) continue;
+      const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? /* @__PURE__ */ new Set());
+      if (hit.lines.length) callHits.set(rel, hit);
+    }
+    callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel]) => rel);
+  }
   const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
   const canonicals = matcher.canonicals;
   const df = /* @__PURE__ */ new Map();
@@ -1944,7 +2012,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, RANKING.BM25_K1, RANKING.BM25_B);
   const lexRank = [...lexScores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([rel]) => rel);
   const symRank = [...symbols.entries()].filter(([rel]) => files.has(rel)).sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0])).map(([rel]) => rel);
-  const fused = rrf([lexRank, symRank], (rel) => rel);
+  const fused = rrf(callRank.length ? [lexRank, symRank, callRank] : [lexRank, symRank], (rel) => rel);
   const docSet = new Set(index.docFiles);
   const canonSet = new Set(canonicals);
   const scored = [];
@@ -1965,32 +2033,53 @@ function searchCode(root, ref, index, question, perSource, scope) {
     const content = readText(join8(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
-    const { start, end, label } = excerptFor(lines, matcher, f.sym, f.fh);
-    const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${start}-L${end}`;
-    items.push({
-      source: "code",
-      title: `${f.rel} \u2014 ${label}`,
-      ref: f.rel,
-      location: `${f.rel}:${start}-${end}`,
-      score: Number(f.score.toFixed(3)),
-      snippet: lines.slice(start - 1, end).join("\n"),
-      url,
-      meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name }
-    });
+    const call = callHits.get(f.rel);
+    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? []);
+    for (let wi = 0; wi < windows.length; wi++) {
+      if (items.length >= perSource) break;
+      const win = windows[wi];
+      const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
+      const label = win.callSite ? `call site${call?.name ? ` (${call.name})` : ""}` : win.label;
+      const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${win.start}-L${win.end}`;
+      items.push({
+        source: "code",
+        title: `${f.rel} \u2014 ${label}`,
+        ref: f.rel,
+        location: `${f.rel}:${win.start}-${win.end}`,
+        score: Number(score.toFixed(3)),
+        snippet: lines.slice(win.start - 1, win.end).join("\n"),
+        url,
+        meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name, ...win.callSite ? { callSite: true } : {} }
+      });
+    }
   }
   return { items, notes, fallback: usedRg ? void 0 : "js-scan" };
 }
-function excerptFor(lines, matcher, sym, fh) {
+function excerptWindows(lines, matcher, sym, fh, callLines) {
+  let primary;
   if (sym) {
     const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, sym.line + 18), sym.line);
-    return { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
-  }
-  if (fh) {
+    primary = { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
+  } else if (fh) {
     const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0];
     const w = expandWindow(lines, region.start, region.end, region.anchor);
-    return { start: w.start, end: w.end, label: "match" };
+    primary = { start: w.start, end: w.end, label: "match" };
+  } else {
+    primary = { start: 1, end: Math.min(lines.length, 20), label: "match" };
   }
-  return { start: 1, end: Math.min(lines.length, 20), label: "match" };
+  if (!callLines.length) return [primary];
+  const sorted = [...new Set(callLines)].sort((a, b) => a - b);
+  const regions = mergeLines(sorted, RANKING.CALLSITE_MERGE_GAP);
+  const best = regions.map((r) => ({ r, count: sorted.filter((l) => l >= r.start && l <= r.end).length })).sort((a, b) => b.count - a.count || a.r.start - b.r.start)[0].r;
+  const gap = best.start > primary.end ? best.start - primary.end : primary.start > best.end ? primary.start - best.end : 0;
+  const mergedStart = Math.min(primary.start, best.start);
+  const mergedEnd = Math.max(primary.end, best.end);
+  if (gap <= RANKING.CALLSITE_MERGE_GAP && mergedEnd - mergedStart + 1 <= MAX_EXCERPT_LINES) {
+    const w = expandWindow(lines, mergedStart, mergedEnd, sym?.line ?? best.start);
+    return [{ start: w.start, end: w.end, label: primary.label }];
+  }
+  const cw = expandWindow(lines, best.start, best.end, best.start);
+  return [primary, { start: cw.start, end: cw.end, label: "call site", callSite: true }];
 }
 
 // src/index/semantic.ts
@@ -3858,8 +3947,8 @@ async function runDoc(options, opts = {}) {
 }
 
 // src/check.ts
-import { existsSync as existsSync8, readFileSync as readFileSync7 } from "fs";
-import { basename as basename4, dirname as dirname4, join as join15 } from "path";
+import { existsSync as existsSync9, readFileSync as readFileSync8 } from "fs";
+import { basename as basename4, dirname as dirname4, join as join16, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
@@ -3984,7 +4073,8 @@ function extractClaimUnits(text) {
       i++;
       continue;
     }
-    const line = stripInlineCode(lines[i]);
+    const raw = lines[i];
+    const line = stripInlineCode(raw);
     const t = line.trim();
     if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
       flush();
@@ -3993,12 +4083,12 @@ function extractClaimUnits(text) {
     }
     if (isTableRow(line)) {
       flush();
-      units.push({ kind: "text", text: tableCells(line) });
+      units.push({ kind: "text", text: tableCells(raw) });
       i++;
       continue;
     }
     if (/^\s*>/.test(line)) {
-      const dequoted = line.replace(/^\s*>\s?/, "").trim();
+      const dequoted = raw.replace(/^\s*>\s?/, "").trim();
       if (dequoted) prose.push(dequoted);
       i++;
       continue;
@@ -4007,18 +4097,19 @@ function extractClaimUnits(text) {
       flush();
       const items = [];
       while (i < lines.length && !code[i]) {
-        const l = stripInlineCode(lines[i]);
+        const rawL = lines[i];
+        const l = stripInlineCode(rawL);
         const tt = l.trim();
         if (tt === "" || isHeadingOrRule(tt) || isTableSeparator(l) || isTableRow(l)) break;
-        if (isListItem(l)) items.push(l.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
-        else if (items.length) items[items.length - 1] += " " + tt;
-        else items.push(tt);
+        if (isListItem(l)) items.push(rawL.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
+        else if (items.length) items[items.length - 1] += " " + rawL.trim();
+        else items.push(rawL.trim());
         i++;
       }
       units.push({ kind: "list", items });
       continue;
     }
-    prose.push(line);
+    prose.push(raw);
     i++;
   }
   flush();
@@ -4078,7 +4169,7 @@ function claimCoverage(text, _evidence) {
   const uncited = [];
   for (const c2 of claims) {
     const trimmed = c2.trim();
-    if (trimmed.length < MIN_CLAIM_LEN) continue;
+    if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
     counted++;
     if (citationTokensIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
@@ -4086,217 +4177,9 @@ function claimCoverage(text, _evidence) {
   return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited };
 }
 
-// src/check.ts
-var COVERAGE_MIN_DEFAULT = 0.7;
-function resolveAnswerPath(dir, answerFile) {
-  if (answerFile) {
-    const p = join15(dir, answerFile);
-    return existsSync8(p) ? p : null;
-  }
-  for (const name of ["ANSWER.md", "DOC.md"]) {
-    const p = join15(dir, name);
-    if (existsSync8(p)) return p;
-  }
-  return null;
-}
-function resolves(tok, evidence, ids, refs) {
-  if (SHAPE.id.test(tok)) return ids.has(tok);
-  if (refs.has(tok)) return true;
-  return resolveAlias(tok, evidence).length > 0;
-}
-function staleDossierWarning(dir) {
-  try {
-    const metaPath = join15(dir, "meta.json");
-    if (!existsSync8(metaPath)) return void 0;
-    const meta = JSON.parse(readFileSync7(metaPath, "utf8"));
-    if (!meta.commit) return void 0;
-    const repoDir = meta.repoDir && existsSync8(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
-    if (!repoDir) return void 0;
-    const head = headCommit(repoDir);
-    if (head && !sameCommit(head, meta.commit)) {
-      return `dossier was built at ${meta.commit} but the tree is now at ${head} \u2014 line-anchored citations may have drifted; re-run \`ask\`.`;
-    }
-  } catch {
-  }
-  return void 0;
-}
-function headingsOf(answer) {
-  const lines = answer.split("\n");
-  const fenced = codeMask(lines);
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (fenced[i]) continue;
-    const m = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(lines[i]);
-    if (m) out.push(m[1].trim().toLowerCase());
-  }
-  return out;
-}
-function missingDocSections(dir, answerPath, answer) {
-  if (basename4(answerPath) !== "DOC.md") return void 0;
-  const planPath = join15(dir, "DOC.plan.json");
-  if (!existsSync8(planPath)) return void 0;
-  let plan;
-  try {
-    plan = JSON.parse(readFileSync7(planPath, "utf8"));
-  } catch {
-    return void 0;
-  }
-  const headings = headingsOf(answer);
-  const missing = (plan.sections ?? []).map((s) => s.title).filter((title) => !headings.some((h) => h.includes(title.toLowerCase())));
-  if (missing.length) return `DOC.md is missing planned section(s): ${missing.join(", ")}. Write each section from DOC.todo.md or drop it from the plan.`;
-  return void 0;
-}
-function dossierRepoDir(dir) {
-  let d = dir;
-  for (let i = 0; i < 6; i++) {
-    if (basename4(d) === ".ultradoc") return dirname4(d);
-    const parent = dirname4(d);
-    if (parent === d) break;
-    d = parent;
-  }
-  return void 0;
-}
-function applySemantic(dir, result) {
-  const p = join15(dir, "VERIFY.json");
-  if (!existsSync8(p)) {
-    result.warnings.push("--semantic: no VERIFY.json \u2014 run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
-    return;
-  }
-  try {
-    const sem = JSON.parse(readFileSync7(p, "utf8"));
-    result.semantic = sem;
-    if (!sem.ok) {
-      result.ok = false;
-      result.errors.push(`Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
-    }
-    if (sem.unadjudicated?.length) {
-      result.warnings.push(`${sem.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
-    }
-  } catch (e) {
-    result.warnings.push(`--semantic: VERIFY.json is unreadable (${e.message}).`);
-  }
-}
-function checkRun(dir, opts = {}) {
-  const errors = [];
-  const warnings = [];
-  const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
-  const answerPath = resolveAnswerPath(dir, opts.answerFile);
-  const evidencePath = join15(dir, "evidence.json");
-  if (!existsSync8(evidencePath)) {
-    return {
-      ok: false,
-      citations: [],
-      resolved: [],
-      dangling: [],
-      uncited: [],
-      errors: [`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`],
-      warnings: []
-    };
-  }
-  let evidence;
-  try {
-    evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
-  } catch (e) {
-    return {
-      ok: false,
-      citations: [],
-      resolved: [],
-      dangling: [],
-      uncited: [],
-      errors: [`evidence.json is unreadable: ${e.message}`],
-      warnings: []
-    };
-  }
-  if (!answerPath) {
-    const which = opts.answerFile ?? "ANSWER.md or DOC.md";
-    return {
-      ok: false,
-      citations: [],
-      resolved: [],
-      dangling: [],
-      uncited: evidence.map((e) => e.id),
-      errors: [`No ${which} in ${dir} \u2014 write the grounded answer there, then re-run check.`],
-      warnings: []
-    };
-  }
-  const answer = readFileSync7(answerPath, "utf8");
-  const ids = new Set(evidence.map((e) => e.id));
-  const refs = new Set(evidence.map((e) => e.ref));
-  const { tokens: citations, fencedOnly } = collectCitations(answer);
-  const resolved = [];
-  const dangling = [];
-  for (const c2 of citations) {
-    if (resolves(c2, evidence, ids, refs)) resolved.push(c2);
-    else dangling.push(c2);
-  }
-  const citedIds = new Set(resolved.filter((c2) => SHAPE.id.test(c2)));
-  const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
-  const coverage2 = claimCoverage(answer, evidence);
-  if (citations.length === 0) {
-    errors.push(`${basename4(answerPath)} contains no citations \u2014 a grounded answer must cite evidence ids like [E1].`);
-  }
-  if (dangling.length) {
-    errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);
-  }
-  if (coverage2.ratio < coverageMin && (opts.strict || coverage2.claims >= 3)) {
-    const pct = Math.round(coverage2.ratio * 100);
-    errors.push(
-      `Only ${coverage2.cited}/${coverage2.claims} claim(s) cite evidence (${pct}% < ${Math.round(coverageMin * 100)}% required) \u2014 ground each claim in an evidence id or run \`check --coverage-min\` lower if this is intentional.`
-    );
-  }
-  if (coverage2.ratio < 1 && coverage2.uncited.length) {
-    const shown = coverage2.uncited.slice(0, 5).map((u) => `"${u}"`).join("; ");
-    warnings.push(`${coverage2.claims - coverage2.cited} claim(s) cite no evidence (coverage ${Math.round(coverage2.ratio * 100)}%): ${shown}`);
-  }
-  if (fencedOnly.length) {
-    const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
-    if (opts.strict) errors.push(msg);
-    else warnings.push(msg);
-  }
-  const missingSections = missingDocSections(dir, answerPath, answer);
-  if (missingSections) errors.push(missingSections);
-  if (citations.length > 0 && citedIds.size === 0) {
-    warnings.push("No evidence ids were cited (only typed aliases). Prefer citing ids like [E1].");
-  } else if (uncited.length) {
-    warnings.push(`${uncited.length} evidence item(s) were not cited (informational).`);
-  }
-  const stale = staleDossierWarning(dir);
-  if (stale) warnings.push(stale);
-  const result = {
-    ok: errors.length === 0,
-    citations,
-    resolved,
-    dangling,
-    uncited,
-    errors,
-    warnings,
-    coverage: coverage2,
-    fencedOnly
-  };
-  if (opts.semantic) applySemantic(dir, result);
-  return result;
-}
-function formatCheckReport(r, dir) {
-  const lines = [];
-  lines.push(`ultradoc check: ${dir}`);
-  lines.push(`  citations: ${r.citations.length} \xB7 resolved: ${r.resolved.length} \xB7 dangling: ${r.dangling.length}`);
-  if (r.coverage) {
-    lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
-  }
-  if (r.semantic) {
-    const s = r.semantic;
-    lines.push(`  semantic: supported ${s.supported} \xB7 partial ${s.partial} \xB7 refuted ${s.refuted} \xB7 unsupported ${s.unsupported}`);
-    for (const f of s.failures.slice(0, 8)) lines.push(`  \u2717 semantic ${f.claimId} (${f.evidenceId}): ${f.verdict}`);
-  }
-  for (const e of r.errors) lines.push(`  \u2717 ${e}`);
-  for (const w of r.warnings) lines.push(`  \u26A0 ${w}`);
-  lines.push(r.ok ? `  \u2713 answer is grounded \u2014 every citation resolves to evidence` : `  \u2717 answer is NOT grounded`);
-  return lines.join("\n");
-}
-
 // src/verify.ts
-import { existsSync as existsSync9, readFileSync as readFileSync8, writeFileSync as writeFileSync8 } from "fs";
-import { join as join16 } from "path";
+import { existsSync as existsSync8, readFileSync as readFileSync7, writeFileSync as writeFileSync8 } from "fs";
+import { join as join15 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -4309,13 +4192,13 @@ function claimStrings(text) {
   return out;
 }
 function runVerify(dir, opts = {}) {
-  const evidencePath = join16(dir, "evidence.json");
-  if (!existsSync9(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
-  const evidence = JSON.parse(readFileSync8(evidencePath, "utf8"));
+  const evidencePath = join15(dir, "evidence.json");
+  if (!existsSync8(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
+  const evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
-  const answer = readFileSync8(answerPath, "utf8");
+  const answer = readFileSync7(answerPath, "utf8");
   const pairs = [];
   const uncitedClaims = [];
   let claimNo = 0;
@@ -4324,7 +4207,7 @@ function runVerify(dir, opts = {}) {
     claimNo++;
     const claimId = `C${claimNo}`;
     if (!ids.length) {
-      if (claim.trim().length >= MIN_UNCITED_LEN) uncitedClaims.push({ claimId, claim: claim.trim().slice(0, 400) });
+      if (stripInlineCode(claim).trim().length >= MIN_UNCITED_LEN) uncitedClaims.push({ claimId, claim: claim.trim().slice(0, 400) });
       continue;
     }
     for (const id of ids) {
@@ -4337,6 +4220,7 @@ function runVerify(dir, opts = {}) {
         ref: e.ref,
         source: e.source,
         digest: (e.snippet || e.title || e.ref).slice(0, 600),
+        ...e.source === "issue" || e.source === "pr" ? { crossCheck: true } : {},
         score: e.score
       });
     }
@@ -4349,8 +4233,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims
   };
-  writeFileSync8(join16(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync8(join16(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync8(join15(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync8(join15(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -4360,11 +4244,17 @@ function renderWorklistMd(wl, total, kept) {
   out.push(
     `For each pair, open the cited evidence and judge whether it **supports** the claim. In \`VERIFY.todo.json\`, set each \`verdict\` to one of supported \xB7 partial \xB7 refuted \xB7 unsupported, add a short \`note\`, save it (e.g. as \`verdicts.json\`), then run \`ultradoc verify --apply verdicts.json --run <dir>\`.`
   );
+  if (wl.pairs.some((p) => p.crossCheck)) {
+    out.push("");
+    out.push(
+      `Pairs flagged **\u26A0 cross-check** are grounded in an issue/PR \u2014 a tracker thread describes behavior at a point in time. Judge them by cross-check against CURRENT code: if the current source contradicts the claim, mark it refuted (or partial with a temporal qualifier citing the fixing release).`
+    );
+  }
   if (kept < total) out.push(`
 _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence._`);
   out.push("");
   for (const p of wl.pairs) {
-    out.push(`## ${p.claimId} \xB7 ${p.evidenceId} (${p.source} \xB7 ${p.ref})`);
+    out.push(`## ${p.claimId} \xB7 ${p.evidenceId} (${p.source} \xB7 ${p.ref})${p.crossCheck ? " \xB7 \u26A0 cross-check" : ""}`);
     out.push(`**Claim:** ${p.claim}`);
     out.push(`**Cited evidence:** ${p.digest}`);
     out.push(`**Verdict:** _____ \xB7 **Note:** _____`);
@@ -4381,10 +4271,10 @@ _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence
   return out.join("\n");
 }
 function applyVerdicts(dir, verdictsPath) {
-  if (!existsSync9(verdictsPath)) {
+  if (!existsSync8(verdictsPath)) {
     throw new Error(`No verdicts file at ${verdictsPath} \u2014 adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
   }
-  const raw = JSON.parse(readFileSync8(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync7(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
   const verdicts = [];
   for (const v of list) {
@@ -4402,7 +4292,7 @@ function applyVerdicts(dir, verdictsPath) {
     });
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync8(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync8(join15(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
 function reduceVerdicts(verdicts) {
@@ -4451,6 +4341,382 @@ function formatVerifyReport(r) {
     lines.push(`  \u26A0 ${r.unadjudicated.length} claim(s) not fully adjudicated: ${r.unadjudicated.join(", ")}`);
   }
   lines.push(r.ok ? `  \u2713 every claim is backed by a cited evidence item` : `  \u2717 some claims are refuted or unsupported`);
+  return lines.join("\n");
+}
+
+// src/check.ts
+var COVERAGE_MIN_DEFAULT = 0.7;
+function resolveAnswerPath(dir, answerFile) {
+  if (answerFile) {
+    const p = join16(dir, answerFile);
+    return existsSync9(p) ? p : null;
+  }
+  for (const name of ["ANSWER.md", "DOC.md"]) {
+    const p = join16(dir, name);
+    if (existsSync9(p)) return p;
+  }
+  return null;
+}
+function resolves(tok, evidence, ids, refs) {
+  if (SHAPE.id.test(tok)) return ids.has(tok);
+  if (refs.has(tok)) return true;
+  return resolveAlias(tok, evidence).length > 0;
+}
+var REVALIDATION = {
+  // Clipped snippets only: fraction of stored lines that must re-match in order.
+  // Un-clipped code/docs snippets are exact slices at build time, so anything
+  // short of exact equality is corruption/staleness there.
+  SNIPPET_MATCH_MIN: 0.8,
+  // Failing items detailed individually per run (then "… and N more").
+  MAX_REPORTED: 5
+};
+function pinnedClone(dir) {
+  const pin = { headMatches: false };
+  try {
+    const metaPath = join16(dir, "meta.json");
+    if (!existsSync9(metaPath)) return pin;
+    const meta = JSON.parse(readFileSync8(metaPath, "utf8"));
+    pin.meta = meta;
+    if (!meta.commit) return pin;
+    pin.recordedRepoDir = meta.repoDir;
+    const repoDir = meta.repoDir && existsSync9(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
+    if (!repoDir) return pin;
+    pin.repoDir = repoDir;
+    const head = headCommit(repoDir);
+    if (!head) return pin;
+    pin.head = head;
+    if (sameCommit(head, meta.commit)) {
+      pin.headMatches = true;
+    } else {
+      pin.staleWarning = `dossier was built at ${meta.commit} but the tree is now at ${head} \u2014 line-anchored citations may have drifted; re-run \`ask\`.`;
+    }
+  } catch {
+  }
+  return pin;
+}
+var CLIP_MARKER_RE = /\n?… \[truncated \d+ chars\]$/;
+function snippetMatches(stored, fileLines, start, end) {
+  const norm = (l) => l.replace(/\s+/g, " ").trim();
+  const clipped = CLIP_MARKER_RE.test(stored);
+  const storedLines = stored.replace(CLIP_MARKER_RE, "").split(/\r?\n/).map(norm).filter((l) => l !== "");
+  const windowLines = fileLines.slice(start - 1, end).map(norm).filter((l) => l !== "");
+  const total = storedLines.length;
+  if (total === 0) return { ok: true, matched: 0, total: 0 };
+  if (storedLines.join("\n") === windowLines.join("\n")) return { ok: true, matched: total, total };
+  let matched = 0;
+  let w = 0;
+  for (let s = 0; s < storedLines.length; s++) {
+    const last = clipped && s === storedLines.length - 1;
+    while (w < windowLines.length) {
+      const win = windowLines[w];
+      w++;
+      if (last ? win.startsWith(storedLines[s]) : storedLines[s] === win) {
+        matched++;
+        break;
+      }
+    }
+  }
+  const ok = clipped && matched >= Math.ceil(total * REVALIDATION.SNIPPET_MATCH_MIN);
+  return { ok, matched, total };
+}
+var FILE_LOC_RE = /^(.+?):(\d+)(?:-(\d+))?$/;
+function revalidateEvidence(pin, evidence, errors, warnings) {
+  const stats = { attempted: 0, validated: 0, failures: [] };
+  const candidates = evidence.filter(
+    (e) => (e.source === "code" || e.source === "docs") && !!e.location && !/^https?:\/\//.test(e.ref) && !/^https?:\/\//.test(e.location)
+  );
+  if (!pin.meta?.commit) {
+    stats.skipped = "no pinned clone recorded in meta.json";
+    return stats;
+  }
+  if (!pin.repoDir) {
+    stats.skipped = `the recorded clone ${pin.recordedRepoDir ?? "(unknown)"} no longer exists`;
+    if (candidates.length) {
+      warnings.push(
+        `evidence re-validation skipped: the recorded clone ${pin.recordedRepoDir ?? "(unknown)"} no longer exists (cache evicted?) \u2014 cited snippets cannot be checked; re-run \`ask\` to rebuild the dossier.`
+      );
+    }
+    return stats;
+  }
+  if (!pin.head) {
+    stats.skipped = "the recorded clone is not a git tree";
+    return stats;
+  }
+  if (!pin.headMatches) {
+    stats.skipped = `the clone moved from ${pin.meta.commit} to ${pin.head}`;
+    if (candidates.length) {
+      warnings.push(
+        `evidence re-validation skipped: the clone moved from ${pin.meta.commit} to ${pin.head} \u2014 line-anchored snippets cannot be checked against a different tree.`
+      );
+    }
+    return stats;
+  }
+  const repoRoot = resolvePath(pin.repoDir);
+  for (const item of candidates) {
+    const m = FILE_LOC_RE.exec(item.location);
+    if (!m) continue;
+    const start = Number(m[2]);
+    const end = m[3] ? Number(m[3]) : start;
+    stats.attempted++;
+    const fail2 = (reason, detail) => {
+      stats.failures.push({ id: item.id, ref: item.ref, location: item.location, reason, detail });
+    };
+    const abs = resolvePath(repoRoot, m[1]);
+    if (abs !== repoRoot && !abs.startsWith(repoRoot + sep3)) {
+      fail2("escapes-repo", "the cited path resolves outside the pinned clone");
+      continue;
+    }
+    if (!existsSync9(abs)) {
+      fail2("missing-file", `file not found in the pinned clone (${repoRoot} @ ${pin.meta.commit})`);
+      continue;
+    }
+    let lines;
+    try {
+      lines = readFileSync8(abs, "utf8").split(/\r?\n/);
+    } catch (e) {
+      fail2("missing-file", `file is unreadable (${e.message})`);
+      continue;
+    }
+    if (start < 1 || end < start || end > lines.length) {
+      fail2("range-out-of-bounds", `line range is out of bounds (file has ${lines.length} line(s) at ${pin.meta.commit})`);
+      continue;
+    }
+    const r = snippetMatches(item.snippet, lines, start, end);
+    if (r.ok) stats.validated++;
+    else
+      fail2(
+        "snippet-mismatch",
+        `stored snippet does not match those lines (${r.matched}/${r.total} line(s) match); the dossier is stale or was modified \u2014 re-run \`ask\` and re-cite`
+      );
+  }
+  for (const f of stats.failures.slice(0, REVALIDATION.MAX_REPORTED)) {
+    const src = evidence.find((e) => e.id === f.id)?.source ?? "code";
+    errors.push(`[${f.id}] ${src} ${f.location} \u2014 ${f.detail}.`);
+  }
+  if (stats.failures.length > REVALIDATION.MAX_REPORTED) {
+    errors.push(`\u2026 and ${stats.failures.length - REVALIDATION.MAX_REPORTED} more failing excerpt(s).`);
+  }
+  if (stats.failures.length) {
+    errors.push(
+      `${stats.failures.length} evidence excerpt(s) no longer match the pinned clone at ${pin.meta.commit} \u2014 citations built on them are not grounded.`
+    );
+  }
+  return stats;
+}
+function headingsOf(answer) {
+  const lines = answer.split("\n");
+  const fenced = codeMask(lines);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (fenced[i]) continue;
+    const m = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(lines[i]);
+    if (m) out.push(m[1].trim().toLowerCase());
+  }
+  return out;
+}
+function missingDocSections(dir, answerPath, answer) {
+  if (basename4(answerPath) !== "DOC.md") return void 0;
+  const planPath = join16(dir, "DOC.plan.json");
+  if (!existsSync9(planPath)) return void 0;
+  let plan;
+  try {
+    plan = JSON.parse(readFileSync8(planPath, "utf8"));
+  } catch {
+    return void 0;
+  }
+  const headings = headingsOf(answer);
+  const missing = (plan.sections ?? []).map((s) => s.title).filter((title) => !headings.some((h) => h.includes(title.toLowerCase())));
+  if (missing.length) return `DOC.md is missing planned section(s): ${missing.join(", ")}. Write each section from DOC.todo.md or drop it from the plan.`;
+  return void 0;
+}
+function dossierRepoDir(dir) {
+  let d = dir;
+  for (let i = 0; i < 6; i++) {
+    if (basename4(d) === ".ultradoc") return dirname4(d);
+    const parent = dirname4(d);
+    if (parent === d) break;
+    d = parent;
+  }
+  return void 0;
+}
+function applySemantic(dir, result, allowUnverified = false) {
+  const p = join16(dir, "VERIFY.json");
+  const unverified = (what) => {
+    const fix = "run `verify` then `verify --apply <verdicts.json>` first";
+    if (allowUnverified) {
+      result.warnings.push(`--semantic: ${what} \u2014 ${fix}; semantic gate skipped (--allow-unverified).`);
+    } else {
+      result.ok = false;
+      result.errors.push(`--semantic: ${what} \u2014 ${fix}, or pass --allow-unverified to skip the semantic gate explicitly.`);
+    }
+  };
+  if (!existsSync9(p)) {
+    unverified("no VERIFY.json");
+    return;
+  }
+  let sem;
+  try {
+    sem = JSON.parse(readFileSync8(p, "utf8"));
+  } catch (e) {
+    unverified(`VERIFY.json is unreadable (${e.message})`);
+    return;
+  }
+  if (!Array.isArray(sem.verdicts) || sem.verdicts.length === 0) {
+    unverified("VERIFY.json records no verdicts");
+    return;
+  }
+  const reduced = reduceVerdicts(sem.verdicts);
+  result.semantic = { ...reduced, verdicts: sem.verdicts };
+  if (!reduced.ok) {
+    result.ok = false;
+    result.errors.push(`Semantic verification failed: ${reduced.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
+  }
+  if (reduced.unadjudicated?.length) {
+    result.warnings.push(`${reduced.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
+  }
+}
+function checkRun(dir, opts = {}) {
+  const errors = [];
+  const warnings = [];
+  const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
+  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  const evidencePath = join16(dir, "evidence.json");
+  if (!existsSync9(evidencePath)) {
+    return {
+      ok: false,
+      citations: [],
+      resolved: [],
+      dangling: [],
+      uncited: [],
+      errors: [`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`],
+      warnings: []
+    };
+  }
+  let evidence;
+  try {
+    evidence = JSON.parse(readFileSync8(evidencePath, "utf8"));
+  } catch (e) {
+    return {
+      ok: false,
+      citations: [],
+      resolved: [],
+      dangling: [],
+      uncited: [],
+      errors: [`evidence.json is unreadable: ${e.message}`],
+      warnings: []
+    };
+  }
+  if (!answerPath) {
+    const which = opts.answerFile ?? "ANSWER.md or DOC.md";
+    return {
+      ok: false,
+      citations: [],
+      resolved: [],
+      dangling: [],
+      uncited: evidence.map((e) => e.id),
+      errors: [`No ${which} in ${dir} \u2014 write the grounded answer there, then re-run check.`],
+      warnings: []
+    };
+  }
+  const answer = readFileSync8(answerPath, "utf8");
+  const ids = new Set(evidence.map((e) => e.id));
+  const refs = new Set(evidence.map((e) => e.ref));
+  const { tokens: citations, fencedOnly } = collectCitations(answer);
+  const resolved = [];
+  const dangling = [];
+  for (const c2 of citations) {
+    if (resolves(c2, evidence, ids, refs)) resolved.push(c2);
+    else dangling.push(c2);
+  }
+  const citedIds = new Set(resolved.filter((c2) => SHAPE.id.test(c2)));
+  const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
+  const coverage2 = claimCoverage(answer, evidence);
+  if (citations.length === 0) {
+    errors.push(`${basename4(answerPath)} contains no citations \u2014 a grounded answer must cite evidence ids like [E1].`);
+  }
+  if (dangling.length) {
+    errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);
+  }
+  if (coverage2.ratio < coverageMin && (opts.strict || coverage2.claims >= 3)) {
+    const pct = Math.round(coverage2.ratio * 100);
+    errors.push(
+      `Only ${coverage2.cited}/${coverage2.claims} claim(s) cite evidence (${pct}% < ${Math.round(coverageMin * 100)}% required) \u2014 ground each claim in an evidence id or run \`check --coverage-min\` lower if this is intentional.`
+    );
+  }
+  if (coverage2.ratio < 1 && coverage2.uncited.length) {
+    const shown = coverage2.uncited.slice(0, 5).map((u) => `"${u}"`).join("; ");
+    warnings.push(`${coverage2.claims - coverage2.cited} claim(s) cite no evidence (coverage ${Math.round(coverage2.ratio * 100)}%): ${shown}`);
+  }
+  if (fencedOnly.length) {
+    const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
+    if (opts.strict) errors.push(msg);
+    else warnings.push(msg);
+  }
+  const byId = new Map(evidence.map((e) => [e.id, e]));
+  const issueOnly = [];
+  let issueOnlyCount = 0;
+  for (const u of extractClaimUnits(answer)) {
+    for (const part of u.kind === "text" ? [u.text] : u.items) {
+      const cited = citedEvidenceIds(part, evidence).map((id) => byId.get(id)).filter((e) => !!e);
+      if (cited.length && cited.every((e) => e.source === "issue" || e.source === "pr")) {
+        issueOnlyCount++;
+        if (issueOnly.length < 3) issueOnly.push(`"${part.trim().slice(0, 120)}"`);
+      }
+    }
+  }
+  if (issueOnlyCount) {
+    warnings.push(
+      `${issueOnlyCount} claim(s) are grounded only in issue/PR evidence \u2014 a tracker thread describes behavior at a point in time; cross-check the current source and cite the code or the fixing release alongside: ${issueOnly.join("; ")}`
+    );
+  }
+  const missingSections = missingDocSections(dir, answerPath, answer);
+  if (missingSections) errors.push(missingSections);
+  if (citations.length > 0 && citedIds.size === 0) {
+    warnings.push("No evidence ids were cited (only typed aliases). Prefer citing ids like [E1].");
+  } else if (uncited.length) {
+    warnings.push(`${uncited.length} evidence item(s) were not cited (informational).`);
+  }
+  const pin = pinnedClone(dir);
+  if (pin.staleWarning) warnings.push(pin.staleWarning);
+  const revalidation = revalidateEvidence(pin, evidence, errors, warnings);
+  const result = {
+    ok: errors.length === 0,
+    citations,
+    resolved,
+    dangling,
+    uncited,
+    errors,
+    warnings,
+    coverage: coverage2,
+    fencedOnly,
+    revalidation
+  };
+  if (opts.semantic) applySemantic(dir, result, opts.allowUnverified);
+  return result;
+}
+function formatCheckReport(r, dir) {
+  const lines = [];
+  lines.push(`ultradoc check: ${dir}`);
+  lines.push(`  citations: ${r.citations.length} \xB7 resolved: ${r.resolved.length} \xB7 dangling: ${r.dangling.length}`);
+  if (r.coverage) {
+    lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
+  }
+  if (r.revalidation) {
+    const v = r.revalidation;
+    if (v.skipped) {
+      if (v.skipped !== "no pinned clone recorded in meta.json") lines.push(`  evidence:  re-validation skipped (${v.skipped})`);
+    } else if (v.attempted > 0) {
+      lines.push(`  evidence:  re-validated ${v.validated}/${v.attempted} code/docs excerpt(s) against the pinned clone`);
+    }
+  }
+  if (r.semantic) {
+    const s = r.semantic;
+    lines.push(`  semantic: supported ${s.supported} \xB7 partial ${s.partial} \xB7 refuted ${s.refuted} \xB7 unsupported ${s.unsupported}`);
+    for (const f of s.failures.slice(0, 8)) lines.push(`  \u2717 semantic ${f.claimId} (${f.evidenceId}): ${f.verdict}`);
+  }
+  for (const e of r.errors) lines.push(`  \u2717 ${e}`);
+  for (const w of r.warnings) lines.push(`  \u26A0 ${w}`);
+  lines.push(r.ok ? `  \u2713 answer is grounded \u2014 every citation resolves to evidence` : `  \u2717 answer is NOT grounded`);
   return lines.join("\n");
 }
 
@@ -4545,7 +4811,7 @@ Usage:
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
-  ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic] [--answer <file>]
+  ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic [--allow-unverified]] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc semantic up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
@@ -4569,7 +4835,8 @@ Commands:
   check      Validate ANSWER.md (or a doc run's DOC.md) against a dossier's
              evidence.json: every citation must resolve AND enough claims must be
              cited (--strict requires all; --coverage-min tunes the threshold).
-             --semantic also folds in verify's verdicts (fails on unsupported).
+             --semantic also gates on verify's verdicts and FAILS when no
+             VERIFY.json exists (--allow-unverified downgrades to a warning).
   verify     Emit a claim\u2194evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
@@ -4651,7 +4918,7 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "answer",
   "coverage-min"
 ]);
-var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all"]);
+var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified"]);
 function fail(message) {
   process.stderr.write(`ultradoc: ${message}
 `);
@@ -4984,7 +5251,8 @@ async function run(argv = process.argv.slice(2)) {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
-        coverageMin
+        coverageMin,
+        allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
       else process.stdout.write(formatCheckReport(res, resolve2(dir)) + "\n");
@@ -4996,7 +5264,7 @@ async function run(argv = process.argv.slice(2)) {
       if (!dir) fail("missing --run <dossier-dir>");
       const rdir = resolve2(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve2(p.values.apply));
+        const result = applyVerdicts(rdir, resolve2(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);

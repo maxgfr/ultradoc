@@ -159,6 +159,10 @@ function isListItem(line: string): boolean {
 // list group yields one claim per item. Code fences and HTML comments are
 // excluded (a citation in code/comment can't ground a claim); headings/rules are
 // structure. Mirrors how the grounded report is read.
+// Structure DETECTION runs on the inline-code-stripped form (a pipe or [E#]
+// inside backticks is not structure), but the STORED text keeps the original
+// spans so downstream warnings echo the claim verbatim (`makeRetriable` must
+// not vanish from an uncited-claim excerpt).
 export function extractClaimUnits(text: string): ClaimUnit[] {
   const lines = stripHtmlComments(text).split("\n");
   const code = codeMask(lines);
@@ -175,7 +179,8 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
       i++;
       continue;
     }
-    const line = stripInlineCode(lines[i]!);
+    const raw = lines[i]!;
+    const line = stripInlineCode(raw);
     const t = line.trim();
     if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
       flush();
@@ -184,12 +189,12 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
     }
     if (isTableRow(line)) {
       flush();
-      units.push({ kind: "text", text: tableCells(line) });
+      units.push({ kind: "text", text: tableCells(raw) });
       i++;
       continue;
     }
     if (/^\s*>/.test(line)) {
-      const dequoted = line.replace(/^\s*>\s?/, "").trim();
+      const dequoted = raw.replace(/^\s*>\s?/, "").trim();
       if (dequoted) prose.push(dequoted);
       i++;
       continue;
@@ -198,18 +203,19 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
       flush();
       const items: string[] = [];
       while (i < lines.length && !code[i]) {
-        const l = stripInlineCode(lines[i]!);
+        const rawL = lines[i]!;
+        const l = stripInlineCode(rawL);
         const tt = l.trim();
         if (tt === "" || isHeadingOrRule(tt) || isTableSeparator(l) || isTableRow(l)) break;
-        if (isListItem(l)) items.push(l.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
-        else if (items.length) items[items.length - 1] += " " + tt;
-        else items.push(tt);
+        if (isListItem(l)) items.push(rawL.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
+        else if (items.length) items[items.length - 1] += " " + rawL.trim();
+        else items.push(rawL.trim());
         i++;
       }
       units.push({ kind: "list", items });
       continue;
     }
-    prose.push(line);
+    prose.push(raw);
     i++;
   }
   flush();
@@ -303,7 +309,10 @@ export function claimCoverage(text: string, _evidence: EvidenceItem[]): Coverage
   const uncited: string[] = [];
   for (const c of claims) {
     const trimmed = c.trim();
-    if (trimmed.length < MIN_CLAIM_LEN) continue;
+    // Length counts on the code-stripped form so a line of pure inline code or
+    // a short transition dressed in backticks stays exempt; the echoed text
+    // keeps the original spans.
+    if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
     counted++;
     if (citationTokensIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));

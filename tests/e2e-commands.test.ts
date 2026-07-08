@@ -356,6 +356,20 @@ describe("verify (adversarial claim↔evidence gate)", () => {
     expect(r.error?.message).toMatch(/No verdicts file/);
     expect(r.error?.message).not.toMatch(/ENOENT/);
   });
+
+  // Regression: a relative --apply path used to resolve against the process
+  // cwd, erroring on the happy path where verdicts.json lives in the run dir.
+  it("--apply resolves a relative verdicts path against the --run dir", async () => {
+    const { dir, firstId } = await makeDossier();
+    writeFileSync(join(dir, "ANSWER.md"), `# Answer\n\nRetry doubles the delay each attempt [${firstId}].\n`);
+    await runCli(["verify", "--run", dir]);
+    const todo = JSON.parse(readFileSync(join(dir, "VERIFY.todo.json"), "utf8"));
+    const pairs = todo.pairs.map((p: Record<string, unknown>) => ({ ...p, verdict: "supported", note: "" }));
+    writeFileSync(join(dir, "verdicts.json"), JSON.stringify({ pairs }));
+    const r = await runCli(["verify", "--apply", "verdicts.json", "--run", dir]);
+    expect(r.error).toBeUndefined();
+    expect(r.exitCode).toBe(0);
+  });
 });
 
 describe("semantic (optional docker stack)", () => {

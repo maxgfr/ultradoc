@@ -1,8 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { claimCoverage, codeMask, collectCitations, resolveAlias, SHAPE } from "./citations.js";
+import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
+import { citedEvidenceIds, claimCoverage, codeMask, collectCitations, extractClaimUnits, resolveAlias, SHAPE } from "./citations.js";
 import { headCommit, sameCommit } from "./clone.js";
-import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, VerifyResult } from "./types.js";
+import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, RevalidationFailure, RevalidationStats, VerifyResult } from "./types.js";
+// Import cycle with verify.ts (which reuses check's claim parsing) — safe: both
+// sides only call the other's functions at run time, never during module init.
+import { reduceVerdicts } from "./verify.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
 export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
@@ -18,6 +21,7 @@ export interface CheckOptions {
   answerFile?: string;
   coverageMin?: number; // grounding threshold (default COVERAGE_MIN_DEFAULT)
   strict?: boolean; // coverageMin = 1.0 and fence-only citations become errors
+  allowUnverified?: boolean; // --semantic without VERIFY.json warns instead of failing
 }
 
 // The grounded answer a dossier validates. `ask` writes ANSWER.md; `doc` writes
@@ -45,28 +49,194 @@ function resolves(tok: string, evidence: EvidenceItem[], ids: Set<string>, refs:
   return resolveAlias(tok, evidence).length > 0;
 }
 
-// Warn (never fail) when the dossier's meta.json records a commit that no longer
-// matches the indexed clone's HEAD: line-anchored citations like
-// `src/foo.ts:12-40` may have drifted. Best-effort — silent if meta/repoDir/git
-// are unavailable.
-function staleDossierWarning(dir: string): string | undefined {
+// Tunables for the excerpt re-validation gate (exported for tests).
+export const REVALIDATION = {
+  // Clipped snippets only: fraction of stored lines that must re-match in order.
+  // Un-clipped code/docs snippets are exact slices at build time, so anything
+  // short of exact equality is corruption/staleness there.
+  SNIPPET_MATCH_MIN: 0.8,
+  // Failing items detailed individually per run (then "… and N more").
+  MAX_REPORTED: 5,
+} as const;
+
+// The dossier's pinned clone, resolved once: drift detection and excerpt
+// re-validation both need meta.json + the clone's HEAD.
+interface PinnedClone {
+  meta?: DossierMeta;
+  repoDir?: string; // existing directory only
+  recordedRepoDir?: string; // as written in meta.json (for the eviction message)
+  head?: string;
+  headMatches: boolean;
+  staleWarning?: string;
+}
+
+// Best-effort: silent when meta/repoDir/git are unavailable — but the caller
+// surfaces a skip whenever there were excerpts to validate.
+function pinnedClone(dir: string): PinnedClone {
+  const pin: PinnedClone = { headMatches: false };
   try {
     const metaPath = join(dir, "meta.json");
-    if (!existsSync(metaPath)) return undefined;
+    if (!existsSync(metaPath)) return pin;
     const meta = JSON.parse(readFileSync(metaPath, "utf8")) as DossierMeta;
-    if (!meta.commit) return undefined;
+    pin.meta = meta;
+    if (!meta.commit) return pin;
+    pin.recordedRepoDir = meta.repoDir;
     // Prefer the recorded repoDir; else walk up from the dossier to a repo root
     // (runs are persisted under <repoDir>/.ultradoc/runs/<id>).
     const repoDir = meta.repoDir && existsSync(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
-    if (!repoDir) return undefined;
+    if (!repoDir) return pin;
+    pin.repoDir = repoDir;
     const head = headCommit(repoDir);
-    if (head && !sameCommit(head, meta.commit)) {
-      return `dossier was built at ${meta.commit} but the tree is now at ${head} — line-anchored citations may have drifted; re-run \`ask\`.`;
+    if (!head) return pin;
+    pin.head = head;
+    if (sameCommit(head, meta.commit)) {
+      pin.headMatches = true;
+    } else {
+      pin.staleWarning = `dossier was built at ${meta.commit} but the tree is now at ${head} — line-anchored citations may have drifted; re-run \`ask\`.`;
     }
   } catch {
     /* meta unreadable — no guard */
   }
-  return undefined;
+  return pin;
+}
+
+// Marker appended by clip() when a snippet was truncated at build time.
+const CLIP_MARKER_RE = /\n?… \[truncated \d+ chars\]$/;
+
+// Whether a stored evidence snippet still matches fileLines[start-1..end-1].
+// Primary test: exact equality of the whitespace-normalized line sequences
+// (in-repo code/docs snippets are exact slices at build time — any divergence
+// at the same commit is corruption). Snippets carrying the clip() marker get an
+// in-order subsequence fallback: ≥ SNIPPET_MATCH_MIN of the stored lines must
+// re-match, the last one by prefix (it may have been cut mid-line).
+export function snippetMatches(stored: string, fileLines: string[], start: number, end: number): { ok: boolean; matched: number; total: number } {
+  const norm = (l: string) => l.replace(/\s+/g, " ").trim();
+  const clipped = CLIP_MARKER_RE.test(stored);
+  const storedLines = stored
+    .replace(CLIP_MARKER_RE, "")
+    .split(/\r?\n/)
+    .map(norm)
+    .filter((l) => l !== "");
+  const windowLines = fileLines
+    .slice(start - 1, end)
+    .map(norm)
+    .filter((l) => l !== "");
+  const total = storedLines.length;
+  if (total === 0) return { ok: true, matched: 0, total: 0 };
+  if (storedLines.join("\n") === windowLines.join("\n")) return { ok: true, matched: total, total };
+  let matched = 0;
+  let w = 0;
+  for (let s = 0; s < storedLines.length; s++) {
+    const last = clipped && s === storedLines.length - 1;
+    while (w < windowLines.length) {
+      const win = windowLines[w]!;
+      w++;
+      if (last ? win.startsWith(storedLines[s]!) : storedLines[s] === win) {
+        matched++;
+        break;
+      }
+    }
+  }
+  const ok = clipped && matched >= Math.ceil(total * REVALIDATION.SNIPPET_MATCH_MIN);
+  return { ok, matched, total };
+}
+
+// "path:12" or "path:12-30" — the only location shapes that name repo lines.
+const FILE_LOC_RE = /^(.+?):(\d+)(?:-(\d+))?$/;
+
+// Re-open every code/docs excerpt against the pinned clone and fail on any that
+// no longer resolves: a citation whose excerpt does not exist at the pinned
+// commit is the same fabrication class as a dangling [E99]. ALL code/docs items
+// are validated (cited or not) — evidence.json is the artifact every downstream
+// consumer trusts (verify digests, EVIDENCE.md). Re-validation only runs when
+// the clone's HEAD still matches the dossier commit; other states skip with a
+// warning naming the gate (never silently when there was work to do).
+function revalidateEvidence(pin: PinnedClone, evidence: EvidenceItem[], errors: string[], warnings: string[]): RevalidationStats {
+  const stats: RevalidationStats = { attempted: 0, validated: 0, failures: [] };
+  const candidates = evidence.filter(
+    (e) => (e.source === "code" || e.source === "docs") && !!e.location && !/^https?:\/\//.test(e.ref) && !/^https?:\/\//.test(e.location as string),
+  );
+  if (!pin.meta?.commit) {
+    stats.skipped = "no pinned clone recorded in meta.json";
+    return stats; // hand-assembled dossier: nothing claims a clone — stay quiet
+  }
+  if (!pin.repoDir) {
+    stats.skipped = `the recorded clone ${pin.recordedRepoDir ?? "(unknown)"} no longer exists`;
+    if (candidates.length) {
+      warnings.push(
+        `evidence re-validation skipped: the recorded clone ${pin.recordedRepoDir ?? "(unknown)"} no longer exists (cache evicted?) — ` +
+          `cited snippets cannot be checked; re-run \`ask\` to rebuild the dossier.`,
+      );
+    }
+    return stats;
+  }
+  if (!pin.head) {
+    stats.skipped = "the recorded clone is not a git tree";
+    return stats; // best-effort, mirrors the drift warning's silence here
+  }
+  if (!pin.headMatches) {
+    stats.skipped = `the clone moved from ${pin.meta.commit} to ${pin.head}`;
+    if (candidates.length) {
+      warnings.push(
+        `evidence re-validation skipped: the clone moved from ${pin.meta.commit} to ${pin.head} — ` +
+          `line-anchored snippets cannot be checked against a different tree.`,
+      );
+    }
+    return stats;
+  }
+
+  const repoRoot = resolvePath(pin.repoDir);
+  for (const item of candidates) {
+    const m = FILE_LOC_RE.exec(item.location as string);
+    if (!m) continue; // not a file:line shape (defensive; URL forms already excluded)
+    const start = Number(m[2]);
+    const end = m[3] ? Number(m[3]) : start;
+    stats.attempted++;
+    const fail = (reason: RevalidationFailure["reason"], detail: string) => {
+      stats.failures.push({ id: item.id, ref: item.ref, location: item.location as string, reason, detail });
+    };
+    const abs = resolvePath(repoRoot, m[1]!);
+    if (abs !== repoRoot && !abs.startsWith(repoRoot + sep)) {
+      fail("escapes-repo", "the cited path resolves outside the pinned clone");
+      continue;
+    }
+    if (!existsSync(abs)) {
+      fail("missing-file", `file not found in the pinned clone (${repoRoot} @ ${pin.meta.commit})`);
+      continue;
+    }
+    let lines: string[];
+    try {
+      lines = readFileSync(abs, "utf8").split(/\r?\n/);
+    } catch (e) {
+      fail("missing-file", `file is unreadable (${(e as Error).message})`);
+      continue;
+    }
+    if (start < 1 || end < start || end > lines.length) {
+      fail("range-out-of-bounds", `line range is out of bounds (file has ${lines.length} line(s) at ${pin.meta.commit})`);
+      continue;
+    }
+    const r = snippetMatches(item.snippet, lines, start, end);
+    if (r.ok) stats.validated++;
+    else
+      fail(
+        "snippet-mismatch",
+        `stored snippet does not match those lines (${r.matched}/${r.total} line(s) match); the dossier is stale or was modified — re-run \`ask\` and re-cite`,
+      );
+  }
+
+  for (const f of stats.failures.slice(0, REVALIDATION.MAX_REPORTED)) {
+    const src = evidence.find((e) => e.id === f.id)?.source ?? "code";
+    errors.push(`[${f.id}] ${src} ${f.location} — ${f.detail}.`);
+  }
+  if (stats.failures.length > REVALIDATION.MAX_REPORTED) {
+    errors.push(`… and ${stats.failures.length - REVALIDATION.MAX_REPORTED} more failing excerpt(s).`);
+  }
+  if (stats.failures.length) {
+    errors.push(
+      `${stats.failures.length} evidence excerpt(s) no longer match the pinned clone at ${pin.meta.commit} — citations built on them are not grounded.`,
+    );
+  }
+  return stats;
 }
 
 // Markdown ATX headings in the answer, outside code fences (so a `#` inside a
@@ -116,27 +286,46 @@ function dossierRepoDir(dir: string): string | undefined {
 }
 
 // Fold the resolved semantic-verification record (VERIFY.json) into a check
-// result when `--semantic` is requested. Strictly additive: it can only ADD a
-// failure (a refuted/unsupported claim), never relax the mechanical gate.
-// Missing VERIFY.json warns (run `verify` first) but never fails.
-function applySemantic(dir: string, result: CheckResult): void {
+// result when `--semantic` is requested. It can only ADD a failure, never relax
+// the mechanical gate — and it FAILS CLOSED: a passing semantic exit must mean
+// the support gate actually engaged, so a missing/unreadable VERIFY.json (or
+// one recording no verdicts) is an error unless --allow-unverified explicitly
+// downgrades it to a warning. The pass/fail is re-reduced from verdicts[] so a
+// doctored `ok: true` summary cannot pass the gate.
+function applySemantic(dir: string, result: CheckResult, allowUnverified = false): void {
   const p = join(dir, "VERIFY.json");
+  const unverified = (what: string): void => {
+    const fix = "run `verify` then `verify --apply <verdicts.json>` first";
+    if (allowUnverified) {
+      result.warnings.push(`--semantic: ${what} — ${fix}; semantic gate skipped (--allow-unverified).`);
+    } else {
+      result.ok = false;
+      result.errors.push(`--semantic: ${what} — ${fix}, or pass --allow-unverified to skip the semantic gate explicitly.`);
+    }
+  };
   if (!existsSync(p)) {
-    result.warnings.push("--semantic: no VERIFY.json — run `verify` then `verify --apply <verdicts.json>` first; semantic gate skipped.");
+    unverified("no VERIFY.json");
     return;
   }
+  let sem: VerifyResult;
   try {
-    const sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
-    result.semantic = sem;
-    if (!sem.ok) {
-      result.ok = false;
-      result.errors.push(`Semantic verification failed: ${sem.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
-    }
-    if (sem.unadjudicated?.length) {
-      result.warnings.push(`${sem.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
-    }
+    sem = JSON.parse(readFileSync(p, "utf8")) as VerifyResult;
   } catch (e) {
-    result.warnings.push(`--semantic: VERIFY.json is unreadable (${(e as Error).message}).`);
+    unverified(`VERIFY.json is unreadable (${(e as Error).message})`);
+    return;
+  }
+  if (!Array.isArray(sem.verdicts) || sem.verdicts.length === 0) {
+    unverified("VERIFY.json records no verdicts");
+    return;
+  }
+  const reduced = reduceVerdicts(sem.verdicts);
+  result.semantic = { ...reduced, verdicts: sem.verdicts };
+  if (!reduced.ok) {
+    result.ok = false;
+    result.errors.push(`Semantic verification failed: ${reduced.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
+  }
+  if (reduced.unadjudicated?.length) {
+    result.warnings.push(`${reduced.unadjudicated.length} claim(s) not fully adjudicated by verify.`);
   }
 }
 
@@ -242,6 +431,29 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     if (opts.strict) errors.push(msg);
     else warnings.push(msg);
   }
+  // Faithfulness lint: a claim whose ONLY support is an issue/PR cites tracker
+  // state at a point in time — the behavior may have been fixed since. Warn so
+  // the answer cross-checks current source or cites the code/fixing release.
+  const byId = new Map(evidence.map((e) => [e.id, e] as const));
+  const issueOnly: string[] = [];
+  let issueOnlyCount = 0;
+  for (const u of extractClaimUnits(answer)) {
+    for (const part of u.kind === "text" ? [u.text] : u.items) {
+      const cited = citedEvidenceIds(part, evidence)
+        .map((id) => byId.get(id))
+        .filter((e): e is EvidenceItem => !!e);
+      if (cited.length && cited.every((e) => e.source === "issue" || e.source === "pr")) {
+        issueOnlyCount++;
+        if (issueOnly.length < 3) issueOnly.push(`"${part.trim().slice(0, 120)}"`);
+      }
+    }
+  }
+  if (issueOnlyCount) {
+    warnings.push(
+      `${issueOnlyCount} claim(s) are grounded only in issue/PR evidence — a tracker thread describes behavior at a point in time; ` +
+        `cross-check the current source and cite the code or the fixing release alongside: ${issueOnly.join("; ")}`,
+    );
+  }
   const missingSections = missingDocSections(dir, answerPath, answer);
   if (missingSections) errors.push(missingSections);
   if (citations.length > 0 && citedIds.size === 0) {
@@ -249,8 +461,9 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   } else if (uncited.length) {
     warnings.push(`${uncited.length} evidence item(s) were not cited (informational).`);
   }
-  const stale = staleDossierWarning(dir);
-  if (stale) warnings.push(stale);
+  const pin = pinnedClone(dir);
+  if (pin.staleWarning) warnings.push(pin.staleWarning);
+  const revalidation = revalidateEvidence(pin, evidence, errors, warnings);
 
   const result: CheckResult = {
     ok: errors.length === 0,
@@ -262,8 +475,9 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     warnings,
     coverage,
     fencedOnly,
+    revalidation,
   };
-  if (opts.semantic) applySemantic(dir, result);
+  if (opts.semantic) applySemantic(dir, result, opts.allowUnverified);
   return result;
 }
 
@@ -273,6 +487,15 @@ export function formatCheckReport(r: CheckResult, dir: string): string {
   lines.push(`  citations: ${r.citations.length} · resolved: ${r.resolved.length} · dangling: ${r.dangling.length}`);
   if (r.coverage) {
     lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
+  }
+  if (r.revalidation) {
+    const v = r.revalidation;
+    if (v.skipped) {
+      // The no-meta case stays quiet: a hand-assembled dossier claims no clone.
+      if (v.skipped !== "no pinned clone recorded in meta.json") lines.push(`  evidence:  re-validation skipped (${v.skipped})`);
+    } else if (v.attempted > 0) {
+      lines.push(`  evidence:  re-validated ${v.validated}/${v.attempted} code/docs excerpt(s) against the pinned clone`);
+    }
   }
   if (r.semantic) {
     const s = r.semantic;

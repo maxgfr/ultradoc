@@ -13,7 +13,8 @@ metadata:
 (`scripts/ultradoc.mjs`, zero-dependency Node) does the searching and indexing
 **with code**; your job is to read the retrieved evidence and write a precise,
 **cited** answer. Every claim must point to a real source. This is enforced:
-`ultradoc check` fails if any citation does not resolve to retrieved evidence.
+`ultradoc check` fails if any citation does not resolve to retrieved evidence,
+and re-validates each code/docs excerpt against the pinned clone.
 
 > **The core rule:** do not answer from your own knowledge of the library. Your
 > training data is stale and hallucinates APIs. Answer **only** from the
@@ -54,11 +55,14 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   section merged into a single `evidence.json`, and a `DOC.todo.md` worklist.
   You write the cited prose into `DOC.md`; `check` validates it like an answer.
   Persisted under `<clone>/.ultradoc/doc/`. See "Generate a documentation" below.
-- `check --run <dossier-dir> [--strict]` — validate `ANSWER.md`'s (or a `doc`
-  run's `DOC.md`'s) citations against the dossier's `evidence.json`, and that the
-  prose is covered (enough claims cite evidence). Exit non-zero ⇒ ungrounded.
-  Use `--strict` for `ask` answers (require every claim cited); `--answer <file>`
-  validates a specific file.
+- `check --run <dossier-dir> [--strict] [--semantic [--allow-unverified]]` —
+  validate `ANSWER.md`'s (or a `doc` run's `DOC.md`'s) citations against the
+  dossier's `evidence.json`, that the prose is covered (enough claims cite
+  evidence), and that each cited code/docs excerpt still matches the pinned clone
+  (line range + snippet). Exit non-zero ⇒ ungrounded. Use `--strict` for `ask`
+  answers (require every claim cited); `--semantic` also gates on `verify`'s
+  verdicts and **fails when no `VERIFY.json` exists** (`--allow-unverified`
+  downgrades that to a warning); `--answer <file>` validates a specific file.
 - `index --repo <...>` — build/print the structural index (debugging/inspection);
   lists discovered workspace packages for a monorepo.
 - `semantic up|down|status` — optional local vector backend (see below).
@@ -165,18 +169,24 @@ complete; don't return until it is. See `references/orchestration.md`.
      `VERIFY.md`). Judge each pair as a **skeptic**: default to
      `unsupported`/`refuted` unless the cited snippet literally backs the claim,
      setting `verdict` to supported · partial · refuted · unsupported (+ a short
-     note). Run one skeptic per pair — fan out to subagents when available (each
-     *returns* its verdict), else adjudicate each pair inline — and collect every
-     verdict into a **single** `verdicts.json` (see `references/orchestration.md`),
-     then:
+     note). A pair flagged **⚠ cross-check** is grounded in an issue/PR — judge it
+     against CURRENT code, since a closed thread can describe behavior a later
+     release reversed (refuted, or partial with a temporal qualifier citing the
+     fixing release). Run one skeptic per pair — fan out to subagents when
+     available (each *returns* its verdict), else adjudicate each pair inline — and
+     collect every verdict into a **single** `verdicts.json` (see
+     `references/orchestration.md`), then:
      ```
      node scripts/ultradoc.mjs verify --apply verdicts.json --run <dossier-dir>
      node scripts/ultradoc.mjs check  --semantic --run <dossier-dir>
      ```
-     This fails on dangling/unsourced (structural) **and** on any refuted or
-     unsupported claim — closing the gap where a citation *resolves* but does not
-     actually back the claim. Fix the claim (re-cite, weaken, drop, or retrieve a
-     better item) and re-verify until it passes. Also self-review against
+     `check --semantic` **fails when `VERIFY.json` is missing** (run `verify` +
+     `--apply` first, or pass `--allow-unverified` to skip the gate explicitly) —
+     a green semantic exit always means the support gate actually ran. It fails on
+     dangling/unsourced (structural) **and** on any refuted or unsupported claim —
+     closing the gap where a citation *resolves* but does not actually back the
+     claim. Fix the claim (re-cite, weaken, drop, or retrieve a better item) and
+     re-verify until it passes. Also self-review against
      `references/answer-rubric.md` for completeness/recency/unknowns.
 
 7. **Present.** Give the user the grounded answer with its citations and links

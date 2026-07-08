@@ -53,6 +53,15 @@ doubt, cite the evidence id.
   ground a claim (warned; an error under `--strict`).
 - Markdown links `[text](url)` are **not** citations and are ignored.
 - Uncited evidence is fine (informational warning only) — you needn't use it all.
+- **Excerpt re-validation:** when `meta.json` records a clone whose HEAD still
+  matches the dossier's commit, every code/docs item's `path:start-end` must
+  exist in that clone and the stored snippet must match those lines. A corrupted
+  or stale dossier **fails**; a moved HEAD or an evicted clone downgrades to a
+  warning naming the skipped gate (re-run `ask` to rebuild). This catches a
+  real-file-but-wrong-line citation, which resolution alone cannot.
+- **Issue/PR-only grounding:** a claim whose only support is an issue or PR is
+  warned — a tracker thread describes behavior at a point in time; cross-check
+  the current source and cite the code or the fixing release alongside.
 
 ## Semantic verification (beyond resolution)
 
@@ -66,6 +75,11 @@ item *supports* the claim. `verify` closes that gap:
 - `verify --apply <verdicts.json>` then `check --semantic` **fail** when a
   claim's cited evidence refutes it, or when every cited item is unsupported —
   on top of the resolution gate, never relaxing it.
+- `check --semantic` is **fail-closed**: with no `VERIFY.json` (or one recording
+  no verdicts) it exits non-zero, so a passing semantic exit always means the
+  support gate actually ran. Pass `--allow-unverified` to skip it explicitly.
+  The gate re-reduces pass/fail from the verdict list, so a hand-edited
+  `ok: true` over refuted verdicts cannot slip through.
 
 ## Good practice
 
