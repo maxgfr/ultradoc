@@ -134,19 +134,35 @@ function renderWorklistMd(wl: VerifyWorklist, total: number, kept: number): stri
   return out.join("\n");
 }
 
-// Phase B — read an agent-filled verdicts file (a `{ pairs: Verdict[] }` object
-// or a bare `Verdict[]` array), validate it, reduce it to a VerifyResult, and
-// persist VERIFY.json (the gate result + the full list, which `check --semantic`
-// and `render` read).
+// Phase B — read an agent-filled verdicts file (a `{ pairs: Verdict[] }` object,
+// a `{ verdicts: Verdict[] }` object — the shape the orchestrate-emitted skeptic
+// fragments return — or a bare `Verdict[]` array), validate it FAIL-CLOSED,
+// reduce it to a VerifyResult, and persist VERIFY.json (the gate result + the
+// full list, which `check --semantic` and `render` read).
 export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
   if (!existsSync(verdictsPath)) {
     throw new Error(`No verdicts file at ${verdictsPath} — adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
   }
   const raw = JSON.parse(readFileSync(verdictsPath, "utf8"));
-  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const list: any[] = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
+  // Fail closed: a file that yields no rows means the fold never engaged —
+  // exiting green here would silently discard the whole adjudication.
+  if (list.length === 0) {
+    throw new Error(`${verdictsPath}: no verdict rows found — expected a bare array, { pairs: [...] } or { verdicts: [...] } with at least one row.`);
+  }
+  const problems: string[] = [];
   const verdicts: Verdict[] = [];
-  for (const v of list) {
-    if (!v || typeof v.claimId !== "string" || typeof v.evidenceId !== "string") continue;
+  for (const [i, v] of (list as any[]).entries()) {
+    if (!v || typeof v.claimId !== "string" || typeof v.evidenceId !== "string") {
+      problems.push(`row ${i + 1}: missing claimId/evidenceId`);
+      continue;
+    }
+    // An explicit-but-unknown token is a typo, not an un-adjudication: hard-error
+    // beats silently downgrading a "REFUTED!!" to a warning-level unadjudicated.
+    if (v.verdict != null && !VALID_VERDICTS.includes(v.verdict)) {
+      problems.push(`row ${i + 1} (${v.claimId}:${v.evidenceId}): invalid verdict "${String(v.verdict)}" — expected ${VALID_VERDICTS.join("|")} or null`);
+      continue;
+    }
     const verdict = VALID_VERDICTS.includes(v.verdict) ? (v.verdict as VerdictKind) : (undefined as unknown as VerdictKind);
     verdicts.push({
       claimId: v.claimId,
@@ -158,6 +174,9 @@ export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
       verdict,
       note: typeof v.note === "string" ? v.note : "",
     });
+  }
+  if (problems.length) {
+    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
   }
   const result = reduceVerdicts(verdicts);
   writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));

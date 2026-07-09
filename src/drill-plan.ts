@@ -57,7 +57,10 @@ const IDENT_RE = /\b[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+\b|\b[a-z][a-z0-9]*
 // `code spans` are identifiers by declaration; "quoted strings" are literals
 // (error messages, config values) worth a pickaxe-style exact drill.
 const CODE_SPAN_RE = /`([^`\n]+)`/g;
-const QUOTED_RE = /"([^"\n]{3,})"|'([^'\n]{3,})'/g;
+// The single-quote branch requires word boundaries so contractions/possessives
+// ("what's", "Rust's") don't pair across words into nonsense literal queries
+// that burn drill cells at the cap.
+const QUOTED_RE = /"([^"\n]{3,})"|(?<![A-Za-z])'([^'\n]{3,})'(?![A-Za-z])/g;
 
 /** The 1–3 query variants of a question, playbook-style: the prose as asked,
  * the identifier forms the codebase probably uses, any quoted literal. */

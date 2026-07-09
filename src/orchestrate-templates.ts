@@ -113,7 +113,7 @@ const PHASE_SPECS: Record<string, PhaseSpec> = {
     schema: VERIFY_SCHEMA,
     description: (n) => `Adversarially verify the ${n} claim↔evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
     fold: 'merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ … ] })',
-    applyHint: (engine, _worklist, run) => `node ${engine} verify --apply verdicts.json --run ${run}`,
+    applyHint: (engine, _worklist, run) => `node ${engine} verify --apply verdicts.json --run ${run} && node ${engine} check --run ${run} --semantic`,
   },
   doc: {
     role: "section-writer",
@@ -179,7 +179,8 @@ export function phaseWorkflowScript(ph: PhaseInfo, runAbs: string, engineAbs: st
 }
 
 export function agentContracts(runAbs: string, engineAbs: string): Record<string, string> {
-  const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", runAbs);
+  // Function form: a path containing `$&`-style sequences must substitute literally.
+  const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", () => runAbs);
   return {
     explorer: `# Contract: explorer
 
@@ -190,7 +191,8 @@ Worklist: \`${join(runAbs, "drill-plan.json")}\` (an object with \`question\`, \
 For EACH of your cells:
 
 1. Compose the drill command — the cell's \`source\` maps to a CLI command (code→\`code\`, docs→\`docs\`, release→\`releases\`, history→\`history\`, issue→\`issues\`, pr→\`prs\`, discussion→\`discussions\`, so→\`so\`, web→\`web\`):
-   \`node ${engineAbs} <command> --repo <plan.repo> --q "<cell.query>"\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+   \`node ${engineAbs} <command> --repo <plan.repo> --q <cell.query>\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+   Queries are free text — quote them safely for YOUR shell (single-quote and escape embedded \`'\`; never paste a query into double quotes where \`$\`/backticks expand), and quote \`<plan.repo>\` too.
 2. Run it and read the printed evidence. These single-source drills print to stdout and write nothing — they are the only engine commands you may run.
 3. Triage before returning (playbook rules): keep an item only if its snippet names the symbol/behavior or describes the same mechanism, not just a shared keyword. Drop keyword-coincidences, vendored/example/fixture code, and superseded discussion.
 
