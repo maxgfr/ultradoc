@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.1.0](https://github.com/maxgfr/ultradoc/compare/v2.0.0...v2.1.0) (2026-07-09)
+
+
+### Features
+
+* **orchestrate:** engine-managed drill/verify/doc fan-out (family round) ([#13](https://github.com/maxgfr/ultradoc/issues/13)) ([3ea7e1e](https://github.com/maxgfr/ultradoc/commit/3ea7e1ed4acba67a1cb9067295e9cd71d8dd43bc))
+
 # [2.0.0](https://github.com/maxgfr/ultradoc/compare/v1.8.2...v2.0.0) (2026-07-08)
 
 
