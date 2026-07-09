@@ -12,6 +12,16 @@ to do it inline when you can't.
 > correctness-equivalent — only speed differs. Never block waiting for a capability
 > your harness doesn't have.
 
+> **The engine now EMITS this orchestration.** `ultradoc orchestrate --run <dir>`
+> turns the run's CURRENT worklists — `drill-plan.json` (written by `ask`),
+> `VERIFY.todo.json`, `DOC.plan.json` — into one launchable Workflow script per
+> ready phase, the `agents/<role>.md` dispatch contracts (explorer · skeptic ·
+> section-writer, each ending with the one-writer rule), and a sequential
+> `RUNBOOK.md`, all under `<run>/orchestration/` (`--eco` for the runbook +
+> contracts only; `--list` for readiness as JSON). This file remains the
+> rationale and the inline recipe when you run without it — the contracts below
+> are the same ones `orchestrate` bakes into per-run files.
+
 ## Why parallelize
 
 Recall is the first lever of a grounded answer: an answer is only as good as the

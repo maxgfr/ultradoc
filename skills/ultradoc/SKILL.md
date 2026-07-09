@@ -63,6 +63,11 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   answers (require every claim cited); `--semantic` also gates on `verify`'s
   verdicts and **fails when no `VERIFY.json` exists** (`--allow-unverified`
   downgrades that to a warning); `--answer <file>` validates a specific file.
+- `orchestrate --run <dir> [--phase drill|verify|doc] [--eco] [--list]` — emit the
+  run's multi-agent orchestration from its CURRENT worklists (`drill-plan.json`,
+  `VERIFY.todo.json`, `DOC.plan.json`): one launchable workflow per ready phase,
+  the `agents/<role>.md` dispatch contracts, and a sequential `RUNBOOK.md`.
+  See **Orchestration — route by harness** below.
 - `index --repo <...>` — build/print the structural index (debugging/inspection);
   lists discovered workspace packages for a monorepo.
 - `semantic up|down|status` — optional local vector backend (see below).
@@ -126,7 +131,9 @@ complete; don't return until it is. See `references/orchestration.md`.
    changed. The command prints the dossier path. Then treat the remaining
    variants × drill-sources as a fan-out — issue those independent drills as
    parallel calls in one message (or one subagent per cell). See
-   `references/orchestration.md`.
+   `references/orchestration.md`. `ask` also persists that matrix as
+   `drill-plan.json`; `orchestrate --run <dir> --phase drill` emits it as a
+   launchable workflow (see **Orchestration — route by harness**).
 
 3. **Read the dossier.** Open `EVIDENCE.md` in the run folder. Each item has an
    id (`[E1]`, `[E2]`, …), a provenance `ref`, and a snippet. This is your
@@ -175,7 +182,8 @@ complete; don't return until it is. See `references/orchestration.md`.
      fixing release). Run one skeptic per pair — fan out to subagents when
      available (each *returns* its verdict), else adjudicate each pair inline — and
      collect every verdict into a **single** `verdicts.json` (see
-     `references/orchestration.md`), then:
+     `references/orchestration.md`; `orchestrate --run <dir> --phase verify`
+     emits this fan-out — see **Orchestration — route by harness**), then:
      ```
      node scripts/ultradoc.mjs verify --apply verdicts.json --run <dossier-dir>
      node scripts/ultradoc.mjs check  --semantic --run <dossier-dir>
@@ -210,11 +218,40 @@ outline:
    `DOC.md` in the run folder: one section per outline entry, **every claim cited
    `[E#]`**. A section whose evidence is thin is a fan-out unit — drill it
    (`code|docs|issues …`) or mark the gap an explicit unknown; never write from
-   memory. The per-section work parallelizes — see `references/orchestration.md`.
+   memory. The per-section work parallelizes — see `references/orchestration.md`
+   (`orchestrate --run <doc-dir> --phase doc` emits it as a workflow; each
+   section-writer *returns* its draft and you assemble `DOC.md`).
 3. **Validate & present.** `node scripts/ultradoc.mjs check --run <doc-dir>`
    (and `verify` + `check --semantic` for the support gate, exactly as in step 6
    — both auto-detect `DOC.md`). Fix until grounded, then present `DOC.md` pinned
    to its commit.
+
+## Orchestration — route by harness
+
+The per-item work fans out: `drill-plan.json` (one cell per {query-variant ×
+source} drill, written by `ask`), `VERIFY.todo.json` (one claim↔evidence pair)
+and `DOC.plan.json` (one section per outline entry) are independent per-item
+worklists. The engine manages the fan-out — `orchestrate` emits the
+orchestration from the CURRENT worklists, with absolute paths and the real
+item ids baked in:
+
+```
+node scripts/ultradoc.mjs orchestrate --run <dir> [--phase drill|verify|doc] [--eco] [--list]
+```
+
+| Your harness | How to run each phase |
+|---|---|
+| Has the Workflow tool | `orchestrate --run <RUN> --phase <p>`, then `Workflow({ scriptPath: "<RUN>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments (triaged evidence · verdicts · section drafts); you fold them yourself (ANSWER.md · one `verdicts.json` · DOC.md), then run the gates as usual. |
+| Subagents but no Workflow tool | Same `orchestrate`; dispatch one subagent per batch following `<RUN>/orchestration/agents/<role>.md` (the workflow script shows batches + prompts). One writer: you fold results in. |
+| Eco mode, or no subagents | `orchestrate --run <RUN> --eco` → follow `<RUN>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+
+Fan-out is an optimization, never a requirement — the gates (`check`, `verify
+--apply`, `check --semantic`) are harness-independent and every phase has a
+sequential fallback with identical artifacts. Subagents never write: the
+emitted contracts end with the one-writer rule, and the folds always stay with
+you, the orchestrator. Re-run `orchestrate` whenever a worklist changes
+(emission is deterministic and idempotent); `--phase <p>` before its worklist
+exists fails and names the command that produces it.
 
 ## Optional semantic mode (fully local, no API key)
 

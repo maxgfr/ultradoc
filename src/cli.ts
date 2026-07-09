@@ -1,6 +1,6 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { VERSION } from "./types.js";
 import type { AskOptions, SourceKind, WebEngine, DossierMeta } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
@@ -13,6 +13,7 @@ import { assignIds } from "./dossier.js";
 import { semanticControl } from "./index/semantic.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
+import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
 
 const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -27,6 +28,7 @@ Usage:
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic [--allow-unverified]] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
+  ultradoc orchestrate --run <dossier-dir> [--phase drill|verify|doc] [--eco] [--list]
   ultradoc semantic up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
@@ -53,6 +55,12 @@ Commands:
              VERIFY.json exists (--allow-unverified downgrades to a warning).
   verify     Emit a claim↔evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
+  orchestrate  Emit the run's multi-agent orchestration from its CURRENT
+             worklists (drill-plan.json, VERIFY.todo.json, DOC.plan.json):
+             one launchable workflow per ready phase + the agents/<role>.md
+             dispatch contracts + a sequential RUNBOOK.md fallback, under
+             <run>/orchestration/. Subagents RETURN fragments; the folds
+             (verdicts.json, ANSWER.md/DOC.md) stay with the orchestrator.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
@@ -73,6 +81,11 @@ Options:
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
                                        (default: ANSWER.md, else DOC.md)
   --max-verify <n>     For 'verify': cap how many claim↔evidence pairs to emit  (default: 40)
+  --phase <name>       For 'orchestrate': emit one phase only — drill | verify | doc
+                       (exit 2 when its worklist does not exist yet)
+  --eco                For 'orchestrate': emit only RUNBOOK.md + agents/*.md — the
+                       explicit sequential low-token path (no workflow scripts)
+  --list               For 'orchestrate': print the phases + readiness as JSON
   --strict             For 'check': require EVERY claim to be cited (coverage 100%)
   --coverage-min <r>   For 'check': min fraction of claims that must cite [0..1] (default: 0.7)
   --semantic           Use the optional local vector backend (falls back if absent)
@@ -112,6 +125,7 @@ const COMMANDS = new Set([
   "index",
   "check",
   "verify",
+  "orchestrate",
   "semantic",
   "cache",
 ]);
@@ -132,8 +146,9 @@ const VALUE_FLAGS = new Set([
   "max-verify",
   "answer",
   "coverage-min",
+  "phase",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified"]);
+const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -546,6 +561,51 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         `ultradoc: ${wl.pairs.length} claim↔evidence pair(s) → ${rdir}/VERIFY.md & VERIFY.todo.json\n` +
           `  adjudicate each verdict, save as verdicts.json, then: ultradoc verify --apply verdicts.json --run ${rdir}\n`,
       );
+      return;
+    }
+
+    case "orchestrate": {
+      // Family invariant: missing --run / unknown phase / not-ready phase exit 2,
+      // and the error names the exact engine command that produces the worklist.
+      const dir = p.values.run ?? p.values.out;
+      if (!dir) {
+        process.stderr.write("ultradoc orchestrate: --run <dir> is required (the run dir holding the worklists).\n");
+        process.exit(2);
+      }
+      const engineAbs = realpathSync(fileURLToPath(import.meta.url));
+      if (p.bools.has("list")) {
+        if (!existsSync(dir)) {
+          process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.\n`);
+          process.exit(2);
+        }
+        process.stdout.write(JSON.stringify({ phases: listPhases(resolve(dir), engineAbs) }, null, 2) + "\n");
+        return;
+      }
+      const res = orchestrateRun(resolve(dir), engineAbs, {
+        phase: p.values.phase,
+        eco: p.bools.has("eco"),
+      });
+      if (res.exitCode !== 0) {
+        for (const e of res.errors) process.stderr.write(`ultradoc orchestrate: ${e}\n`);
+        process.exit(res.exitCode);
+      }
+      process.stdout.write("ultradoc orchestrate: generated\n");
+      for (const w of res.written) process.stdout.write(`  ${w}\n`);
+      for (const n of res.notices) process.stderr.write(`ultradoc orchestrate: note — ${n}\n`);
+      const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
+      if (workflows.length) {
+        process.stdout.write("\n");
+        for (const w of workflows) process.stdout.write(`Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })\n`);
+        process.stdout.write(
+          "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow — you stay the sole writer.\n",
+        );
+      } else {
+        process.stdout.write(`Follow ${join(resolve(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).\n`);
+        // Surface the valid phase names once, so a scripted caller can discover them without --help.
+        if (p.values.phase === undefined && !p.bools.has("eco")) {
+          process.stderr.write(`ultradoc orchestrate: no ready phase — phases are ${PHASES.join(", ")} (see --list).\n`);
+        }
+      }
       return;
     }
 

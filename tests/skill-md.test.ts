@@ -72,6 +72,8 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     const body = match?.[2] ?? "";
     const words = body.split(/\s+/).filter(Boolean).length;
     // A soft structural guard against re-inflating what belongs in references/.
-    expect(words).toBeLessThanOrEqual(2100);
+    // Raised from 2100 when the family-standard "Orchestration — route by
+    // harness" section (the `orchestrate` routing table) landed.
+    expect(words).toBeLessThanOrEqual(2500);
   });
 });

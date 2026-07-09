@@ -3,6 +3,7 @@ import { ensureIndex } from "./index/structural.js";
 import { resolvePackage } from "./index/workspaces.js";
 import { runSources } from "./sources/registry.js";
 import { assignIds, writeDossier, defaultRunDir } from "./dossier.js";
+import { buildDrillPlan, writeDrillPlan } from "./drill-plan.js";
 import type { AskOptions, RunContext, DossierMeta, EvidenceItem, SourceKind } from "./types.js";
 import type { DossierPaths } from "./dossier.js";
 
@@ -75,6 +76,19 @@ export async function runAsk(options: AskOptions): Promise<AskResult> {
   };
   const dir = options.out ?? defaultRunDir(ctx.repoDir);
   const paths = writeDossier(dir, evidence, meta);
+  // Persist the deterministic retrieval fan-out ({query-variant × drill-source}
+  // cells) beside the dossier — the worklist `orchestrate` fans out to explorer
+  // subagents, and the drill checklist a sequential agent walks by hand.
+  writeDrillPlan(
+    dir,
+    buildDrillPlan({
+      question: options.question,
+      repo: options.repo,
+      ref: options.ref,
+      pkg: ctx.scopePkg?.name,
+      askedSources: options.sources,
+    }),
+  );
   return { dir, evidence, meta, paths };
 }
 
