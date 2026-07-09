@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.1.1](https://github.com/maxgfr/ultradoc/compare/v2.1.0...v2.1.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **verify:** fail-closed fold + accept orchestrate fragment shape ([#14](https://github.com/maxgfr/ultradoc/issues/14)) ([c63b482](https://github.com/maxgfr/ultradoc/commit/c63b4826561aebf1e69e22206aff9d09c5cd997b))
+
 # [2.1.0](https://github.com/maxgfr/ultradoc/compare/v2.0.0...v2.1.0) (2026-07-09)
 
 
