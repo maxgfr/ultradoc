@@ -320,6 +320,12 @@ function applySemantic(dir: string, result: CheckResult, allowUnverified = false
   }
   const reduced = reduceVerdicts(sem.verdicts);
   result.semantic = { ...reduced, verdicts: sem.verdicts };
+  // A green semantic exit must mean the gate ENGAGED: rows whose verdicts were
+  // all dropped/absent leave 0 adjudications — that is a bypass, not a pass.
+  if (reduced.adjudicated === 0) {
+    unverified("VERIFY.json contains rows but 0 adjudicated verdicts — the support gate never engaged (re-run verify --apply with valid verdict tokens)");
+    return;
+  }
   if (!reduced.ok) {
     result.ok = false;
     result.errors.push(`Semantic verification failed: ${reduced.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);

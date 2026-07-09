@@ -87,7 +87,7 @@ const results = await pipeline(BATCHES, (batch, _item, i) =>
 
 // One-writer rule: this workflow only COLLECTS fragments. The main agent
 // merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ … ] }), then runs:
-//   node <ENGINE> verify --apply verdicts.json --run <RUN>
+//   node <ENGINE> verify --apply verdicts.json --run <RUN> && node <ENGINE> check --run <RUN> --semantic
 return { phase: "verify", worklist: WORKLIST, results: results.filter(Boolean) }
 "
 `;

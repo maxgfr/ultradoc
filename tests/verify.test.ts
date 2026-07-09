@@ -229,3 +229,46 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("applyVerdicts — fail-closed fold (orchestrate-round review)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ud-apply-"));
+  const row = (over: Record<string, unknown> = {}) => ({
+    claimId: "C1",
+    claim: "x",
+    evidenceId: "E1",
+    ref: "src/a.ts:1",
+    source: "code",
+    digest: "d",
+    verdict: "supported",
+    note: "ok",
+    ...over,
+  });
+  const save = (data: unknown) => {
+    const p = join(dir, `verdicts-${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(p, JSON.stringify(data));
+    return p;
+  };
+
+  it("accepts the emitted skeptic fragment key { verdicts: [...] }", () => {
+    const r = applyVerdicts(dir, save({ verdicts: [row()] }));
+    expect(r.supported).toBe(1);
+  });
+
+  it("hard-errors on an empty or key-less verdicts file instead of passing 0/0", () => {
+    expect(() => applyVerdicts(dir, save({ verdicts: [] }))).toThrow(/no verdict rows/i);
+    expect(() => applyVerdicts(dir, save({ something: [row()] }))).toThrow(/no verdict rows/i);
+  });
+
+  it("hard-errors on an invalid verdict token instead of silently unadjudicating it", () => {
+    expect(() => applyVerdicts(dir, save({ pairs: [row({ verdict: "REFUTED!!" })] }))).toThrow(/invalid verdict/i);
+  });
+
+  it("hard-errors when rows are dropped for missing ids", () => {
+    expect(() => applyVerdicts(dir, save({ pairs: [row(), { verdict: "supported" }] }))).toThrow(/missing claimId/i);
+  });
+
+  it("a null/absent verdict stays a legitimate unadjudicated row (not an error)", () => {
+    const r = applyVerdicts(dir, save({ pairs: [row({ verdict: null })] }));
+    expect(r.unadjudicated.length).toBeGreaterThan(0);
+  });
+});

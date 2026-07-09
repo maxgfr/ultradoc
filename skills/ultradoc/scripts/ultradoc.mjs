@@ -3554,7 +3554,7 @@ var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discu
 var MAX_DRILL_CELLS = 24;
 var IDENT_RE = /\b[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+\b|\b[a-z][a-z0-9]*(?:[A-Z][a-z0-9]+)+[a-zA-Z0-9]*\b|\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
 var CODE_SPAN_RE = /`([^`\n]+)`/g;
-var QUOTED_RE = /"([^"\n]{3,})"|'([^'\n]{3,})'/g;
+var QUOTED_RE = /"([^"\n]{3,})"|(?<![A-Za-z])'([^'\n]{3,})'(?![A-Za-z])/g;
 function deriveVariants(question) {
   const out = [{ variant: "prose", query: question }];
   const idents = [];
@@ -4345,10 +4345,21 @@ function applyVerdicts(dir, verdictsPath) {
     throw new Error(`No verdicts file at ${verdictsPath} \u2014 adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
   }
   const raw = JSON.parse(readFileSync7(verdictsPath, "utf8"));
-  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : [];
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
+  if (list.length === 0) {
+    throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { pairs: [...] } or { verdicts: [...] } with at least one row.`);
+  }
+  const problems = [];
   const verdicts = [];
-  for (const v of list) {
-    if (!v || typeof v.claimId !== "string" || typeof v.evidenceId !== "string") continue;
+  for (const [i, v] of list.entries()) {
+    if (!v || typeof v.claimId !== "string" || typeof v.evidenceId !== "string") {
+      problems.push(`row ${i + 1}: missing claimId/evidenceId`);
+      continue;
+    }
+    if (v.verdict != null && !VALID_VERDICTS.includes(v.verdict)) {
+      problems.push(`row ${i + 1} (${v.claimId}:${v.evidenceId}): invalid verdict "${String(v.verdict)}" \u2014 expected ${VALID_VERDICTS.join("|")} or null`);
+      continue;
+    }
     const verdict = VALID_VERDICTS.includes(v.verdict) ? v.verdict : void 0;
     verdicts.push({
       claimId: v.claimId,
@@ -4360,6 +4371,10 @@ function applyVerdicts(dir, verdictsPath) {
       verdict,
       note: typeof v.note === "string" ? v.note : ""
     });
+  }
+  if (problems.length) {
+    throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) \u2014 fix them and re-apply (fail-closed):
+  - ${problems.join("\n  - ")}`);
   }
   const result = reduceVerdicts(verdicts);
   writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
@@ -4637,6 +4652,10 @@ function applySemantic(dir, result, allowUnverified = false) {
   }
   const reduced = reduceVerdicts(sem.verdicts);
   result.semantic = { ...reduced, verdicts: sem.verdicts };
+  if (reduced.adjudicated === 0) {
+    unverified("VERIFY.json contains rows but 0 adjudicated verdicts \u2014 the support gate never engaged (re-run verify --apply with valid verdict tokens)");
+    return;
+  }
   if (!reduced.ok) {
     result.ok = false;
     result.errors.push(`Semantic verification failed: ${reduced.failures.length} claim(s) refuted or unsupported by their cited evidence (see VERIFY.json).`);
@@ -4955,7 +4974,7 @@ var PHASE_SPECS = {
     schema: VERIFY_SCHEMA,
     description: (n) => `Adversarially verify the ${n} claim\u2194evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
     fold: 'merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ \u2026 ] })',
-    applyHint: (engine, _worklist, run2) => `node ${engine} verify --apply verdicts.json --run ${run2}`
+    applyHint: (engine, _worklist, run2) => `node ${engine} verify --apply verdicts.json --run ${run2} && node ${engine} check --run ${run2} --semantic`
   },
   doc: {
     role: "section-writer",
@@ -5016,7 +5035,7 @@ function phaseWorkflowScript(ph, runAbs, engineAbs, batchSize) {
   ].join("\n");
 }
 function agentContracts(runAbs, engineAbs) {
-  const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", runAbs);
+  const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", () => runAbs);
   return {
     explorer: `# Contract: explorer
 
@@ -5027,7 +5046,8 @@ Worklist: \`${join19(runAbs, "drill-plan.json")}\` (an object with \`question\`,
 For EACH of your cells:
 
 1. Compose the drill command \u2014 the cell's \`source\` maps to a CLI command (code\u2192\`code\`, docs\u2192\`docs\`, release\u2192\`releases\`, history\u2192\`history\`, issue\u2192\`issues\`, pr\u2192\`prs\`, discussion\u2192\`discussions\`, so\u2192\`so\`, web\u2192\`web\`):
-   \`node ${engineAbs} <command> --repo <plan.repo> --q "<cell.query>"\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+   \`node ${engineAbs} <command> --repo <plan.repo> --q <cell.query>\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+   Queries are free text \u2014 quote them safely for YOUR shell (single-quote and escape embedded \`'\`; never paste a query into double quotes where \`$\`/backticks expand), and quote \`<plan.repo>\` too.
 2. Run it and read the printed evidence. These single-source drills print to stdout and write nothing \u2014 they are the only engine commands you may run.
 3. Triage before returning (playbook rules): keep an item only if its snippet names the symbol/behavior or describes the same mechanism, not just a shared keyword. Drop keyword-coincidences, vendored/example/fixture code, and superseded discussion.
 
