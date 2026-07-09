@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { resolve as resolve2 } from "path";
+import { join as join21, resolve as resolve3 } from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { realpathSync } from "fs";
+import { existsSync as existsSync12, realpathSync } from "fs";
 
 // src/types.ts
 var VERSION = "2.0.0";
@@ -3547,6 +3547,66 @@ async function runSources(ctx) {
   }));
 }
 
+// src/drill-plan.ts
+import { writeFileSync as writeFileSync6 } from "fs";
+import { join as join13 } from "path";
+var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
+var MAX_DRILL_CELLS = 24;
+var IDENT_RE = /\b[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+\b|\b[a-z][a-z0-9]*(?:[A-Z][a-z0-9]+)+[a-zA-Z0-9]*\b|\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
+var CODE_SPAN_RE = /`([^`\n]+)`/g;
+var QUOTED_RE = /"([^"\n]{3,})"|'([^'\n]{3,})'/g;
+function deriveVariants(question) {
+  const out = [{ variant: "prose", query: question }];
+  const idents = [];
+  const seen = /* @__PURE__ */ new Set();
+  const push = (tok) => {
+    const t = tok.trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      idents.push(t);
+    }
+  };
+  let rest = question;
+  for (const m of question.matchAll(CODE_SPAN_RE)) {
+    push(m[1]);
+    rest = rest.replace(m[0], " ");
+  }
+  const noQuotes = rest.replace(QUOTED_RE, " ");
+  for (const m of noQuotes.matchAll(IDENT_RE)) push(m[0]);
+  if (idents.length) out.push({ variant: "identifier", query: idents.join(" ") });
+  const literals = [];
+  for (const m of rest.matchAll(QUOTED_RE)) {
+    const lit = (m[1] ?? m[2]).trim();
+    if (lit && !literals.includes(lit)) literals.push(lit);
+  }
+  if (literals.length) out.push({ variant: "literal", query: literals.join(" ") });
+  return out;
+}
+function buildDrillPlan(opts) {
+  const cells = [];
+  let n = 0;
+  for (const v of deriveVariants(opts.question)) {
+    for (const source of DRILL_SOURCES) {
+      if (v.variant === "prose" && opts.askedSources.includes(source)) continue;
+      if (cells.length >= MAX_DRILL_CELLS) break;
+      cells.push({ id: `D${++n}`, variant: v.variant, query: v.query, source });
+    }
+  }
+  return {
+    question: opts.question,
+    repo: opts.repo,
+    ...opts.ref ? { ref: opts.ref } : {},
+    ...opts.pkg ? { pkg: opts.pkg } : {},
+    askedSources: opts.askedSources,
+    cells
+  };
+}
+function writeDrillPlan(dir, plan) {
+  const p = join13(dir, "drill-plan.json");
+  writeFileSync6(p, JSON.stringify(plan, null, 2));
+  return p;
+}
+
 // src/ask.ts
 function buildContext(options) {
   const t0 = Date.now();
@@ -3596,6 +3656,16 @@ async function runAsk(options) {
   };
   const dir = options.out ?? defaultRunDir(ctx.repoDir);
   const paths = writeDossier(dir, evidence, meta);
+  writeDrillPlan(
+    dir,
+    buildDrillPlan({
+      question: options.question,
+      repo: options.repo,
+      ref: options.ref,
+      pkg: ctx.scopePkg?.name,
+      askedSources: options.sources
+    })
+  );
   return { dir, evidence, meta, paths };
 }
 async function runSingleSource(options, kind) {
@@ -3605,20 +3675,20 @@ async function runSingleSource(options, kind) {
 }
 
 // src/doc.ts
-import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync7 } from "fs";
-import { basename as basename3, join as join14 } from "path";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync8 } from "fs";
+import { basename as basename3, join as join15 } from "path";
 
 // src/overview.ts
-import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync6, writeFileSync as writeFileSync6 } from "fs";
-import { basename as basename2, dirname as dirname3, join as join13 } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync6, writeFileSync as writeFileSync7 } from "fs";
+import { basename as basename2, dirname as dirname3, join as join14 } from "path";
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join13(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join14(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join13(repoDir, readme));
+  const text = readText(join14(repoDir, readme));
   const out = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -3735,7 +3805,7 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
   }
   const markdown = renderOverview(index, ref, repoDir);
   mkdirSync7(dirname3(path), { recursive: true });
-  writeFileSync6(path, markdown);
+  writeFileSync7(path, markdown);
   return { path, markdown, cached: false };
 }
 
@@ -3771,7 +3841,7 @@ function detectProjectTraits(repoDir, index) {
   const bases = new Map(index.configFiles.map((f) => [f.split("/").pop().toLowerCase(), f]));
   const readCfg = (base) => {
     const rel = bases.get(base);
-    return rel ? readText(join14(repoDir, rel)) : "";
+    return rel ? readText(join15(repoDir, rel)) : "";
   };
   let isCli = false;
   const pkg = readCfg("package.json");
@@ -3875,8 +3945,8 @@ function renderDocTodo(plan, evidence) {
   return out.join("\n");
 }
 function defaultDocDir(repoDir, scopePkg) {
-  const base = join14(indexDir(repoDir), "doc");
-  return scopePkg ? join14(base, slugify(scopePkg.name)) : base;
+  const base = join15(indexDir(repoDir), "doc");
+  return scopePkg ? join15(base, slugify(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
@@ -3928,16 +3998,16 @@ async function runDoc(options, opts = {}) {
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
   mkdirSync8(dir, { recursive: true });
-  const evidenceJson = join14(dir, "evidence.json");
-  const evidenceMd = join14(dir, "EVIDENCE.md");
-  const planJson = join14(dir, "DOC.plan.json");
-  const todoMd = join14(dir, "DOC.todo.md");
-  const metaJson = join14(dir, "meta.json");
-  writeFileSync7(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync7(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync7(planJson, JSON.stringify(plan, null, 2));
-  writeFileSync7(todoMd, renderDocTodo(plan, evidence));
-  writeFileSync7(metaJson, JSON.stringify(meta, null, 2));
+  const evidenceJson = join15(dir, "evidence.json");
+  const evidenceMd = join15(dir, "EVIDENCE.md");
+  const planJson = join15(dir, "DOC.plan.json");
+  const todoMd = join15(dir, "DOC.todo.md");
+  const metaJson = join15(dir, "meta.json");
+  writeFileSync8(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync8(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync8(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync8(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync8(metaJson, JSON.stringify(meta, null, 2));
   let overviewPath2;
   try {
     overviewPath2 = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir).path;
@@ -3948,7 +4018,7 @@ async function runDoc(options, opts = {}) {
 
 // src/check.ts
 import { existsSync as existsSync9, readFileSync as readFileSync8 } from "fs";
-import { basename as basename4, dirname as dirname4, join as join16, resolve as resolvePath, sep as sep3 } from "path";
+import { basename as basename4, dirname as dirname4, join as join17, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
@@ -4178,8 +4248,8 @@ function claimCoverage(text, _evidence) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync8, readFileSync as readFileSync7, writeFileSync as writeFileSync8 } from "fs";
-import { join as join15 } from "path";
+import { existsSync as existsSync8, readFileSync as readFileSync7, writeFileSync as writeFileSync9 } from "fs";
+import { join as join16 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -4192,7 +4262,7 @@ function claimStrings(text) {
   return out;
 }
 function runVerify(dir, opts = {}) {
-  const evidencePath = join15(dir, "evidence.json");
+  const evidencePath = join16(dir, "evidence.json");
   if (!existsSync8(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
   const evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
@@ -4233,8 +4303,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims
   };
-  writeFileSync8(join15(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync8(join15(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync9(join16(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync9(join16(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -4292,7 +4362,7 @@ function applyVerdicts(dir, verdictsPath) {
     });
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync8(join15(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
   return result;
 }
 function reduceVerdicts(verdicts) {
@@ -4348,11 +4418,11 @@ function formatVerifyReport(r) {
 var COVERAGE_MIN_DEFAULT = 0.7;
 function resolveAnswerPath(dir, answerFile) {
   if (answerFile) {
-    const p = join16(dir, answerFile);
+    const p = join17(dir, answerFile);
     return existsSync9(p) ? p : null;
   }
   for (const name of ["ANSWER.md", "DOC.md"]) {
-    const p = join16(dir, name);
+    const p = join17(dir, name);
     if (existsSync9(p)) return p;
   }
   return null;
@@ -4373,7 +4443,7 @@ var REVALIDATION = {
 function pinnedClone(dir) {
   const pin = { headMatches: false };
   try {
-    const metaPath = join16(dir, "meta.json");
+    const metaPath = join17(dir, "meta.json");
     if (!existsSync9(metaPath)) return pin;
     const meta = JSON.parse(readFileSync8(metaPath, "utf8"));
     pin.meta = meta;
@@ -4516,7 +4586,7 @@ function headingsOf(answer) {
 }
 function missingDocSections(dir, answerPath, answer) {
   if (basename4(answerPath) !== "DOC.md") return void 0;
-  const planPath = join16(dir, "DOC.plan.json");
+  const planPath = join17(dir, "DOC.plan.json");
   if (!existsSync9(planPath)) return void 0;
   let plan;
   try {
@@ -4540,7 +4610,7 @@ function dossierRepoDir(dir) {
   return void 0;
 }
 function applySemantic(dir, result, allowUnverified = false) {
-  const p = join16(dir, "VERIFY.json");
+  const p = join17(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
     if (allowUnverified) {
@@ -4580,7 +4650,7 @@ function checkRun(dir, opts = {}) {
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
-  const evidencePath = join16(dir, "evidence.json");
+  const evidencePath = join17(dir, "evidence.json");
   if (!existsSync9(evidencePath)) {
     return {
       ok: false,
@@ -4722,7 +4792,7 @@ function formatCheckReport(r, dir) {
 
 // src/cache.ts
 import { existsSync as existsSync10, readdirSync as readdirSync4, rmSync, statSync as statSync6 } from "fs";
-import { join as join17 } from "path";
+import { join as join18 } from "path";
 function dirSize(dir) {
   let total = 0;
   let entries;
@@ -4732,7 +4802,7 @@ function dirSize(dir) {
     return 0;
   }
   for (const name of entries) {
-    const p = join17(dir, name);
+    const p = join18(dir, name);
     let st;
     try {
       st = statSync6(p);
@@ -4751,7 +4821,7 @@ function cacheStatus() {
   try {
     slugs = readdirSync4(root).filter((n) => {
       try {
-        return statSync6(join17(root, n)).isDirectory();
+        return statSync6(join18(root, n)).isDirectory();
       } catch {
         return false;
       }
@@ -4760,7 +4830,7 @@ function cacheStatus() {
   }
   for (const slug of slugs) {
     if (slug === "compose") continue;
-    const dir = join17(root, slug);
+    const dir = join18(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
@@ -4781,7 +4851,7 @@ function cacheClean(opts) {
   }
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
-    const dir = join17(root, slug);
+    const dir = join18(root, slug);
     if (existsSync10(dir)) {
       rmSync(dir, { recursive: true, force: true });
       removed.push(slug);
@@ -4799,6 +4869,369 @@ function formatCacheStatus(s) {
   return lines.join("\n");
 }
 
+// src/orchestrate.ts
+import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync10 } from "fs";
+import { join as join20, resolve as resolve2 } from "path";
+
+// src/orchestrate-templates.ts
+import { join as join19 } from "path";
+var ONE_WRITER_FOOTER = `
+## Return, don't write
+
+Return ONLY the structured output specified above. Do NOT write, edit, or delete any file; do NOT run any engine command that writes (\`ask\`, \`doc\`, \`verify --run\`, \`verify --apply\`, \`overview\`, \`index\`, \`semantic up|down\`, \`cache clean\`). The orchestrator is the sole writer \u2014 it folds your fragments into the run itself and runs the grounding gates. Exception: if a justification is prose too large to return, write ONLY to \`<RUN>/orchestration/out/<role>-<batch>.md\` (a file namespaced to you alone) and return its path.
+`;
+var DRILL_SCHEMA = {
+  type: "object",
+  required: ["items"],
+  properties: {
+    items: {
+      type: "array",
+      maxItems: 8,
+      description: "the \u22648 triaged evidence items for this WHOLE leaf (the lean-return contract)",
+      items: {
+        type: "object",
+        required: ["cell", "ref", "quote"],
+        properties: {
+          cell: { type: "string", description: "the drill cell id (D#)" },
+          ref: { type: "string", description: "file:line / issue#N / pr#N / url" },
+          source: { type: "string" },
+          evidenceId: { type: "string", description: "the [E#] id when the item already exists in the run's dossier" },
+          quote: { type: "string", description: "the single load-bearing quote" }
+        }
+      }
+    },
+    dry: { type: "array", items: { type: "string" }, description: "cell ids that surfaced nothing on-topic" }
+  }
+};
+var VERIFY_SCHEMA = {
+  type: "object",
+  required: ["verdicts"],
+  properties: {
+    verdicts: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["claimId", "evidenceId", "verdict", "note"],
+        properties: {
+          claimId: { type: "string" },
+          evidenceId: { type: "string" },
+          verdict: { enum: ["supported", "partial", "refuted", "unsupported"] },
+          note: { type: "string", description: "one line grounded in the digest/current source you read" }
+        }
+      }
+    }
+  }
+};
+var DOC_SCHEMA = {
+  type: "object",
+  required: ["sections"],
+  properties: {
+    sections: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "markdown"],
+        properties: {
+          id: { type: "string", description: "the section id (S#)" },
+          markdown: { type: "string", description: "the section's cited prose (heading included, every claim cites [E#])" },
+          gaps: { type: "array", items: { type: "string" }, description: "sub-topics the evidence does not settle (explicit unknowns)" }
+        }
+      }
+    }
+  }
+};
+var PHASE_SPECS = {
+  drill: {
+    role: "explorer",
+    title: "Drill",
+    schema: DRILL_SCHEMA,
+    description: (n) => `Fan out the ${n} retrieval drill cell(s) of an ultradoc run (explorer fan-out, triaged returns)`,
+    fold: "triages the returned items into the answer (citing resolvable [E#]/refs, drilling any new lead itself)",
+    applyHint: (engine, _worklist, run2) => `node ${engine} check --run ${run2} --strict`
+  },
+  verify: {
+    role: "skeptic",
+    title: "Verify",
+    schema: VERIFY_SCHEMA,
+    description: (n) => `Adversarially verify the ${n} claim\u2194evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
+    fold: 'merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ \u2026 ] })',
+    applyHint: (engine, _worklist, run2) => `node ${engine} verify --apply verdicts.json --run ${run2}`
+  },
+  doc: {
+    role: "section-writer",
+    title: "Write",
+    schema: DOC_SCHEMA,
+    description: (n) => `Draft the ${n} outline section(s) of an ultradoc reference doc (section-writer fan-out)`,
+    fold: "assembles the returned section drafts into DOC.md in plan order",
+    applyHint: (engine, _worklist, run2) => `node ${engine} check --run ${run2}`
+  }
+};
+function phaseSpec(name) {
+  const spec = PHASE_SPECS[name];
+  if (!spec) throw new Error(`no phase spec for "${name}"`);
+  return spec;
+}
+function toBatches(ids, batchSize) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += batchSize) out.push(ids.slice(i, i + batchSize));
+  return out;
+}
+function phaseWorkflowScript(ph, runAbs, engineAbs, batchSize) {
+  const spec = phaseSpec(ph.name);
+  const scriptPath = join19(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const meta = { name: `ultradoc-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
+  return [
+    `export const meta = ${JSON.stringify(meta)}`,
+    ``,
+    `// NOT a plain Node script: launch via the Workflow tool \u2014 Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
+    `// Emitted by \`ultradoc orchestrate\` from the CURRENT worklist. The worklist is the source`,
+    `// of truth: if it changes, re-run \`orchestrate --phase ${ph.name}\` before launching.`,
+    ``,
+    `// Constants for THIS run (injected at emit time; no Date.now/Math.random in this harness).`,
+    `const RUN = ${JSON.stringify(runAbs)}`,
+    `const ENGINE = ${JSON.stringify(engineAbs)}`,
+    `const WORKLIST = ${JSON.stringify(ph.worklist)}`,
+    `const AGENTS = RUN + '/orchestration/agents'`,
+    `const BATCHES = ${JSON.stringify(toBatches(ph.ids, batchSize))}`,
+    `const SCHEMA = ${JSON.stringify(spec.schema)}`,
+    ``,
+    `function contract(name, extra) {`,
+    `  return 'Read and follow the dispatch contract at ' + AGENTS + '/' + name + '.md VERBATIM.\\n'`,
+    `    + 'Constants: RUN=' + RUN + '  ENGINE=' + ENGINE + '  WORKLIST=' + WORKLIST + '.\\n'`,
+    `    + 'Invoke the engine only by its ABSOLUTE path: node ' + ENGINE + ' <cmd> \u2014 read-only commands only.'`,
+    `    + (extra ? '\\n' + extra : '')`,
+    `}`,
+    ``,
+    `log('ultradoc ${ph.name}: ' + ${JSON.stringify(String(ph.items))} + ' item(s) across ' + BATCHES.length + ' agent(s)')`,
+    ``,
+    `phase(${JSON.stringify(spec.title)})`,
+    `const results = await pipeline(BATCHES, (batch, _item, i) =>`,
+    `  agent(contract('${spec.role}', 'ITEMS=' + batch.join(',')), { label: '${ph.name}:' + (i + 1), phase: ${JSON.stringify(spec.title)}, agentType: 'general-purpose', schema: SCHEMA }))`,
+    ``,
+    `// One-writer rule: this workflow only COLLECTS fragments. The main agent`,
+    `// ${spec.fold}, then runs:`,
+    `//   ${spec.applyHint(engineAbs, ph.worklist, runAbs)}`,
+    `return { phase: ${JSON.stringify(ph.name)}, worklist: WORKLIST, results: results.filter(Boolean) }`,
+    ``
+  ].join("\n");
+}
+function agentContracts(runAbs, engineAbs) {
+  const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", runAbs);
+  return {
+    explorer: `# Contract: explorer
+
+You run ONE slice of an ultradoc retrieval fan-out \u2014 a few drill cells, each one stateless, read-only CLI call against the cached clone+index. Recall is the first lever of a grounded answer: your cells are exactly the query-variant \xD7 source pairs the seed \`ask\` did not cover.
+
+Worklist: \`${join19(runAbs, "drill-plan.json")}\` (an object with \`question\`, \`repo\`, optional \`ref\`/\`pkg\`, and \`cells[]\`; each cell has \`id\`, \`variant\`, \`query\`, \`source\`). Handle ONLY the cells whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+
+For EACH of your cells:
+
+1. Compose the drill command \u2014 the cell's \`source\` maps to a CLI command (code\u2192\`code\`, docs\u2192\`docs\`, release\u2192\`releases\`, history\u2192\`history\`, issue\u2192\`issues\`, pr\u2192\`prs\`, discussion\u2192\`discussions\`, so\u2192\`so\`, web\u2192\`web\`):
+   \`node ${engineAbs} <command> --repo <plan.repo> --q "<cell.query>"\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+2. Run it and read the printed evidence. These single-source drills print to stdout and write nothing \u2014 they are the only engine commands you may run.
+3. Triage before returning (playbook rules): keep an item only if its snippet names the symbol/behavior or describes the same mechanism, not just a shared keyword. Drop keyword-coincidences, vendored/example/fixture code, and superseded discussion.
+
+Return ONLY triaged evidence (structured output): \`{ "items": [{ "cell", "ref", "source", "evidenceId", "quote" }], "dry": [cell ids that surfaced nothing on-topic] }\` \u2014 for each kept item, its \`ref\` (file:line / issue#/pr#/url), its evidence id if it came from the run's dossier, and the single load-bearing quote. **Max ~8 items per leaf.** **Never return the raw dossier** \u2014 a subagent that dumps printed EVIDENCE output back is worse than no subagent, because the whole point was to keep the orchestrator's context lean.
+${footer}`,
+    skeptic: `# Contract: skeptic
+
+You are an adversarial skeptic verifying that an ultradoc answer's citations actually SUPPORT its claims. Default to disbelief: the cited evidence must back the claim, not merely mention its keywords.
+
+Worklist: \`${join19(runAbs, "VERIFY.todo.json")}\` (an object with \`pairs[]\`; each pair has \`claimId\`, \`claim\`, \`evidenceId\`, \`ref\`, \`source\`, \`digest\`, and sometimes \`crossCheck: true\`). Handle ONLY the pairs whose \`<claimId>:<evidenceId>\` id is named in your prompt (\`ITEMS=<id,\u2026>\`).
+
+For EACH of your pairs:
+
+1. Read the \`claim\` against the \`digest\` (the cited item's snippet). When the digest alone cannot settle it, open the underlying source (\`ref\`: a file in the pinned clone, an issue/PR, a doc/web url).
+2. Judge whether the evidence supports the claim:
+   - \`supported\` \u2014 the digest literally states the claim.
+   - \`partial\` \u2014 the digest backs some of the claim but not all of it.
+   - \`unsupported\` \u2014 the digest is on-topic but does **not** state the claim.
+   - \`refuted\` \u2014 the digest **contradicts** the claim.
+   When unsure, choose the HARSHER verdict (\`unsupported\` over \`partial\`) \u2014 a false pass is worse than a false fail.
+3. A pair flagged \`crossCheck\` (\u26A0 cross-check in VERIFY.md) is grounded in an issue or PR \u2014 a tracker thread describes behavior at a point in time. Judge it against the CURRENT code: if the current source contradicts the claim, mark it \`refuted\`; if the behavior changed later, mark it \`partial\` and demand a temporal qualifier citing the fixing release. Never present stale tracker behavior as current just because the claim is faithful to the thread.
+4. \`note\` is REQUIRED \u2014 one line grounded in what you read (quote or paraphrase the decisive text).
+
+Return (structured output): \`{ "verdicts": [{ "claimId", "evidenceId", "verdict", "note" }] }\` \u2014 your ITEMS only.
+${footer}`,
+    "section-writer": `# Contract: section-writer
+
+You draft section(s) of an ultradoc grounded reference doc. The engine already retrieved and merged the evidence; your job is cited prose, not new retrieval.
+
+Worklist: \`${join19(runAbs, "DOC.plan.json")}\` (a plan with \`sections[]\`; each section has \`id\`, \`title\`, \`query\`, \`evidenceIds\`). Handle ONLY the sections whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+
+For EACH of your sections:
+
+1. Read its entry in \`${join19(runAbs, "DOC.todo.md")}\` and the cited snippets in \`${join19(runAbs, "EVIDENCE.md")}\` (\`evidence.json\` holds the full items).
+2. Draft the section's markdown: its heading plus grounded prose where EVERY factual claim cites a resolvable evidence id like \`[E3]\`. Cite only ids that exist in the run's \`evidence.json\`; never write from memory.
+3. Thin evidence? You may drill read-only for context (\`node ${engineAbs} code|docs|issues|prs|releases|history|discussions|so|web --repo \u2026 --q "\u2026"\`), but a claim may still only cite the run's existing \`[E#]\` ids \u2014 anything the dossier does not contain stays a gap.
+4. State what the evidence does not settle in \`gaps\` (explicit unknowns) instead of papering over it.
+
+Return (structured output): \`{ "sections": [{ "id", "markdown", "gaps" }] }\` \u2014 your ITEMS only. The orchestrator assembles \`DOC.md\` in plan order and runs the check gate.
+${footer}`
+  };
+}
+function runbookMd(phases, runAbs, engineAbs) {
+  const status = phases.map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`).join("\n");
+  const engine = `node ${engineAbs}`;
+  return `# ultradoc \u2014 sequential RUNBOOK (eco / no-subagent fallback)
+
+Run: \`${runAbs}\` \xB7 Engine: \`${engine}\`
+
+Generated by \`ultradoc orchestrate\` from the CURRENT run state. This sequential path is
+correctness-identical to the multi-agent workflows \u2014 same worklists, same contracts, same
+grounding gates; only wall-clock differs. Fan-out is an optimization, not a requirement.
+
+## Phase status
+
+| Phase | Worklist | Status | Produce it with |
+|---|---|---|---|
+${status}
+
+## The loop (play every role yourself, one item at a time)
+
+1. **Seed** (if not done): \`${engine} ask --repo <url|path> --q "<question>" --out ${runAbs}\` \u2192 \`${join19(runAbs, "EVIDENCE.md")}\`, \`${join19(runAbs, "evidence.json")}\` and the drill plan \`${join19(runAbs, "drill-plan.json")}\`.
+2. **Drill the plan** \u2014 for EVERY cell in \`${join19(runAbs, "drill-plan.json")}\`, apply \`${join19(runAbs, "orchestration", "agents", "explorer.md")}\` yourself (run the cell's read-only drill command, triage, keep \u22648 items per round). When your harness runs parallel tool-calls, batch the independent drills of a round in one message.
+3. **Write** \`${join19(runAbs, "ANSWER.md")}\` (cite \`[E#]\`), then gate: \`${engine} check --run ${runAbs} --strict\`.
+4. **Verify the claims** \u2014 \`${engine} verify --run ${runAbs}\` writes \`${join19(runAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join19(runAbs, "orchestration", "agents", "skeptic.md")}\` yourself (verdict supported/partial/refuted/unsupported + note), collect every verdict into ONE \`${join19(runAbs, "verdicts.json")}\`, then fold: \`${engine} verify --apply verdicts.json --run ${runAbs}\`.
+5. **Gate**: \`${engine} check --semantic --run ${runAbs}\` must exit 0 before presenting anything.
+6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join19(runAbs, "DOC.plan.json")}\` + \`${join19(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join19(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join19(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
+
+With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join19(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+`;
+}
+
+// src/orchestrate.ts
+var PHASES = ["drill", "verify", "doc"];
+var SMALL_WORKLIST = 3;
+var BATCH_SIZE = 8;
+function listPhases(runDir, engineAbs) {
+  const run2 = resolve2(runDir);
+  const drillPath = join20(run2, "drill-plan.json");
+  let drillIds = [];
+  let drillReady = false;
+  if (existsSync11(drillPath)) {
+    try {
+      const plan = JSON.parse(readFileSync9(drillPath, "utf8"));
+      if (plan && Array.isArray(plan.cells)) {
+        drillReady = true;
+        drillIds = plan.cells.map((c2) => c2.id);
+      }
+    } catch {
+    }
+  }
+  const verPath = join20(run2, "VERIFY.todo.json");
+  let verIds = [];
+  let verReady = false;
+  if (existsSync11(verPath)) {
+    try {
+      const todo = JSON.parse(readFileSync9(verPath, "utf8"));
+      if (todo && Array.isArray(todo.pairs)) {
+        verReady = true;
+        verIds = todo.pairs.map((p) => `${p.claimId}:${p.evidenceId}`);
+      }
+    } catch {
+    }
+  }
+  const docPath = join20(run2, "DOC.plan.json");
+  let docIds = [];
+  let docReady = false;
+  if (existsSync11(docPath)) {
+    try {
+      const plan = JSON.parse(readFileSync9(docPath, "utf8"));
+      if (plan && Array.isArray(plan.sections)) {
+        docReady = true;
+        docIds = plan.sections.map((s) => s.id);
+      }
+    } catch {
+    }
+  }
+  return [
+    {
+      name: "drill",
+      ready: drillReady,
+      worklist: drillPath,
+      items: drillIds.length,
+      ids: drillIds,
+      prerequisite: `node ${engineAbs} ask --repo <url|path> --q "<question>" --out ${run2}`
+    },
+    {
+      name: "verify",
+      ready: verReady,
+      worklist: verPath,
+      items: verIds.length,
+      ids: verIds,
+      prerequisite: `node ${engineAbs} verify --run ${run2}`
+    },
+    {
+      name: "doc",
+      ready: docReady,
+      worklist: docPath,
+      items: docIds.length,
+      ids: docIds,
+      prerequisite: `node ${engineAbs} doc --repo <url|path> --out ${run2}`
+    }
+  ];
+}
+function orchestrateRun(runDir, engineAbs, opts = {}) {
+  const run2 = resolve2(runDir);
+  if (!existsSync11(run2)) {
+    return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run2}`], phases: [] };
+  }
+  const phases = listPhases(run2, engineAbs);
+  let selected = phases.filter((p) => p.ready);
+  if (opts.phase !== void 0) {
+    const ph = phases.find((p) => p.name === opts.phase);
+    if (!ph) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`unknown phase "${opts.phase}" \u2014 expected one of: ${PHASES.join(", ")}.`],
+        phases
+      };
+    }
+    if (!ph.ready) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`phase "${ph.name}" is not ready \u2014 its worklist ${ph.worklist} does not exist yet. Produce it first: ${ph.prerequisite}`],
+        phases
+      };
+    }
+    selected = [ph];
+  }
+  const orchDir = join20(run2, "orchestration");
+  const agentsDir = join20(orchDir, "agents");
+  mkdirSync9(join20(orchDir, "out"), { recursive: true });
+  mkdirSync9(agentsDir, { recursive: true });
+  const written = [];
+  const notices = [];
+  for (const [name, content] of Object.entries(agentContracts(run2, engineAbs))) {
+    const p = join20(agentsDir, `${name}.md`);
+    writeFileSync10(p, content);
+    written.push(p);
+  }
+  if (!opts.eco) {
+    for (const ph of selected) {
+      if (ph.items === 0) {
+        notices.push(`phase "${ph.name}": worklist is empty \u2014 nothing to orchestrate.`);
+        continue;
+      }
+      if (ph.items <= SMALL_WORKLIST) {
+        notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
+      }
+      const p = join20(orchDir, `${ph.name}.workflow.mjs`);
+      writeFileSync10(p, phaseWorkflowScript(ph, run2, engineAbs, BATCH_SIZE));
+      written.push(p);
+    }
+  }
+  const rb = join20(orchDir, "RUNBOOK.md");
+  writeFileSync10(rb, runbookMd(phases, run2, engineAbs));
+  written.push(rb);
+  return { exitCode: 0, written, notices, errors: [], phases };
+}
+
 // src/cli.ts
 var HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -4813,6 +5246,7 @@ Usage:
   ultradoc index --repo <url|path> [--semantic] [--refresh]
   ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic [--allow-unverified]] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
+  ultradoc orchestrate --run <dossier-dir> [--phase drill|verify|doc] [--eco] [--list]
   ultradoc semantic up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
@@ -4839,6 +5273,12 @@ Commands:
              VERIFY.json exists (--allow-unverified downgrades to a warning).
   verify     Emit a claim\u2194evidence worklist for adversarial support-checking,
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
+  orchestrate  Emit the run's multi-agent orchestration from its CURRENT
+             worklists (drill-plan.json, VERIFY.todo.json, DOC.plan.json):
+             one launchable workflow per ready phase + the agents/<role>.md
+             dispatch contracts + a sequential RUNBOOK.md fallback, under
+             <run>/orchestration/. Subagents RETURN fragments; the folds
+             (verdicts.json, ANSWER.md/DOC.md) stay with the orchestrator.
   semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
@@ -4859,6 +5299,11 @@ Options:
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
                                        (default: ANSWER.md, else DOC.md)
   --max-verify <n>     For 'verify': cap how many claim\u2194evidence pairs to emit  (default: 40)
+  --phase <name>       For 'orchestrate': emit one phase only \u2014 drill | verify | doc
+                       (exit 2 when its worklist does not exist yet)
+  --eco                For 'orchestrate': emit only RUNBOOK.md + agents/*.md \u2014 the
+                       explicit sequential low-token path (no workflow scripts)
+  --list               For 'orchestrate': print the phases + readiness as JSON
   --strict             For 'check': require EVERY claim to be cited (coverage 100%)
   --coverage-min <r>   For 'check': min fraction of claims that must cite [0..1] (default: 0.7)
   --semantic           Use the optional local vector backend (falls back if absent)
@@ -4897,6 +5342,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "index",
   "check",
   "verify",
+  "orchestrate",
   "semantic",
   "cache"
 ]);
@@ -4916,9 +5362,10 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "apply",
   "max-verify",
   "answer",
-  "coverage-min"
+  "coverage-min",
+  "phase"
 ]);
-var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified"]);
+var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
 function fail(message) {
   process.stderr.write(`ultradoc: ${message}
 `);
@@ -5035,7 +5482,7 @@ function buildAskOptions(p, opts = {}) {
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
     pkg: p.values.package,
-    out: p.values.out ? resolve2(p.values.out) : void 0,
+    out: p.values.out ? resolve3(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     webEngine,
     perSource,
@@ -5247,7 +5694,7 @@ async function run(argv = process.argv.slice(2)) {
         coverageMin = Number(p.values["coverage-min"]);
         if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
       }
-      const res = checkRun(resolve2(dir), {
+      const res = checkRun(resolve3(dir), {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
@@ -5255,16 +5702,16 @@ async function run(argv = process.argv.slice(2)) {
         allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
-      else process.stdout.write(formatCheckReport(res, resolve2(dir)) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve3(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }
     case "verify": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const rdir = resolve2(dir);
+      const rdir = resolve3(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve2(rdir, p.values.apply));
+        const result = applyVerdicts(rdir, resolve3(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
@@ -5282,6 +5729,54 @@ async function run(argv = process.argv.slice(2)) {
   adjudicate each verdict, save as verdicts.json, then: ultradoc verify --apply verdicts.json --run ${rdir}
 `
       );
+      return;
+    }
+    case "orchestrate": {
+      const dir = p.values.run ?? p.values.out;
+      if (!dir) {
+        process.stderr.write("ultradoc orchestrate: --run <dir> is required (the run dir holding the worklists).\n");
+        process.exit(2);
+      }
+      const engineAbs = realpathSync(fileURLToPath(import.meta.url));
+      if (p.bools.has("list")) {
+        if (!existsSync12(dir)) {
+          process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.
+`);
+          process.exit(2);
+        }
+        process.stdout.write(JSON.stringify({ phases: listPhases(resolve3(dir), engineAbs) }, null, 2) + "\n");
+        return;
+      }
+      const res = orchestrateRun(resolve3(dir), engineAbs, {
+        phase: p.values.phase,
+        eco: p.bools.has("eco")
+      });
+      if (res.exitCode !== 0) {
+        for (const e of res.errors) process.stderr.write(`ultradoc orchestrate: ${e}
+`);
+        process.exit(res.exitCode);
+      }
+      process.stdout.write("ultradoc orchestrate: generated\n");
+      for (const w of res.written) process.stdout.write(`  ${w}
+`);
+      for (const n of res.notices) process.stderr.write(`ultradoc orchestrate: note \u2014 ${n}
+`);
+      const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
+      if (workflows.length) {
+        process.stdout.write("\n");
+        for (const w of workflows) process.stdout.write(`Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })
+`);
+        process.stdout.write(
+          "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
+        );
+      } else {
+        process.stdout.write(`Follow ${join21(resolve3(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+`);
+        if (p.values.phase === void 0 && !p.bools.has("eco")) {
+          process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
+`);
+        }
+      }
       return;
     }
     case "semantic": {
