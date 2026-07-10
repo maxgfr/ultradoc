@@ -2560,28 +2560,43 @@ async function semanticSearch(ctx) {
 function composeFile() {
   return ensureComposeMaterialized();
 }
-function semanticControl(action) {
+var DEFAULT_DOCKER_PULL_TIMEOUT_MS = 12e5;
+function dockerPullTimeoutMs() {
+  const raw = Number(process.env.ULTRADOC_DOCKER_PULL_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DOCKER_PULL_TIMEOUT_MS;
+}
+function semanticControl(action, deps = {}) {
+  const run2 = deps.run ?? sh;
+  const has = deps.has ?? have;
   if (!["up", "down", "status"].includes(action)) {
     return { message: `ultradoc semantic: unknown action "${action}" (use: up | down | status)`, code: 1 };
   }
-  if (!have("docker")) {
+  if (!has("docker")) {
     return { message: "ultradoc semantic: docker not found. Install Docker, then retry. See references/semantic-setup.md.", code: 1 };
   }
   const file = composeFile();
   if (action === "down") {
-    const r = sh("docker", ["compose", "-f", file, "--profile", "all", "down"], { timeoutMs: 12e4 });
+    const r = run2("docker", ["compose", "-f", file, "--profile", "all", "down"], { timeoutMs: 12e4 });
     return { message: r.ok ? "ultradoc semantic: stack stopped." : `ultradoc semantic: down failed.
 ${r.stderr}`, code: r.ok ? 0 : 1 };
   }
   if (action === "status") {
-    const r = sh("docker", ["compose", "-f", file, "ps"], { timeoutMs: 3e4 });
+    const r = run2("docker", ["compose", "-f", file, "ps"], { timeoutMs: 3e4 });
     return { message: r.ok ? r.stdout || "ultradoc semantic: no services running." : `ultradoc semantic: status failed.
 ${r.stderr}`, code: 0 };
   }
-  const up = sh("docker", ["compose", "-f", file, "--profile", "all", "up", "-d"], { timeoutMs: 3e5 });
+  const imagePull = run2("docker", ["compose", "-f", file, "--profile", "all", "pull"], { timeoutMs: dockerPullTimeoutMs() });
+  if (!imagePull.ok) {
+    return {
+      message: `ultradoc semantic: pulling the stack images failed (large images can be slow \u2014 raise ULTRADOC_DOCKER_PULL_TIMEOUT_MS, currently ${dockerPullTimeoutMs()}ms).
+${imagePull.stderr}`,
+      code: 1
+    };
+  }
+  const up = run2("docker", ["compose", "-f", file, "--profile", "all", "up", "-d"], { timeoutMs: 3e5 });
   if (!up.ok) return { message: `ultradoc semantic: up failed.
 ${up.stderr}`, code: 1 };
-  const pull = sh("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 6e5 });
+  const pull = run2("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 6e5 });
   const lines = [
     "ultradoc semantic: stack is up (Qdrant :6333 \xB7 Ollama :11434 \xB7 SearXNG :8888).",
     pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
