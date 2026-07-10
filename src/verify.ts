@@ -207,10 +207,7 @@ export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
   // incomplete fold dropped them. Fall back to the folded claim ids when no
   // worklist is present (an isolated apply can't detect a deletion).
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync(
-    join(dir, "VERIFY.json"),
-    JSON.stringify({ ...result, verdicts, ...(answerSig ? { answerSig } : {}), claims }, null, 2),
-  );
+  writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...(answerSig ? { answerSig } : {}), claims }, null, 2));
   return result;
 }
 

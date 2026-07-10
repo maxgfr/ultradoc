@@ -350,7 +350,9 @@ function applySemantic(dir: string, result: CheckResult, answer: string, evidenc
     return;
   }
   if (sem.answerSig !== currentSig) {
-    unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) — the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
+    unverified(
+      "ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) — the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`",
+    );
     return;
   }
   // Every claim the answer cites must still carry an adjudicated verdict. A

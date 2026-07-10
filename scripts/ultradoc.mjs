@@ -4399,10 +4399,7 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync9(
-    join16(dir, "VERIFY.json"),
-    JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2)
-  );
+  writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
@@ -4715,7 +4712,9 @@ function applySemantic(dir, result, answer, evidence, allowUnverified = false, a
     return;
   }
   if (sem.answerSig !== currentSig) {
-    unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) \u2014 the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
+    unverified(
+      "ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) \u2014 the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`"
+    );
     return;
   }
   let expectedClaims2 = [];
