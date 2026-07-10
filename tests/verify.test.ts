@@ -193,6 +193,33 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // Gate-integrity fail-open (adversarial review, TRUSTLESS coverage): the
+  // claim-coverage gate trusted the PERSISTED claims[] array in VERIFY.json. An
+  // attacker who deletes every verdict row for a cited claim can ALSO delete
+  // that claim's id from claims[] — answerSig still matches (ANSWER.md is
+  // untouched), coverage sees nothing missing, and reduceVerdicts is blind to a
+  // claim with no rows, so the double-tamper slipped the gate. Coverage must
+  // RE-DERIVE the expected cited-claim set from the CURRENT answer + evidence.
+  it("fails closed when a cited claim's verdicts AND its claims[] entry are both deleted (double tamper)", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "supported", E2: "supported" }));
+    expect(checkRun(dir, { semantic: true }).ok).toBe(true);
+    // Drop every verdict for C2 AND scrub C2 from the persisted claims[] diagnostic.
+    const j = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    expect(j.claims).toContain("C2"); // precondition: claims[] recorded the cited claim
+    j.verdicts = j.verdicts.filter((v: { claimId: string }) => v.claimId !== "C2");
+    j.claims = (j.claims as string[]).filter((c) => c !== "C2");
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify(j, null, 2));
+    const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/adjudicat|cover|claim/i);
+    // The explicit escape hatch still downgrades it to a warning.
+    expect(checkRun(dir, { semantic: true, allowUnverified: true }).ok).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("fails closed when a verified claim's meaning is flipped but its citation kept", () => {
     const dir = scratch();
     dossier(dir, EVIDENCE, ANSWER);

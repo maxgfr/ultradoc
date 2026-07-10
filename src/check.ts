@@ -6,7 +6,7 @@ import { headCommit, sameCommit } from "./clone.js";
 import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, RevalidationFailure, RevalidationStats, VerifyResult } from "./types.js";
 // Import cycle with verify.ts (which reuses check's claim parsing) — safe: both
 // sides only call the other's functions at run time, never during module init.
-import { reduceVerdicts } from "./verify.js";
+import { buildWorklist, reduceVerdicts } from "./verify.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
 export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
@@ -313,7 +313,7 @@ export function answerClaimSignature(answer: string, evidence: EvidenceItem[]): 
 // one recording no verdicts) is an error unless --allow-unverified explicitly
 // downgrades it to a warning. The pass/fail is re-reduced from verdicts[] so a
 // doctored `ok: true` summary cannot pass the gate.
-function applySemantic(dir: string, result: CheckResult, answer: string, evidence: EvidenceItem[], allowUnverified = false): void {
+function applySemantic(dir: string, result: CheckResult, answer: string, evidence: EvidenceItem[], allowUnverified = false, answerFile?: string): void {
   const p = join(dir, "VERIFY.json");
   const unverified = (what: string): void => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
@@ -353,12 +353,34 @@ function applySemantic(dir: string, result: CheckResult, answer: string, evidenc
     unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) — the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
   }
-  // Every claim the worklist covered must still carry an adjudicated verdict.
-  // A claim whose rows were deleted (or dropped by an incomplete fold) leaves
-  // the answer partly unverified — fail closed rather than silently pass it.
-  if (Array.isArray(sem.claims) && sem.claims.length) {
+  // Every claim the answer cites must still carry an adjudicated verdict. A
+  // claim whose rows were deleted (or dropped by an incomplete fold) leaves the
+  // answer partly unverified — reduceVerdicts is blind to a claim with no rows,
+  // so fail closed rather than silently pass it.
+  //
+  // TRUSTLESS: re-derive the expected cited-claim set from the CURRENT answer +
+  // evidence using verify's exact worklist derivation (`buildWorklist`) — same
+  // claim granularity, claimId numbering, and cap. The persisted `claims[]` is
+  // only a diagnostic and is NOT trusted: an attacker who deletes a claim's
+  // verdict rows can also delete its id from claims[], and answerSig stays valid
+  // when ANSWER.md is untouched, so a trusted claims[] check is fail-open.
+  //
+  // Cap trade-off (mirrors ultrasearch's default-cap re-derivation): the
+  // re-derivation uses verify's DEFAULT cap because `check` cannot know a custom
+  // maxVerify passed to `verify`. The default-cap path reproduces `runVerify`'s
+  // worklist exactly (deterministic), so there is no false-fail on the common
+  // capped run; a run capped with a smaller custom maxVerify may report claims
+  // here it intentionally excluded — re-verify at the default cap or pass
+  // --allow-unverified.
+  let expectedClaims: string[] = [];
+  try {
+    expectedClaims = [...new Set(buildWorklist(dir, { answerFile }).worklist.pairs.map((p) => p.claimId))];
+  } catch {
+    expectedClaims = [];
+  }
+  if (expectedClaims.length) {
     const adjudicatedClaims = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-    const missing = sem.claims.filter((c) => !adjudicatedClaims.has(c));
+    const missing = expectedClaims.filter((c) => !adjudicatedClaims.has(c));
     if (missing.length) {
       unverified(
         `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim(s) (${missing.join(", ")}) — the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``,
@@ -531,7 +553,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     fencedOnly,
     revalidation,
   };
-  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified);
+  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified, opts.answerFile);
   return result;
 }
 

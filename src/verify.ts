@@ -15,6 +15,12 @@ export interface VerifyWorklist {
   uncitedClaims: { claimId: string; claim: string }[]; // claims with no citation — cite or delete
 }
 
+export interface BuiltWorklist {
+  worklist: VerifyWorklist;
+  total: number; // claim↔evidence pairs derivable from the answer before the cap
+  kept: number; // pairs in this (possibly capped) worklist
+}
+
 // Minimum length for an uncited claim to be worth flagging (mirrors the check
 // coverage exemption for short transitions).
 const MIN_UNCITED_LEN = 25;
@@ -30,13 +36,19 @@ function claimStrings(text: string): string[] {
   return out;
 }
 
-// Phase A — build the claim↔evidence verification worklist. For every claim in
-// ANSWER.md that cites a real evidence item, emit one pair per cited item with
-// the item's snippet as the digest, so a skeptic agent judges whether the source
-// actually SUPPORTS the claim. Deterministic; the JUDGEMENT is the agent's.
-// Capped at maxVerify (highest-score evidence first). Writes VERIFY.todo.json
-// (machine worklist) + VERIFY.md (human checklist).
-export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): VerifyWorklist {
+// Derive the claim↔evidence verification worklist from the dossier — PURE, no
+// file writes. For every claim in the answer that cites a real evidence item,
+// emit one pair per cited item with the item's snippet as the digest, so a
+// skeptic agent judges whether the source actually SUPPORTS the claim.
+// Deterministic; the JUDGEMENT is the agent's. Capped at maxVerify (highest-score
+// evidence first, stable by claim/id).
+//
+// `runVerify` persists the result; `check --semantic`'s coverage gate re-derives
+// it to detect a claim whose verdict rows were dropped (trustless coverage — it
+// must NOT trust the persisted claims[]). Same claim granularity, claimId
+// numbering, and cap as before, so the re-derived pairs line up with what
+// `verify` emitted for the same answer + evidence.
+export function buildWorklist(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): BuiltWorklist {
   const evidencePath = join(dir, "evidence.json");
   if (!existsSync(evidencePath)) throw new Error(`No evidence.json in ${dir} — run \`ultradoc ask\` first.`);
   const evidence: EvidenceItem[] = JSON.parse(readFileSync(evidencePath, "utf8"));
@@ -85,14 +97,21 @@ export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: 
           .slice(0, max)
       : pairs;
   const worklist: VerifyWorklist = { run: dir, pairs: kept.map(({ score, ...rest }) => rest), uncitedClaims };
+  return { worklist, total: pairs.length, kept: kept.length };
+}
 
+// Phase A — build the claim↔evidence verification worklist AND persist it
+// (VERIFY.todo.json machine worklist + VERIFY.md human checklist). Thin wrapper
+// over `buildWorklist`; see its comment for the derivation + cap contract.
+export function runVerify(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): VerifyWorklist {
+  const { worklist, total, kept } = buildWorklist(dir, opts);
   const todo = {
     run: dir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null as VerdictKind | null, note: "" })),
-    uncitedClaims,
+    uncitedClaims: worklist.uncitedClaims,
   };
   writeFileSync(join(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync(join(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync(join(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 

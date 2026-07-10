@@ -4262,7 +4262,7 @@ function claimStrings(text) {
   }
   return out;
 }
-function runVerify(dir, opts = {}) {
+function buildWorklist(dir, opts = {}) {
   const evidencePath = join16(dir, "evidence.json");
   if (!existsSync8(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
   const evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
@@ -4299,13 +4299,17 @@ function runVerify(dir, opts = {}) {
   const max = Math.max(1, Math.floor(opts.maxVerify ?? VERIFY_MAX));
   const kept = pairs.length > max ? pairs.slice().sort((a, b) => b.score - a.score || a.claimId.localeCompare(b.claimId) || a.evidenceId.localeCompare(b.evidenceId)).slice(0, max) : pairs;
   const worklist = { run: dir, pairs: kept.map(({ score, ...rest }) => rest), uncitedClaims };
+  return { worklist, total: pairs.length, kept: kept.length };
+}
+function runVerify(dir, opts = {}) {
+  const { worklist, total, kept } = buildWorklist(dir, opts);
   const todo = {
     run: dir,
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
-    uncitedClaims
+    uncitedClaims: worklist.uncitedClaims
   };
   writeFileSync9(join16(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync9(join16(dir, "VERIFY.md"), renderWorklistMd(worklist, pairs.length, kept.length));
+  writeFileSync9(join16(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -4664,7 +4668,7 @@ function answerClaimSignature(answer, evidence) {
   }
   return createHash("sha256").update(parts.join("\n")).digest("hex").slice(0, 32);
 }
-function applySemantic(dir, result, answer, evidence, allowUnverified = false) {
+function applySemantic(dir, result, answer, evidence, allowUnverified = false, answerFile) {
   const p = join17(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
@@ -4699,9 +4703,15 @@ function applySemantic(dir, result, answer, evidence, allowUnverified = false) {
     unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) \u2014 the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
   }
-  if (Array.isArray(sem.claims) && sem.claims.length) {
+  let expectedClaims2 = [];
+  try {
+    expectedClaims2 = [...new Set(buildWorklist(dir, { answerFile }).worklist.pairs.map((p2) => p2.claimId))];
+  } catch {
+    expectedClaims2 = [];
+  }
+  if (expectedClaims2.length) {
     const adjudicatedClaims = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-    const missing = sem.claims.filter((c2) => !adjudicatedClaims.has(c2));
+    const missing = expectedClaims2.filter((c2) => !adjudicatedClaims.has(c2));
     if (missing.length) {
       unverified(
         `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim(s) (${missing.join(", ")}) \u2014 the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``
@@ -4839,7 +4849,7 @@ function checkRun(dir, opts = {}) {
     fencedOnly,
     revalidation
   };
-  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified);
+  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified, opts.answerFile);
   return result;
 }
 function formatCheckReport(r, dir) {
