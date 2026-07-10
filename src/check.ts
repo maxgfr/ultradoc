@@ -353,6 +353,19 @@ function applySemantic(dir: string, result: CheckResult, answer: string, evidenc
     unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) — the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
   }
+  // Every claim the worklist covered must still carry an adjudicated verdict.
+  // A claim whose rows were deleted (or dropped by an incomplete fold) leaves
+  // the answer partly unverified — fail closed rather than silently pass it.
+  if (Array.isArray(sem.claims) && sem.claims.length) {
+    const adjudicatedClaims = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
+    const missing = sem.claims.filter((c) => !adjudicatedClaims.has(c));
+    if (missing.length) {
+      unverified(
+        `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim(s) (${missing.join(", ")}) — the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``,
+      );
+      return;
+    }
+  }
   const reduced = reduceVerdicts(sem.verdicts);
   result.semantic = { ...reduced, verdicts: sem.verdicts };
   // A green semantic exit must mean the gate ENGAGED: rows whose verdicts were

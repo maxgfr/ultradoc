@@ -272,4 +272,8 @@ export interface VerifyResult {
   // fails closed on a mismatch, so a stale VERIFY.json cannot validate an answer
   // whose claims changed since `verify --apply`.
   answerSig?: string;
+  // The cited-claim ids the verify worklist covered. `check --semantic` fails
+  // closed if any is missing an adjudicated verdict — so deleting a claim's
+  // verdict rows (or an incomplete multi-agent fold) cannot slip the gate.
+  claims?: string[];
 }

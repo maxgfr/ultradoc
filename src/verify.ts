@@ -183,8 +183,30 @@ export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
   // closed if the answer changes afterwards. Best-effort: if the answer or
   // evidence isn't present (e.g. an isolated apply), omit the signature.
   const answerSig = answerSignatureFor(dir);
-  writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...(answerSig ? { answerSig } : {}) }, null, 2));
+  // Record which cited claims the worklist expected adjudicated, so `check
+  // --semantic` fails closed if any claim's verdict rows were deleted or an
+  // incomplete fold dropped them. Fall back to the folded claim ids when no
+  // worklist is present (an isolated apply can't detect a deletion).
+  const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
+  writeFileSync(
+    join(dir, "VERIFY.json"),
+    JSON.stringify({ ...result, verdicts, ...(answerSig ? { answerSig } : {}), claims }, null, 2),
+  );
   return result;
+}
+
+// The unique cited-claim ids in the run's verify worklist (VERIFY.todo.json),
+// or null when there is no worklist to compare against.
+function expectedClaims(dir: string): string[] | null {
+  try {
+    const todoPath = join(dir, "VERIFY.todo.json");
+    if (!existsSync(todoPath)) return null;
+    const todo = JSON.parse(readFileSync(todoPath, "utf8"));
+    if (!Array.isArray(todo?.pairs)) return null;
+    return [...new Set(todo.pairs.map((p: { claimId: string }) => p.claimId))] as string[];
+  } catch {
+    return null;
+  }
 }
 
 // Compute the current answer's cited-claim fingerprint for the run dir, or null

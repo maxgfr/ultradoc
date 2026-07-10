@@ -173,6 +173,26 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // Gate-integrity fail-open (adversarial review): deleting every verdict row
+  // for a cited claim made it silently vanish from the re-reduce and the gate
+  // passed. The ledger must adjudicate every claim the answer cites — this also
+  // catches an honest multi-agent fold that dropped a claim's verdicts.
+  it("fails closed when a cited claim's verdicts are deleted from the ledger", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "supported", E2: "supported" }));
+    expect(checkRun(dir, { semantic: true }).ok).toBe(true);
+    // Drop every verdict for C2 — a cited claim is now unadjudicated.
+    const j = JSON.parse(readFileSync(join(dir, "VERIFY.json"), "utf8"));
+    j.verdicts = j.verdicts.filter((v: { claimId: string }) => v.claimId !== "C2");
+    writeFileSync(join(dir, "VERIFY.json"), JSON.stringify(j, null, 2));
+    const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/adjudicat|cover|claim/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("fails closed when a verified claim's meaning is flipped but its citation kept", () => {
     const dir = scratch();
     dossier(dir, EVIDENCE, ANSWER);

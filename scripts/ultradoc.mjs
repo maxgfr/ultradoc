@@ -4379,8 +4379,23 @@ function applyVerdicts(dir, verdictsPath) {
   }
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
-  writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {} }, null, 2));
+  const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
+  writeFileSync9(
+    join16(dir, "VERIFY.json"),
+    JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2)
+  );
   return result;
+}
+function expectedClaims(dir) {
+  try {
+    const todoPath = join16(dir, "VERIFY.todo.json");
+    if (!existsSync8(todoPath)) return null;
+    const todo = JSON.parse(readFileSync7(todoPath, "utf8"));
+    if (!Array.isArray(todo?.pairs)) return null;
+    return [...new Set(todo.pairs.map((p) => p.claimId))];
+  } catch {
+    return null;
+  }
 }
 function answerSignatureFor(dir) {
   try {
@@ -4683,6 +4698,16 @@ function applySemantic(dir, result, answer, evidence, allowUnverified = false) {
   if (sem.answerSig !== currentSig) {
     unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) \u2014 the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
+  }
+  if (Array.isArray(sem.claims) && sem.claims.length) {
+    const adjudicatedClaims = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
+    const missing = sem.claims.filter((c2) => !adjudicatedClaims.has(c2));
+    if (missing.length) {
+      unverified(
+        `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim(s) (${missing.join(", ")}) \u2014 the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``
+      );
+      return;
+    }
   }
   const reduced = reduceVerdicts(sem.verdicts);
   result.semantic = { ...reduced, verdicts: sem.verdicts };
