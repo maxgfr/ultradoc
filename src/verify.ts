@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
-import { extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
+import { answerClaimSignature, extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
 import { stripInlineCode } from "./citations.js";
 import { LIMITS } from "./config.js";
 
@@ -179,8 +179,26 @@ export function applyVerdicts(dir: string, verdictsPath: string): VerifyResult {
     throw new Error(`${verdictsPath}: ${problems.length} malformed row(s) — fix them and re-apply (fail-closed):\n  - ${problems.join("\n  - ")}`);
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  // Bind the ledger to the answer it adjudicated so `check --semantic` can fail
+  // closed if the answer changes afterwards. Best-effort: if the answer or
+  // evidence isn't present (e.g. an isolated apply), omit the signature.
+  const answerSig = answerSignatureFor(dir);
+  writeFileSync(join(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...(answerSig ? { answerSig } : {}) }, null, 2));
   return result;
+}
+
+// Compute the current answer's cited-claim fingerprint for the run dir, or null
+// when the answer/evidence can't be read.
+function answerSignatureFor(dir: string): string | null {
+  try {
+    const answerPath = resolveAnswerPath(dir);
+    const evidencePath = join(dir, "evidence.json");
+    if (!answerPath || !existsSync(evidencePath)) return null;
+    const evidence: EvidenceItem[] = JSON.parse(readFileSync(evidencePath, "utf8"));
+    return answerClaimSignature(readFileSync(answerPath, "utf8"), evidence);
+  } catch {
+    return null;
+  }
 }
 
 // Fold per-pair verdicts into a pass/fail. A claim FAILS if a cited evidence

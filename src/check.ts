@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
 import { citedEvidenceIds, claimCoverage, codeMask, collectCitations, extractClaimUnits, resolveAlias, SHAPE } from "./citations.js";
@@ -285,6 +286,26 @@ function dossierRepoDir(dir: string): string | undefined {
   return undefined;
 }
 
+// A stable fingerprint of an answer's *cited* claim structure: for every claim
+// unit that carries a citation, its normalized text plus the sorted set of
+// evidence ids it cites. Binds a VERIFY.json to the exact answer it adjudicated
+// so `check --semantic` can fail closed when a claim was added, removed, or
+// reworded since `verify --apply` — a stale ledger must never validate a
+// changed answer. The claim iteration mirrors verify's (one unit per text
+// block, one per list item) so both sides fingerprint the same claims.
+export function answerClaimSignature(answer: string, evidence: EvidenceItem[]): string {
+  const parts: string[] = [];
+  for (const u of extractClaimUnits(answer)) {
+    for (const part of u.kind === "text" ? [u.text] : u.items) {
+      const ids = citedEvidenceIds(part, evidence);
+      if (!ids.length) continue;
+      const text = part.replace(/\s+/g, " ").trim();
+      parts.push(`${text}::${[...new Set(ids)].sort().join(",")}`);
+    }
+  }
+  return createHash("sha256").update(parts.join("\n")).digest("hex").slice(0, 32);
+}
+
 // Fold the resolved semantic-verification record (VERIFY.json) into a check
 // result when `--semantic` is requested. It can only ADD a failure, never relax
 // the mechanical gate — and it FAILS CLOSED: a passing semantic exit must mean
@@ -292,7 +313,7 @@ function dossierRepoDir(dir: string): string | undefined {
 // one recording no verdicts) is an error unless --allow-unverified explicitly
 // downgrades it to a warning. The pass/fail is re-reduced from verdicts[] so a
 // doctored `ok: true` summary cannot pass the gate.
-function applySemantic(dir: string, result: CheckResult, allowUnverified = false): void {
+function applySemantic(dir: string, result: CheckResult, answer: string, evidence: EvidenceItem[], allowUnverified = false): void {
   const p = join(dir, "VERIFY.json");
   const unverified = (what: string): void => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
@@ -316,6 +337,20 @@ function applySemantic(dir: string, result: CheckResult, allowUnverified = false
   }
   if (!Array.isArray(sem.verdicts) || sem.verdicts.length === 0) {
     unverified("VERIFY.json records no verdicts");
+    return;
+  }
+  // The ledger must be BOUND to the answer it adjudicated. Recompute the current
+  // answer's cited-claim fingerprint and fail closed if it differs (a claim
+  // added, removed, or reworded since `verify --apply`) — otherwise a stale
+  // VERIFY.json would validate a changed answer, and a claim inserted after
+  // verification would carry no verdict yet still pass the re-reduced gate.
+  const currentSig = answerClaimSignature(answer, evidence);
+  if (typeof sem.answerSig !== "string" || sem.answerSig.length === 0) {
+    unverified("VERIFY.json is not bound to an answer (missing answerSig) — re-run `verify --apply` so the gate can confirm it matches the current answer");
+    return;
+  }
+  if (sem.answerSig !== currentSig) {
+    unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) — the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
   }
   const reduced = reduceVerdicts(sem.verdicts);
@@ -483,7 +518,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     fencedOnly,
     revalidation,
   };
-  if (opts.semantic) applySemantic(dir, result, opts.allowUnverified);
+  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified);
   return result;
 }
 

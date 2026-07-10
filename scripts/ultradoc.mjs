@@ -4017,6 +4017,7 @@ async function runDoc(options, opts = {}) {
 }
 
 // src/check.ts
+import { createHash } from "crypto";
 import { existsSync as existsSync9, readFileSync as readFileSync8 } from "fs";
 import { basename as basename4, dirname as dirname4, join as join17, resolve as resolvePath, sep as sep3 } from "path";
 
@@ -4377,8 +4378,20 @@ function applyVerdicts(dir, verdictsPath) {
   - ${problems.join("\n  - ")}`);
   }
   const result = reduceVerdicts(verdicts);
-  writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts }, null, 2));
+  const answerSig = answerSignatureFor(dir);
+  writeFileSync9(join16(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {} }, null, 2));
   return result;
+}
+function answerSignatureFor(dir) {
+  try {
+    const answerPath = resolveAnswerPath(dir);
+    const evidencePath = join16(dir, "evidence.json");
+    if (!answerPath || !existsSync8(evidencePath)) return null;
+    const evidence = JSON.parse(readFileSync7(evidencePath, "utf8"));
+    return answerClaimSignature(readFileSync7(answerPath, "utf8"), evidence);
+  } catch {
+    return null;
+  }
 }
 function reduceVerdicts(verdicts) {
   const counts = { supported: 0, partial: 0, refuted: 0, unsupported: 0 };
@@ -4624,7 +4637,19 @@ function dossierRepoDir(dir) {
   }
   return void 0;
 }
-function applySemantic(dir, result, allowUnverified = false) {
+function answerClaimSignature(answer, evidence) {
+  const parts = [];
+  for (const u of extractClaimUnits(answer)) {
+    for (const part of u.kind === "text" ? [u.text] : u.items) {
+      const ids = citedEvidenceIds(part, evidence);
+      if (!ids.length) continue;
+      const text = part.replace(/\s+/g, " ").trim();
+      parts.push(`${text}::${[...new Set(ids)].sort().join(",")}`);
+    }
+  }
+  return createHash("sha256").update(parts.join("\n")).digest("hex").slice(0, 32);
+}
+function applySemantic(dir, result, answer, evidence, allowUnverified = false) {
   const p = join17(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
@@ -4648,6 +4673,15 @@ function applySemantic(dir, result, allowUnverified = false) {
   }
   if (!Array.isArray(sem.verdicts) || sem.verdicts.length === 0) {
     unverified("VERIFY.json records no verdicts");
+    return;
+  }
+  const currentSig = answerClaimSignature(answer, evidence);
+  if (typeof sem.answerSig !== "string" || sem.answerSig.length === 0) {
+    unverified("VERIFY.json is not bound to an answer (missing answerSig) \u2014 re-run `verify --apply` so the gate can confirm it matches the current answer");
+    return;
+  }
+  if (sem.answerSig !== currentSig) {
+    unverified("ANSWER.md changed since `verify --apply` (a claim was added, removed, or reworded) \u2014 the VERIFY.json ledger no longer covers the current answer; re-run `verify` and `verify --apply`");
     return;
   }
   const reduced = reduceVerdicts(sem.verdicts);
@@ -4780,7 +4814,7 @@ function checkRun(dir, opts = {}) {
     fencedOnly,
     revalidation
   };
-  if (opts.semantic) applySemantic(dir, result, opts.allowUnverified);
+  if (opts.semantic) applySemantic(dir, result, answer, evidence, opts.allowUnverified);
   return result;
 }
 function formatCheckReport(r, dir) {

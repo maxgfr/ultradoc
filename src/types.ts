@@ -267,4 +267,9 @@ export interface VerifyResult {
   failures: { claimId: string; evidenceId: string; verdict: VerdictKind; note: string }[];
   unadjudicated: string[];
   verdicts?: Verdict[];
+  // Fingerprint of the answer (cited claim text + citations) this ledger
+  // adjudicated. `check --semantic` recomputes it from the current answer and
+  // fails closed on a mismatch, so a stale VERIFY.json cannot validate an answer
+  // whose claims changed since `verify --apply`.
+  answerSig?: string;
 }

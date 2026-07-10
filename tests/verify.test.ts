@@ -152,6 +152,41 @@ describe("check --semantic composition", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // Gate-integrity fail-open (adversarial review): check --semantic re-reduced
+  // the stored verdicts[] but never confirmed they belong to the CURRENT answer.
+  // A claim ADDED after `verify --apply` (a stale ledger) therefore slipped the
+  // gate — it had no verdict, and the old verdicts still reduced to ok. The
+  // VERIFY.json must be BOUND to the exact answer it adjudicated.
+  it("fails closed when a claim is added to the answer after verify (stale ledger)", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "supported", E2: "supported" }));
+    expect(checkRun(dir, { semantic: true }).ok).toBe(true); // the verified answer passes
+    // Append a NEW claim citing a real, resolvable evidence id — but do NOT re-verify.
+    writeFileSync(join(dir, "ANSWER.md"), `${ANSWER}\n## Extra\nBackoff was later removed entirely [E1].`);
+    const r = checkRun(dir, { semantic: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/answer|stale|changed|different|re-run verify/i);
+    // --allow-unverified is the explicit escape hatch, mirroring the missing-VERIFY case.
+    expect(checkRun(dir, { semantic: true, allowUnverified: true }).ok).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails closed when a verified claim's meaning is flipped but its citation kept", () => {
+    const dir = scratch();
+    dossier(dir, EVIDENCE, ANSWER);
+    runVerify(dir);
+    applyVerdicts(dir, writeVerdicts(dir, { E1: "supported", E2: "supported" }));
+    expect(checkRun(dir, { semantic: true }).ok).toBe(true);
+    // Reverse C1's claim while keeping [E1] — the recorded "supported" verdict is now stale.
+    const flipped = ANSWER.replace("uses exponential backoff that doubles each attempt", "never uses backoff and retries instantly");
+    expect(flipped).not.toBe(ANSWER);
+    writeFileSync(join(dir, "ANSWER.md"), flipped);
+    expect(checkRun(dir, { semantic: true }).ok).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("runs the full verify→apply→check --semantic gate on a DOC.md (the `doc` flow)", () => {
     const dir = scratch();
     // A `doc` run writes DOC.md, not ANSWER.md — verify/check must auto-detect it.
