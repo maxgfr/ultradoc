@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import { sh, have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFromTokens, type KeywordMatcher } from "../util.js";
+import { sh, have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFromTokens, accentPattern, type KeywordMatcher } from "../util.js";
 import { walk, readText } from "../walk.js";
 import { LIMITS } from "../config.js";
 import { bm25 } from "./bm25.js";
@@ -397,6 +397,55 @@ export function searchCode(
   for (const fh of lexical.values()) {
     for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
   }
+
+  // Flood rescue: the per-file line cap (rg --max-count / jsSearch equivalent)
+  // can be consumed entirely by a generic keyword before a rare literal's line
+  // is ever reported ("bot" matches thousands of lines of device-detector's
+  // bots.yml before the one line holding the queried literal), leaving the rare
+  // keyword unattributed — df 0, invisible to ranking AND to the rare-literal
+  // pin below. For every canonical that looks near-unique (df ≤ RARE_TERM_DF)
+  // and has a direct (non-subtoken) variant, run one dedicated pass restricted
+  // to those direct variants — near-unique literals match little, so this is
+  // cheap — merge the hits, and recompute df on the corrected data.
+  const missed = matcher.expanded.filter((ek) => (df.get(ek.canonical) ?? 0) <= RANKING.RARE_TERM_DF && ek.variants.some((v) => v.kind !== "subtoken"));
+  if (missed.length) {
+    let merged = false;
+    // One search per canonical — sharing an invocation would share its per-file
+    // line cap too, and a flooding sibling ("bot") would starve the literal the
+    // pass exists to recover.
+    for (const ek of missed) {
+      const rescueMatcher: KeywordMatcher = {
+        ...matcher,
+        expanded: [ek],
+        canonicals: [ek.canonical],
+        patterns: ek.variants.filter((v) => v.kind !== "subtoken").map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical })),
+      };
+      const extra = usedRg ? rgSearch(root, rescueMatcher, scope) : jsSearch(root, rescueMatcher, scope);
+      for (const [rel, fh] of extra) {
+        if (!inScope(rel)) continue;
+        const cur = lexical.get(rel);
+        if (!cur) {
+          lexical.set(rel, fh);
+          files.add(rel);
+          merged = true;
+          continue;
+        }
+        for (const kw of fh.matchedKw) cur.matchedKw.add(kw);
+        // max, not sum: the first pass may already have counted part of these hits.
+        for (const [kw, n] of fh.kwCounts) cur.kwCounts.set(kw, Math.max(cur.kwCounts.get(kw) ?? 0, n));
+        const seen = new Set(cur.lines.map((l) => l.line));
+        for (const l of fh.lines) if (!seen.has(l.line)) cur.lines.push(l);
+        merged = true;
+      }
+    }
+    if (merged) {
+      df.clear();
+      for (const fh of lexical.values()) {
+        for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+      }
+    }
+  }
+
   const candidates = [...files]
     .filter((rel) => lexical.has(rel))
     .map((rel) => {
@@ -489,8 +538,11 @@ export function searchCode(
     if (pins.length >= RANKING.RARE_PIN_MAX) break;
     const n = df.get(kw) ?? 0;
     if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
-    // Already represented? Any emitted item whose file matched this keyword.
-    if (items.some((i) => (i.meta?.matchedKeywords as string[] | undefined)?.includes(kw))) continue;
+    // Already represented? Only when an emitted EXCERPT covers the literal —
+    // the holder file surfacing with a window anchored elsewhere (its densest
+    // generic-keyword region) does not ground a claim about the literal.
+    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => matcher.matchLine(ln).has(kw)));
+    if (covered) continue;
     const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
     if (!best) continue;
     pins.push({ f: best, kw, n });

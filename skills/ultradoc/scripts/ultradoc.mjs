@@ -2007,6 +2007,40 @@ function searchCode(root, ref, index, question, perSource, scope) {
   for (const fh of lexical.values()) {
     for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
   }
+  const missed = matcher.expanded.filter((ek) => (df.get(ek.canonical) ?? 0) <= RANKING.RARE_TERM_DF && ek.variants.some((v) => v.kind !== "subtoken"));
+  if (missed.length) {
+    let merged = false;
+    for (const ek of missed) {
+      const rescueMatcher = {
+        ...matcher,
+        expanded: [ek],
+        canonicals: [ek.canonical],
+        patterns: ek.variants.filter((v) => v.kind !== "subtoken").map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical }))
+      };
+      const extra = usedRg ? rgSearch(root, rescueMatcher, scope) : jsSearch(root, rescueMatcher, scope);
+      for (const [rel, fh] of extra) {
+        if (!inScope(rel)) continue;
+        const cur = lexical.get(rel);
+        if (!cur) {
+          lexical.set(rel, fh);
+          files.add(rel);
+          merged = true;
+          continue;
+        }
+        for (const kw of fh.matchedKw) cur.matchedKw.add(kw);
+        for (const [kw, n] of fh.kwCounts) cur.kwCounts.set(kw, Math.max(cur.kwCounts.get(kw) ?? 0, n));
+        const seen = new Set(cur.lines.map((l) => l.line));
+        for (const l of fh.lines) if (!seen.has(l.line)) cur.lines.push(l);
+        merged = true;
+      }
+    }
+    if (merged) {
+      df.clear();
+      for (const fh of lexical.values()) {
+        for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+      }
+    }
+  }
   const candidates = [...files].filter((rel) => lexical.has(rel)).map((rel) => {
     let len = 1e3;
     try {
@@ -2064,7 +2098,8 @@ function searchCode(root, ref, index, question, perSource, scope) {
     if (pins.length >= RANKING.RARE_PIN_MAX) break;
     const n = df.get(kw) ?? 0;
     if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
-    if (items.some((i) => i.meta?.matchedKeywords?.includes(kw))) continue;
+    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => matcher.matchLine(ln).has(kw)));
+    if (covered) continue;
     const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
     if (!best) continue;
     pins.push({ f: best, kw, n });

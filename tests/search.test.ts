@@ -184,6 +184,25 @@ describe("rare-literal guarantee", () => {
     cleanup();
   });
 
+  it("rescues a rare literal whose file is flooded by a generic keyword (per-file match cap)", () => {
+    // Every filler line matches "bot", so ripgrep's per-file line cap is
+    // consumed long before the literal's line is reached — the first pass never
+    // attributes the rare keyword at all (df 0) and the pin cannot fire without
+    // the rescue pass.
+    const { dir, cleanup } = repoWithBuriedLiteral();
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    const { items, notes } = searchCode(dir, ref, idx, "zorkuscrawler bot client hints parser", 4);
+    // The flooded file may ALSO surface normally (huge "bot" tf) with a window
+    // anchored on its dense head — the guarantee is that some excerpt grounds
+    // the literal itself.
+    const holders = items.filter((i) => i.ref === "regexes/bots.yml");
+    expect(holders.length).toBeGreaterThan(0);
+    expect(holders.some((h) => h.snippet.includes("zorkuscrawler"))).toBe(true);
+    expect(notes.some((n) => n.includes("zorkuscrawler"))).toBe(true);
+    cleanup();
+  });
+
   it("does not pin when the holder already surfaces on its own", () => {
     const { dir, cleanup } = repoWith({
       "src/retry.ts": "export function retryBackoff() {}\n// zorkuscrawler appears here\n",
