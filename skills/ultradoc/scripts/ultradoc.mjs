@@ -1739,7 +1739,13 @@ var RANKING = {
   // fold into one excerpt instead of a second item.
   CALLSITE_MAX_NAMES: 4,
   CALLSITE_SECOND_ITEM_FACTOR: 0.95,
-  CALLSITE_MERGE_GAP: 12
+  CALLSITE_MERGE_GAP: 12,
+  // Rare-literal guarantee: a query keyword matching in at most RARE_TERM_DF
+  // files is a near-unique literal (error string, regex fragment, data-file
+  // entry) — its holder must surface even when rank fusion buries it, and at
+  // most RARE_PIN_MAX holders may displace normally-ranked items.
+  RARE_TERM_DF: 3,
+  RARE_PIN_MAX: 2
 };
 function rgSearch(root, matcher, scope) {
   const args = [
@@ -2051,6 +2057,38 @@ function searchCode(root, ref, index, question, perSource, scope) {
         url,
         meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name, ...win.callSite ? { callSite: true } : {} }
       });
+    }
+  }
+  const pins = [];
+  for (const kw of canonicals) {
+    if (pins.length >= RANKING.RARE_PIN_MAX) break;
+    const n = df.get(kw) ?? 0;
+    if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
+    if (items.some((i) => i.meta?.matchedKeywords?.includes(kw))) continue;
+    const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
+    if (!best) continue;
+    pins.push({ f: best, kw, n });
+  }
+  if (pins.length) {
+    items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
+    for (const { f, kw, n } of pins) {
+      const content = readText(join8(root, f.rel));
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      const anchor = f.fh.lines.find((l) => matcher.matchLine(l.text).has(kw))?.line ?? f.fh.lines[0].line;
+      const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
+      const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
+      items.push({
+        source: "code",
+        title: `${f.rel} \u2014 rare-term match (${kw})`,
+        ref: f.rel,
+        location: `${f.rel}:${w.start}-${w.end}`,
+        score: Number(f.score.toFixed(3)),
+        snippet: lines.slice(w.start - 1, w.end).join("\n"),
+        url,
+        meta: { matchedKeywords: [...f.fh.matchedKw], pinnedRareTerm: kw }
+      });
+      notes.push(`Query term "${kw}" matches only ${n} file(s); pinned ${f.rel} into the results.`);
     }
   }
   return { items, notes, fallback: usedRg ? void 0 : "js-scan" };

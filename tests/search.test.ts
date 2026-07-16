@@ -151,3 +151,49 @@ describe("call-site aware retrieval", () => {
     cleanup();
   });
 });
+
+describe("rare-literal guarantee", () => {
+  // Real-world repro (matomo-org/device-detector): the only file containing the
+  // query literal is a big data .yml with no symbols. RRF fusion is rank-based,
+  // so the data file collects from the lexical list only, while symbol-bearing
+  // code files matching generic subtokens of the query collect from both lists
+  // — and the sole holder of the exact literal drops out of the results.
+  function repoWithBuriedLiteral(): { dir: string; cleanup: () => void } {
+    const filler = Array.from({ length: 400 }, (_, i) => `- regex: 'SomeBot${i}'\n  name: 'Some Bot ${i}'`).join("\n");
+    const files: Record<string, string> = {
+      "regexes/bots.yml": `${filler}\n- regex: 'zorkuscrawler|client-probe'\n  name: 'Generic Bot'\n`,
+    };
+    for (let i = 0; i < 5; i++) {
+      files[`src/client-${i}.ts`] = `export function parseClientHints${i}() {}\nexport function clientParser${i}() {}\n// client hints parser helpers\n`;
+    }
+    return repoWith(files);
+  }
+
+  it("pins the symbol-less data file holding a near-unique query literal", () => {
+    const { dir, cleanup } = repoWithBuriedLiteral();
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    const { items, notes } = searchCode(dir, ref, idx, "zorkuscrawler client hints parser", 4);
+    expect(items.length).toBeLessThanOrEqual(4);
+    const holder = items.find((i) => i.ref === "regexes/bots.yml");
+    expect(holder).toBeDefined();
+    // The excerpt must contain the literal itself, not an arbitrary dense region.
+    expect(holder!.snippet).toContain("zorkuscrawler");
+    // The pin is announced, never silent.
+    expect(notes.some((n) => n.includes("zorkuscrawler"))).toBe(true);
+    cleanup();
+  });
+
+  it("does not pin when the holder already surfaces on its own", () => {
+    const { dir, cleanup } = repoWith({
+      "src/retry.ts": "export function retryBackoff() {}\n// zorkuscrawler appears here\n",
+      "src/other.ts": "export const nothing = 1;\n",
+    });
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    const { items, notes } = searchCode(dir, ref, idx, "zorkuscrawler retry backoff", 4);
+    expect(items.some((i) => i.ref === "src/retry.ts")).toBe(true);
+    expect(notes.some((n) => n.includes("pinned"))).toBe(false);
+    cleanup();
+  });
+});
