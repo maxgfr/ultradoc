@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.1.3](https://github.com/maxgfr/ultradoc/compare/v2.1.2...v2.1.3) (2026-07-16)
+
+
+### Bug Fixes
+
+* **search:** anchor the pin against the full file line, not the truncated hit text ([a029db8](https://github.com/maxgfr/ultradoc/commit/a029db84d8244ca28c98ceefc7c363359435570d))
+* **search:** anchor the pinned excerpt on the literal, not a subtoken match ([334613a](https://github.com/maxgfr/ultradoc/commit/334613a69fa328de00099906aca953001b962298))
+* **search:** pin the sole holder of a near-unique query literal into the results ([e5e4ded](https://github.com/maxgfr/ultradoc/commit/e5e4ded6095b4cfe033acf74af5157134371e432))
+* **search:** rescue rare-term attribution lost to the per-file match cap ([ef14eab](https://github.com/maxgfr/ultradoc/commit/ef14eabb78cb339a65b1c70371b8bb88a0194193))
+
 ## [2.1.2](https://github.com/maxgfr/ultradoc/compare/v2.1.1...v2.1.2) (2026-07-10)
 
 
