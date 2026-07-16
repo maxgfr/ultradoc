@@ -533,29 +533,35 @@ export function searchCode(
   // literal (e.g. device-detector's regexes/bots.yml losing to setClientHints).
   // Pin the best holder of each such keyword, dropping the weakest normal items
   // to stay within perSource — and say so in the notes, never silently.
-  const pins: { f: (typeof scored)[number]; kw: string; n: number }[] = [];
+  const pins: { f: (typeof scored)[number]; kw: string; n: number; res: RegExp[] }[] = [];
   for (const kw of canonicals) {
     if (pins.length >= RANKING.RARE_PIN_MAX) break;
     const n = df.get(kw) ?? 0;
     if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
+    // Match the LITERAL itself, not its subtokens: "ZmEu" expands to "zm"/"eu"
+    // variants that match almost any line, which would both fake coverage and
+    // wreck the anchor below. Subtoken-only keywords can't be anchored precisely.
+    const direct = matcher.expanded.find((ek) => ek.canonical === kw)?.variants.filter((v) => v.kind !== "subtoken") ?? [];
+    if (!direct.length) continue;
+    const res = direct.map((v) => new RegExp(accentPattern(v.text), "i"));
     // Already represented? Only when an emitted EXCERPT covers the literal —
     // the holder file surfacing with a window anchored elsewhere (its densest
     // generic-keyword region) does not ground a claim about the literal.
-    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => matcher.matchLine(ln).has(kw)));
+    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => res.some((re) => re.test(ln))));
     if (covered) continue;
     const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
     if (!best) continue;
-    pins.push({ f: best, kw, n });
+    pins.push({ f: best, kw, n, res });
   }
   if (pins.length) {
     items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
-    for (const { f, kw, n } of pins) {
+    for (const { f, kw, n, res } of pins) {
       const content = readText(join(root, f.rel));
       if (!content) continue;
       const lines = content.split(/\r?\n/);
       // Anchor the excerpt on the rare literal's own hit line — the densest
       // keyword region of a big data file usually lies elsewhere.
-      const anchor = f.fh!.lines.find((l) => matcher.matchLine(l.text).has(kw))?.line ?? f.fh!.lines[0]!.line;
+      const anchor = f.fh!.lines.find((l) => res.some((re) => re.test(l.text)))?.line ?? f.fh!.lines[0]!.line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
       const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
       items.push({

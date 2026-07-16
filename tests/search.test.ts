@@ -203,6 +203,26 @@ describe("rare-literal guarantee", () => {
     cleanup();
   });
 
+  it("anchors the pinned excerpt on the literal itself, not on a subtoken match", () => {
+    // "ZorkusEu" expands to subtokens "zorkus"/"eu"; every filler line contains
+    // "eu" (Euro), so a subtoken-based anchor would land on line 1 and the
+    // excerpt would not show the literal (real-world case: ZmEu in bots.yml).
+    const filler = Array.from({ length: 400 }, (_, i) => `- regex: 'EuroBot${i}'\n  name: 'Euro Bot ${i}'`).join("\n");
+    const files: Record<string, string> = {
+      "regexes/bots.yml": `${filler}\n- regex: 'ZorkusEu'\n  name: 'Generic Bot'\n`,
+    };
+    for (let i = 0; i < 5; i++) {
+      files[`src/client-${i}.ts`] = `export function parseClientHints${i}() {}\nexport function clientParser${i}() {}\n// client hints parser helpers\n`;
+    }
+    const { dir, cleanup } = repoWith(files);
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    const { items } = searchCode(dir, ref, idx, "ZorkusEu bot client hints parser", 4);
+    const holders = items.filter((i) => i.ref === "regexes/bots.yml");
+    expect(holders.some((h) => h.snippet.includes("ZorkusEu"))).toBe(true);
+    cleanup();
+  });
+
   it("does not pin when the holder already surfaces on its own", () => {
     const { dir, cleanup } = repoWith({
       "src/retry.ts": "export function retryBackoff() {}\n// zorkuscrawler appears here\n",

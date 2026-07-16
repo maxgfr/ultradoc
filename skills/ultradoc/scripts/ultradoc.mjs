@@ -2098,19 +2098,22 @@ function searchCode(root, ref, index, question, perSource, scope) {
     if (pins.length >= RANKING.RARE_PIN_MAX) break;
     const n = df.get(kw) ?? 0;
     if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
-    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => matcher.matchLine(ln).has(kw)));
+    const direct = matcher.expanded.find((ek) => ek.canonical === kw)?.variants.filter((v) => v.kind !== "subtoken") ?? [];
+    if (!direct.length) continue;
+    const res = direct.map((v) => new RegExp(accentPattern(v.text), "i"));
+    const covered = items.some((i) => i.snippet.split(/\r?\n/).some((ln) => res.some((re) => re.test(ln))));
     if (covered) continue;
     const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
     if (!best) continue;
-    pins.push({ f: best, kw, n });
+    pins.push({ f: best, kw, n, res });
   }
   if (pins.length) {
     items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
-    for (const { f, kw, n } of pins) {
+    for (const { f, kw, n, res } of pins) {
       const content = readText(join8(root, f.rel));
       if (!content) continue;
       const lines = content.split(/\r?\n/);
-      const anchor = f.fh.lines.find((l) => matcher.matchLine(l.text).has(kw))?.line ?? f.fh.lines[0].line;
+      const anchor = f.fh.lines.find((l) => res.some((re) => re.test(l.text)))?.line ?? f.fh.lines[0].line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
       const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
       items.push({
