@@ -2113,7 +2113,10 @@ function searchCode(root, ref, index, question, perSource, scope) {
       const content = readText(join8(root, f.rel));
       if (!content) continue;
       const lines = content.split(/\r?\n/);
-      const anchor = f.fh.lines.find((l) => res.some((re) => re.test(l.text)))?.line ?? f.fh.lines[0].line;
+      const anchor = f.fh.lines.find((l) => {
+        const full = lines[l.line - 1] ?? l.text;
+        return res.some((re) => re.test(full));
+      })?.line ?? f.fh.lines[0].line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
       const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
       items.push({

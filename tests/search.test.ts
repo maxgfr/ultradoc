@@ -223,6 +223,27 @@ describe("rare-literal guarantee", () => {
     cleanup();
   });
 
+  it("anchors the literal even when it sits past the stored hit-text truncation", () => {
+    // Stored hit lines are truncated to 400 chars; the literal sits ~900 chars
+    // into a huge alternation line (real-world case: ZmEu at char ~1450 of
+    // bots.yml's Generic Bot regex). The anchor must test the full file line.
+    const filler = Array.from({ length: 400 }, (_, i) => `- regex: 'SomeBot${i}'\n  name: 'Some Bot ${i}'`).join("\n");
+    const alternation = Array.from({ length: 60 }, (_, i) => `filler${i}pattern`).join("|");
+    const files: Record<string, string> = {
+      "regexes/bots.yml": `${filler}\n- regex: '${alternation}|zorkuscrawler'\n  name: 'Generic Bot'\n`,
+    };
+    for (let i = 0; i < 5; i++) {
+      files[`src/client-${i}.ts`] = `export function parseClientHints${i}() {}\nexport function clientParser${i}() {}\n// client hints parser helpers\n`;
+    }
+    const { dir, cleanup } = repoWith(files);
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    const { items } = searchCode(dir, ref, idx, "zorkuscrawler bot client hints parser", 4);
+    const holders = items.filter((i) => i.ref === "regexes/bots.yml");
+    expect(holders.some((h) => h.snippet.includes("zorkuscrawler"))).toBe(true);
+    cleanup();
+  });
+
   it("does not pin when the holder already surfaces on its own", () => {
     const { dir, cleanup } = repoWith({
       "src/retry.ts": "export function retryBackoff() {}\n// zorkuscrawler appears here\n",

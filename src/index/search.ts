@@ -560,8 +560,15 @@ export function searchCode(
       if (!content) continue;
       const lines = content.split(/\r?\n/);
       // Anchor the excerpt on the rare literal's own hit line — the densest
-      // keyword region of a big data file usually lies elsewhere.
-      const anchor = f.fh!.lines.find((l) => res.some((re) => re.test(l.text)))?.line ?? f.fh!.lines[0]!.line;
+      // keyword region of a big data file usually lies elsewhere. Test the
+      // FULL line from the file: stored hit text is truncated (400 chars) and
+      // a literal deep inside a huge data line (ZmEu at char ~1450 of
+      // bots.yml's Generic Bot regex) would never match the stored prefix.
+      const anchor =
+        f.fh!.lines.find((l) => {
+          const full = lines[l.line - 1] ?? l.text;
+          return res.some((re) => re.test(full));
+        })?.line ?? f.fh!.lines[0]!.line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
       const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
       items.push({
