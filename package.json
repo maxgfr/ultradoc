@@ -27,7 +27,7 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "verify:bundle": "node scripts/verify-skill-bundle.mjs",
-    "check:build": "tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/ultradoc.mjs skills/ultradoc/scripts/ultradoc.mjs && node scripts/verify-skill-bundle.mjs",
+    "check:build": "node scripts/sync-engine.mjs --check && tsup && node scripts/copy-bundle.mjs && git diff --exit-code -- scripts/ultradoc.mjs skills/ultradoc/scripts/ultradoc.mjs && node scripts/verify-skill-bundle.mjs",
     "demo": "node scripts/ultradoc.mjs ask --repo tests/fixtures/sample-lib --q \"how does the retry backoff work?\" --sources code,docs --out /tmp/ultradoc-demo",
     "eval": "node evals/run.mjs --suite offline",
     "eval:network": "node evals/run.mjs --suite network",
