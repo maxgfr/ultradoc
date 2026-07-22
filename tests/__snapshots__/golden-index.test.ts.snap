@@ -1,0 +1,251 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: structural index and overview > snapshots index.json on the golden fixture 1`] = `
+{
+  "commit": undefined,
+  "configFiles": [
+    "package.json",
+    "packages/alpha/package.json",
+    "packages/beta/package.json",
+    "tsconfig.json",
+  ],
+  "docFiles": [
+    "README.md",
+    "docs/guide.md",
+    "generated.txt",
+  ],
+  "docsRoot": undefined,
+  "docsUrl": undefined,
+  "fileCount": 16,
+  "languages": {
+    "javascript/typescript": 8,
+    "json": 4,
+    "markdown": 2,
+    "other": 1,
+    "text": 1,
+  },
+  "packages": [
+    {
+      "description": "Alpha service",
+      "dir": "packages/alpha",
+      "name": "@golden/alpha",
+    },
+    {
+      "description": "Beta legacy lib",
+      "dir": "packages/beta",
+      "name": "@golden/beta",
+    },
+  ],
+  "schemaVersion": 4,
+  "slug": "golden-fixture",
+  "stats": {
+    "symbolCapHits": 0,
+    "truncated": false,
+  },
+  "symbols": [
+    {
+      "exported": true,
+      "file": "packages/alpha/src/createApp.ts",
+      "kind": "default",
+      "lang": "typescript",
+      "line": 1,
+      "name": "createApp",
+      "signature": "export default function () {",
+    },
+    {
+      "exported": false,
+      "file": "packages/alpha/src/deep.ts",
+      "kind": "function",
+      "lang": "typescript",
+      "line": 1,
+      "name": "internalOnly",
+      "signature": "function internalOnly(): void {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/model.ts",
+      "kind": "interface",
+      "lang": "typescript",
+      "line": 1,
+      "name": "User",
+      "signature": "export interface User {",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/model.ts",
+      "kind": "type",
+      "lang": "typescript",
+      "line": 4,
+      "name": "UserId",
+      "signature": "export type UserId = string;",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/model.ts",
+      "kind": "class",
+      "lang": "typescript",
+      "line": 5,
+      "name": "Repo",
+      "signature": "class Repo {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/routes.ts",
+      "kind": "const",
+      "lang": "typescript",
+      "line": 1,
+      "name": "route",
+      "signature": "export const route = (port: number): number => port;",
+    },
+    {
+      "exported": false,
+      "file": "packages/alpha/src/routes.ts",
+      "kind": "const",
+      "lang": "typescript",
+      "line": 2,
+      "name": "helper",
+      "signature": "const helper = (x: number): number => x;",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/server.ts",
+      "kind": "function",
+      "lang": "typescript",
+      "line": 3,
+      "name": "boot",
+      "signature": "function boot(port: number): number {",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/server.ts",
+      "kind": "function",
+      "lang": "typescript",
+      "line": 3,
+      "name": "start",
+      "signature": "function boot(port: number): number {",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/server.ts",
+      "kind": "function",
+      "lang": "typescript",
+      "line": 6,
+      "name": "shutdown",
+      "signature": "function shutdown(): void {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/alpha/src/server.ts",
+      "kind": "function",
+      "lang": "typescript",
+      "line": 7,
+      "name": "handleRequest",
+      "signature": "export function handleRequest(req: string): string {",
+    },
+    {
+      "exported": true,
+      "file": "packages/beta/src/index.js",
+      "kind": "function",
+      "lang": "javascript",
+      "line": 1,
+      "name": "betaMain",
+      "signature": "export function betaMain() {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/beta/src/legacy.js",
+      "kind": "const",
+      "lang": "javascript",
+      "line": 1,
+      "name": "parse",
+      "signature": "module.exports.parse = function () {};",
+    },
+    {
+      "exported": true,
+      "file": "packages/beta/src/util.js",
+      "kind": "function",
+      "lang": "javascript",
+      "line": 1,
+      "name": "build",
+      "signature": "function build() {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/beta/src/util.js",
+      "kind": "function",
+      "lang": "javascript",
+      "line": 2,
+      "name": "helper",
+      "signature": "function helper() {}",
+    },
+    {
+      "exported": true,
+      "file": "packages/beta/src/util.js",
+      "kind": "const",
+      "lang": "javascript",
+      "line": 3,
+      "name": "render",
+      "signature": "exports.render = function () {};",
+    },
+  ],
+  "topDirs": {
+    ".": 5,
+    "docs": 1,
+    "packages": 10,
+  },
+}
+`;
+
+exports[`golden: structural index and overview > snapshots the rendered overview on the golden fixture 1`] = `
+"<!-- ultradoc:overview commit=unknown -->
+# golden-fixture — repository overview
+
+**Repo:** golden-fixture · **host:** local
+**Files:** 16 · **symbols:** 16 · **languages:** javascript/typescript:8, json:4, markdown:2, other:1, text:1
+**Generated:** <builtAt> (regenerate with \`ultradoc overview --refresh\`)
+
+> This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence — ground answers in a dossier from \`ultradoc ask\`.
+
+## About
+
+A tiny fixture monorepo used to snapshot the structural index.
+
+It has two workspace packages and one gitignored file.
+
+## Workspace packages
+
+This is a monorepo with 2 packages. Scope any question with \`--package <name|dir>\`.
+
+| package | path | description |
+|---------|------|-------------|
+| @golden/alpha | \`packages/alpha\` | Alpha service |
+| @golden/beta | \`packages/beta\` | Beta legacy lib |
+
+## Layout
+
+- \`packages/\` — 10 files
+- \`(root)\` — 5 files
+- \`docs/\` — 1 files
+
+## Public API
+
+### @golden/alpha (\`packages/alpha\`)
+
+- \`packages/alpha/src/server.ts\` — function \`boot\`, function \`start\`, function \`shutdown\`, function \`handleRequest\`
+- \`packages/alpha/src/model.ts\` — interface \`User\`, type \`UserId\`, class \`Repo\`
+- \`packages/alpha/src/createApp.ts\` — default \`createApp\`
+- \`packages/alpha/src/routes.ts\` — const \`route\`
+
+### @golden/beta (\`packages/beta\`)
+
+- \`packages/beta/src/util.js\` — function \`build\`, function \`helper\`, const \`render\`
+- \`packages/beta/src/index.js\` — function \`betaMain\`
+- \`packages/beta/src/legacy.js\` — const \`parse\`
+
+## Documentation
+
+- \`README.md\`
+- \`docs/guide.md\`
+- \`generated.txt\`
+"
+`;
