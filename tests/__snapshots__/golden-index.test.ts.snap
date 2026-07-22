@@ -12,17 +12,15 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
   "docFiles": [
     "README.md",
     "docs/guide.md",
-    "generated.txt",
   ],
   "docsRoot": undefined,
   "docsUrl": undefined,
-  "fileCount": 16,
+  "fileCount": 15,
   "languages": {
     "javascript/typescript": 8,
     "json": 4,
     "markdown": 2,
     "other": 1,
-    "text": 1,
   },
   "packages": [
     {
@@ -189,7 +187,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
     },
   ],
   "topDirs": {
-    ".": 5,
+    ".": 4,
     "docs": 1,
     "packages": 10,
   },
@@ -201,7 +199,7 @@ exports[`golden: structural index and overview > snapshots the rendered overview
 # golden-fixture — repository overview
 
 **Repo:** golden-fixture · **host:** local
-**Files:** 16 · **symbols:** 16 · **languages:** javascript/typescript:8, json:4, markdown:2, other:1, text:1
+**Files:** 15 · **symbols:** 16 · **languages:** javascript/typescript:8, json:4, markdown:2, other:1
 **Generated:** <builtAt> (regenerate with \`ultradoc overview --refresh\`)
 
 > This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence — ground answers in a dossier from \`ultradoc ask\`.
@@ -224,7 +222,7 @@ This is a monorepo with 2 packages. Scope any question with \`--package <name|di
 ## Layout
 
 - \`packages/\` — 10 files
-- \`(root)\` — 5 files
+- \`(root)\` — 4 files
 - \`docs/\` — 1 files
 
 ## Public API
@@ -246,6 +244,5 @@ This is a monorepo with 2 packages. Scope any question with \`--package <name|di
 
 - \`README.md\`
 - \`docs/guide.md\`
-- \`generated.txt\`
 "
 `;

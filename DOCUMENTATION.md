@@ -166,8 +166,10 @@ Together they prevent memory-based answers from passing as grounded ones.
 
 ## Extending
 
-- **A language:** add `src/lang/<x>.ts` (regex rules via `scan`) and register it
-  in `src/lang/registry.ts`.
+- **A language:** contribute the extractor upstream to the
+  [codeindex engine](https://github.com/maxgfr/codeindex) and re-pin the vendored
+  copy (`node scripts/sync-engine.mjs --ref <tag>`); only the richer JS/TS
+  extractor lives locally in `src/lang/`.
 - **A code host:** add `src/providers/<host>.ts` implementing `search()` and
   register it in `src/providers/registry.ts`.
 - **A source:** add `src/sources/<x>.ts` returning a `SourceResult` and wire it

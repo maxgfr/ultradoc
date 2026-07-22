@@ -33,7 +33,9 @@ belongs in `docker-compose.yml` and is reached over HTTP, never imported.
 
 ## Where things live
 
-- A new language extractor → `src/lang/` (+ register in `lang/registry.ts`).
+- A new language extractor → upstream in the [codeindex engine](https://github.com/maxgfr/codeindex)
+  (vendored under `src/vendor/`, re-pinned via `scripts/sync-engine.mjs`); only
+  the richer JS/TS extractor lives locally in `src/lang/`.
 - A new code host (issues/PRs) → `src/providers/` (+ register).
 - A new evidence source → `src/sources/` (+ register in `sources/registry.ts`).
 - Docs/playbooks the skill reads → `references/`.

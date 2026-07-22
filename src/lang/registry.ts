@@ -1,51 +1,39 @@
 import type { CodeSymbol } from "../types.js";
-import { extToLang } from "./common.js";
+import { extToLang, extractSymbols as engineExtractSymbols, languageOf as engineLanguageOf } from "../vendor/codeindex-engine.mjs";
 import { jsTs } from "./js-ts.js";
-import { python } from "./python.js";
-import { go } from "./go.js";
-import { ruby } from "./ruby.js";
-import { java } from "./java.js";
-import { rust } from "./rust.js";
-import { csharp } from "./csharp.js";
-import { php } from "./php.js";
-import { swift } from "./swift.js";
-import { kotlin } from "./kotlin.js";
-import { c } from "./c.js";
-import { lua } from "./lua.js";
-import { shell } from "./shell.js";
-import { elixir } from "./elixir.js";
-import { scala } from "./scala.js";
 
-export interface Extractor {
-  lang: string;
-  exts: string[];
-  extract(rel: string, content: string): CodeSymbol[];
-}
+// Symbol extraction, delegated to the vendored codeindex engine for every
+// language EXCEPT JavaScript/TypeScript. The engine's per-language rule sets
+// (python, go, ruby, java, rust, csharp, php, swift, kotlin, c, lua, shell,
+// elixir, scala) are byte-for-byte the ones that used to live here, so the
+// delegation changes nothing. JS/TS stays local because ultradoc's extractor
+// is richer than the engine's (engine gap, reported upstream): CommonJS named
+// exports (`exports.foo = …`), `export { a, b as c }` lists incl. aliases,
+// `module.exports = { … }` object exports, anonymous default exports named
+// after the file stem, and marking the ORIGINAL declaration exported on
+// `export default Foo;` (the engine emits a separate `default` symbol
+// instead). Once the engine covers those, jsTs and common.ts can be deleted
+// and this file becomes a pure re-export.
 
-// Registry of symbol extractors keyed by file extension. Adding a language is a
-// matter of writing one `lang/<x>.ts` and registering it here — the same
-// registry pattern reconstruct uses for its framework adapters.
-const EXTRACTORS: Extractor[] = [jsTs, python, go, ruby, java, rust, csharp, php, swift, kotlin, c, lua, shell, elixir, scala];
-
-const BY_EXT = new Map<string, Extractor>();
-for (const e of EXTRACTORS) for (const ext of e.exts) BY_EXT.set(ext, e);
+const JS_TS_EXTS = new Set(jsTs.exts);
 
 // Extract declared symbols from one file. Returns [] for languages without a
 // dedicated extractor (their content is still fully searchable via ripgrep).
 export function extractSymbols(rel: string, ext: string, content: string): CodeSymbol[] {
-  const extractor = BY_EXT.get(ext);
-  if (!extractor) return [];
-  try {
-    return extractor.extract(rel, content);
-  } catch {
-    return [];
+  if (JS_TS_EXTS.has(ext)) {
+    try {
+      return jsTs.extract(rel, content);
+    } catch {
+      return [];
+    }
   }
+  return engineExtractSymbols(rel, ext, content);
 }
 
 // Human-readable language label for an extension (used for the language
 // histogram), falling back to the broad table for non-extracted languages.
 export function languageOf(ext: string): string {
-  return BY_EXT.get(ext)?.lang ?? extToLang(ext);
+  return JS_TS_EXTS.has(ext) ? jsTs.lang : engineLanguageOf(ext);
 }
 
 export { extToLang };

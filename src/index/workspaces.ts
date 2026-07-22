@@ -9,6 +9,13 @@ import { readText } from "../walk.js";
 // go.work, uv workspaces, Composer path repos, Maven modules, Gradle includes).
 // Deterministic, no LLM, no network — computed once at index time and cached in
 // the StructuralIndex so questions can be scoped with --package.
+//
+// NOT delegated to the vendored codeindex engine (engine gap, reported
+// upstream): the engine's detectWorkspaces lacks uv workspaces, Composer path
+// repositories, Gradle includes, package descriptions, nested glob patterns
+// ("packages/*/plugins/*") and partial wildcard segments ("libs-*") — all
+// behaviors this module supports and the test suite encodes. Revisit once the
+// engine's detection is a strict superset.
 
 // A directory only counts as a package if it carries a real manifest —
 // otherwise a glob like "packages/*" would pick up assets or fixtures.

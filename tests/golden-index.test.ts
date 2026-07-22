@@ -7,19 +7,26 @@ import { renderOverview } from "../src/overview.js";
 import type { RepoRef, StructuralIndex } from "../src/types.js";
 
 // Golden snapshots of the load-bearing indexing artifacts (index.json and the
-// cached OVERVIEW.md) on a purpose-built fixture, captured BEFORE the vendored
-// codeindex engine replaces the walker / symbol extraction / workspace
-// discovery. Every diff a later change introduces here must be adjudicated
-// explicitly (see docs/MIGRATION.md in the codeindex repo): acceptable diffs
-// are better-ignore-rules file-set changes and strictly richer resolution;
+// cached OVERVIEW.md) on a purpose-built fixture, first captured BEFORE the
+// vendored codeindex engine replaced the walker, then re-adjudicated. Every
+// diff a change introduces here must be adjudicated explicitly (see
+// docs/MIGRATION.md in the codeindex repo): acceptable diffs are
+// better-ignore-rules file-set changes and strictly richer resolution;
 // anything else needs investigation before the snapshot is updated.
 //
 // The fixture deliberately exercises the known engine behavior differences:
-// - a .gitignored file (`generated.txt`): ultradoc's walker indexes it today,
-//   a gitignore-honoring walker will not;
+// - a .gitignored file (`generated.txt`): ultradoc's old walker indexed it,
+//   the engine's gitignore-honoring walker does not;
 // - a workspace monorepo (npm workspaces with package descriptions);
 // - JS/TS export forms beyond single-line declarations (export lists with
 //   `as` aliases, CommonJS exports, anonymous and identifier default exports).
+//
+// ADJUDICATED at engine adoption (codeindex v2.0.1) — the ONLY diffs against
+// the pre-engine baseline are the better-ignore-rules file-set change from
+// honoring .gitignore: `generated.txt` left the file set (fileCount 16 -> 15,
+// docFiles, languages `text`, topDirs ".", and the overview's Files/languages/
+// Layout/Documentation lines). Symbols, exported flags, workspace packages
+// (incl. descriptions), configFiles and every other field are byte-identical.
 
 function writeFixture(dir: string): void {
   const files: Record<string, string> = {

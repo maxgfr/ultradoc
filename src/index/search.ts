@@ -1,9 +1,9 @@
 import { statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { join } from "node:path";
 import type { EvidenceItem, StructuralIndex, CodeSymbol, RepoRef } from "../types.js";
-import { sh, have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFromTokens, accentPattern, type KeywordMatcher } from "../util.js";
-import { walk, readText } from "../walk.js";
-import { LIMITS } from "../config.js";
+import { have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFromTokens, accentPattern, type KeywordMatcher } from "../util.js";
+import { grepRepo } from "../vendor/codeindex-engine.mjs";
+import { readText } from "../walk.js";
 import { bm25 } from "./bm25.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
@@ -60,116 +60,46 @@ export const RANKING = {
   RARE_PIN_MAX: 2,
 } as const;
 
-// Lexical search via ripgrep (`rg --json`), one call with the matcher's
-// patterns OR-ed together (accent-insensitive classes over escaped literals —
-// hence no -F). Hits are attributed back to canonical keywords, so "Réessais"
-// and "retry" in the text both count toward the keyword the user typed.
-function rgSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
-  const args = [
-    "--json",
-    "-i",
-    "--max-count",
-    "40",
-    "--max-filesize",
-    "1M",
-    "-g",
-    "!**/.ultradoc/**",
-    "-g",
-    "!**/node_modules/**",
-    "-g",
-    "!**/{dist,build,vendor}/**",
-    // Lockfiles are machine-generated noise (walk skips them for the index, but
-    // ripgrep scans the tree directly, so exclude them here too).
-    "-g",
-    "!**/*.lock",
-    "-g",
-    "!**/package-lock.json",
-    "-g",
-    "!**/npm-shrinkwrap.json",
-    "-g",
-    "!**/pnpm-lock.yaml",
-    "-g",
-    "!**/yarn.lock",
-    "-g",
-    "!**/go.sum",
-  ];
-  if (scope) args.push("-g", `${scope}/**`);
-  for (const p of matcher.patterns) args.push("-e", p.source);
-  // Pass the scoped subtree as the search path so ripgrep never traverses
-  // sibling packages of a big monorepo (the glob alone still lets rg walk the
-  // whole tree). rel is computed against `root`, so paths stay repo-relative.
-  args.push(scope ? join(root, scope) : root);
+// Old rg --max-count semantics the flood-rescue pass is built around: only the
+// first N matching lines of a file are reported (and attributed).
+const MAX_LINES_PER_FILE = 40;
 
-  const res = sh("rg", args, { timeoutMs: 60_000 });
+// Lexical search via the engine's grepRepo — ripgrep when it is on PATH, the
+// engine's pure-JS scanner otherwise, with identical hits either way (the
+// engine asserts backend parity). One call with the matcher's patterns OR-ed
+// together (accent-insensitive classes over escaped literals). Hits are
+// attributed back to canonical keywords, so "Réessais" and "retry" in the text
+// both count toward the keyword the user typed. The engine applies the same
+// ignore rules as the walker (junk dirs, lockfiles, binaries, .gitignore); the
+// ultradoc-specific cache dir is filtered here, like in walk.ts.
+function lexicalSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
   const byFile = new Map<string, FileHits>();
-  if (!res.ok && !res.stdout) return byFile;
-
-  for (const raw of res.stdout.split("\n")) {
-    if (!raw) continue;
-    let evt: any;
-    try {
-      evt = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    if (evt.type !== "match") continue;
-    const abs: string = evt.data?.path?.text ?? "";
-    if (!abs) continue;
-    // Use path.relative (not string slicing) so a sibling dir whose name is a
-    // prefix of root — e.g. root=/x/abc, abs=/x/abc-backup/f — doesn't produce a
-    // bogus "-backup/f". Anything outside root is dropped.
-    const rel = relative(root, abs).split(sep).join("/");
-    if (!rel || rel.startsWith("..")) continue;
-    const lineNo: number = evt.data?.line_number ?? 0;
-    const text: string = (evt.data?.lines?.text ?? "").replace(/\n$/, "");
-    let fh = byFile.get(rel);
+  if (!matcher.patterns.length) return byFile;
+  const pattern = matcher.patterns.map((p) => `(?:${p.source})`).join("|");
+  const hits = grepRepo(root, pattern, {
+    ignoreCase: true,
+    maxHits: Number.MAX_SAFE_INTEGER,
+    globs: scope ? [`${scope}/**`] : undefined,
+  });
+  const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "gi"), canonical: p.canonical }));
+  for (const h of hits) {
+    if (h.file === ".ultradoc" || h.file.startsWith(".ultradoc/")) continue;
+    let fh = byFile.get(h.file);
     if (!fh) {
-      fh = { rel, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
-      byFile.set(rel, fh);
+      fh = { rel: h.file, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
+      byFile.set(h.file, fh);
     }
-    for (const sm of evt.data?.submatches ?? []) {
-      const canonical = matcher.canonicalOf(sm.match?.text ?? "");
-      if (canonical) {
-        fh.matchedKw.add(canonical);
-        fh.kwCounts.set(canonical, (fh.kwCounts.get(canonical) ?? 0) + 1);
+    // grepRepo returns hits sorted by (file, line), so "the first N stored
+    // lines" are the file's N first matching lines, like rg --max-count.
+    if (fh.lines.length >= MAX_LINES_PER_FILE) continue;
+    for (const p of res) {
+      const n = (h.text.match(p.re) ?? []).length;
+      if (n > 0) {
+        fh.matchedKw.add(p.canonical);
+        fh.kwCounts.set(p.canonical, (fh.kwCounts.get(p.canonical) ?? 0) + n);
       }
     }
-    fh.lines.push({ line: lineNo, text: text.slice(0, 400) });
-  }
-  return byFile;
-}
-
-// Pure-JS fallback when ripgrep isn't installed: scan walked files for the
-// keywords. Slower on huge repos but keeps the tool functional everywhere.
-// The scope matters here even though searchCode filters afterwards: walk caps
-// at 8000 files, so an unscoped walk of a big monorepo could exhaust the cap
-// before ever reaching the requested package.
-function jsSearch(root: string, matcher: KeywordMatcher, scope?: string): Map<string, FileHits> {
-  const byFile = new Map<string, FileHits>();
-  const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "i"), canonical: p.canonical }));
-  const base = scope ? join(root, scope) : root;
-  for (const f of walk(base, { maxFiles: LIMITS.jsScanFiles })) {
-    const rel = scope ? `${scope}/${f.rel}` : f.rel;
-    const content = readText(f.abs);
-    if (!content) continue;
-    const lines = content.split(/\r?\n/);
-    let fh: FileHits | undefined;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      const matched: string[] = [];
-      for (const p of res) if (p.re.test(line)) matched.push(p.canonical);
-      if (matched.length) {
-        if (!fh) {
-          fh = { rel, matchedKw: new Set(), kwCounts: new Map(), lines: [] };
-          byFile.set(rel, fh);
-        }
-        for (const m of matched) {
-          fh.matchedKw.add(m);
-          fh.kwCounts.set(m, (fh.kwCounts.get(m) ?? 0) + 1);
-        }
-        if (fh.lines.length < 40) fh.lines.push({ line: i + 1, text: line.slice(0, 400) });
-      }
-    }
+    fh.lines.push({ line: h.line, text: h.text.slice(0, 400) });
   }
   return byFile;
 }
@@ -355,7 +285,7 @@ export function searchCode(
 
   const usedRg = have("rg");
   if (!usedRg) notes.push("ripgrep not found — used the slower built-in scanner.");
-  const lexical = usedRg ? rgSearch(root, matcher, scope) : jsSearch(root, matcher, scope);
+  const lexical = lexicalSearch(root, matcher, scope);
   const symbols = symbolScores(index, matcher);
 
   // Call-site pass: when the query names an identifier, rank the files that
@@ -420,7 +350,7 @@ export function searchCode(
         canonicals: [ek.canonical],
         patterns: ek.variants.filter((v) => v.kind !== "subtoken").map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical })),
       };
-      const extra = usedRg ? rgSearch(root, rescueMatcher, scope) : jsSearch(root, rescueMatcher, scope);
+      const extra = lexicalSearch(root, rescueMatcher, scope);
       for (const [rel, fh] of extra) {
         if (!inScope(rel)) continue;
         const cur = lexical.get(rel);

@@ -25,7 +25,6 @@ export function envStr(name: string, def: string): string {
 export const LIMITS = {
   maxFiles: envInt("ULTRADOC_MAX_FILES", 20_000), // files walked/indexed
   maxFileBytes: envInt("ULTRADOC_MAX_FILE_BYTES", 1_048_576), // per-file read cap
-  jsScanFiles: envInt("ULTRADOC_MAX_SCAN_FILES", 8_000), // pure-JS search fallback cap
   symbolsPerFile: envInt("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400), // symbols kept per file
   releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20), // GitHub releases fetched
   docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6), // monorepo packages given doc sections
