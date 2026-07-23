@@ -88,6 +88,15 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
     },
     {
       "exported": true,
+      "file": "packages/alpha/src/model.ts",
+      "kind": "default",
+      "lang": "typescript",
+      "line": 6,
+      "name": "Repo",
+      "signature": "export default Repo;",
+    },
+    {
+      "exported": true,
       "file": "packages/alpha/src/routes.ts",
       "kind": "const",
       "lang": "typescript",
@@ -120,7 +129,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "lang": "typescript",
       "line": 3,
       "name": "start",
-      "signature": "function boot(port: number): number {",
+      "signature": "export { start }",
     },
     {
       "exported": true,
@@ -199,7 +208,7 @@ exports[`golden: structural index and overview > snapshots the rendered overview
 # golden-fixture — repository overview
 
 **Repo:** golden-fixture · **host:** local
-**Files:** 15 · **symbols:** 16 · **languages:** javascript/typescript:8, json:4, markdown:2, other:1
+**Files:** 15 · **symbols:** 17 · **languages:** javascript/typescript:8, json:4, markdown:2, other:1
 **Generated:** <builtAt> (regenerate with \`ultradoc overview --refresh\`)
 
 > This is a cached navigation map for answering questions about the repo without re-indexing. It is NOT citable evidence — ground answers in a dossier from \`ultradoc ask\`.
@@ -229,8 +238,8 @@ This is a monorepo with 2 packages. Scope any question with \`--package <name|di
 
 ### @golden/alpha (\`packages/alpha\`)
 
+- \`packages/alpha/src/model.ts\` — interface \`User\`, type \`UserId\`, class \`Repo\`, default \`Repo\`
 - \`packages/alpha/src/server.ts\` — function \`boot\`, function \`start\`, function \`shutdown\`, function \`handleRequest\`
-- \`packages/alpha/src/model.ts\` — interface \`User\`, type \`UserId\`, class \`Repo\`
 - \`packages/alpha/src/createApp.ts\` — default \`createApp\`
 - \`packages/alpha/src/routes.ts\` — const \`route\`
 

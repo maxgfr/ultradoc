@@ -137,9 +137,16 @@ export { something } from "./other.js";`;
     const by = Object.fromEntries(s.map((x) => [x.name, x]));
     expect(by.alpha).toMatchObject({ exported: true }); // flipped by the list
     expect(by.Beta).toMatchObject({ exported: true });
-    expect(by.PublicBeta).toMatchObject({ kind: "class", exported: true }); // alias added
+    // Alias line/endLine now cite the original `Beta` declaration (engine
+    // issue #9, fixed at v2.12.0), not the `export { … }` statement — the
+    // engine still emits its own signature rather than cloning Beta's.
+    expect(by.PublicBeta).toMatchObject({ kind: "class", exported: true, line: by.Beta!.line });
     expect(by.gamma).toMatchObject({ exported: false }); // not in any list
-    expect(by.something).toBeUndefined(); // re-export from another module — ignored
+    // Bare `export { x } from "…"` re-exports another module's symbol: the
+    // engine records it as a real, typed fact about this file instead of
+    // dropping it (product decision, v2.12.0 re-pin — was `undefined` while
+    // JS/TS extraction was local).
+    expect(by.something).toMatchObject({ kind: "reexport", exported: true });
   });
 
   it("extracts CommonJS named and object exports", () => {
@@ -171,7 +178,14 @@ module.exports = { build, helper };`;
   it("flags a default-exported existing identifier", () => {
     const src = `function handler() {}\nexport default handler;`;
     const s = extractSymbols("h.ts", ".ts", src);
-    expect(s.find((x) => x.name === "handler")).toMatchObject({ exported: true });
+    const handlers = s.filter((x) => x.name === "handler");
+    expect(handlers[0]).toMatchObject({ kind: "function", exported: true });
+    // The engine also emits a second kind:"default" entry for the `export
+    // default handler;` statement itself, alongside the already-exported
+    // declaration — a harmless, real, typed fact about the file (accepted by
+    // product decision at the v2.12.0 re-pin).
+    expect(handlers).toHaveLength(2);
+    expect(handlers[1]).toMatchObject({ kind: "default", exported: true });
   });
 
   it("returns [] for an unknown extension but still labels the language", () => {

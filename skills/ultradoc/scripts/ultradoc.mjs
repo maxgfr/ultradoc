@@ -574,6 +574,7 @@ import { mkdirSync as mkdirSync2, readdirSync as readdirSync22, readFileSync as 
 import { dirname as dirname2, join as join7 } from "path";
 import { existsSync as existsSync22, readdirSync as readdirSync3, statSync as statSync3 } from "fs";
 import { join as join8 } from "path";
+import { createHash as createHash2 } from "crypto";
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "fs";
 import { join as join10 } from "path";
 import { join as join11 } from "path";
@@ -597,9 +598,9 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.11.1";
+    ENGINE_VERSION = "2.12.0";
     SCHEMA_VERSION = 4;
-    EXTRACTOR_VERSION = 8;
+    EXTRACTOR_VERSION = 9;
   }
 });
 function sh2(cmd, args2, opts = {}) {
@@ -1309,8 +1310,8 @@ function extractReexports(rel, content, localSymbols) {
   const out2 = [];
   const seen = /* @__PURE__ */ new Set();
   const lineAt = (idx) => content.slice(0, idx).split(/\r?\n/).length;
-  const localKindOf = /* @__PURE__ */ new Map();
-  for (const s of localSymbols) if (!localKindOf.has(s.name)) localKindOf.set(s.name, s.kind);
+  const localDeclOf = /* @__PURE__ */ new Map();
+  for (const s of localSymbols) if (!localDeclOf.has(s.name)) localDeclOf.set(s.name, s);
   const named = /export\s*\{([\s\S]*?)\}\s*(?:from\s*['"]([^'"]+)['"])?\s*;?/g;
   let m;
   while ((m = named.exec(content)) && out2.length < 60) {
@@ -1322,12 +1323,13 @@ function extractReexports(rel, content, localSymbols) {
       const name2 = as ? as[2] : p;
       if (!/^[A-Za-z_$][\w$]*$/.test(name2) || name2 === "default" || seen.has(name2)) continue;
       seen.add(name2);
-      const mirroredKind = !from ? localKindOf.get(orig) : void 0;
+      const decl = !from ? localDeclOf.get(orig) : void 0;
       out2.push({
         name: name2,
-        kind: mirroredKind ?? "reexport",
+        kind: decl?.kind ?? "reexport",
         file: rel,
-        line: lineAt(m.index),
+        line: decl ? decl.line : lineAt(m.index),
+        ...decl?.endLine !== void 0 ? { endLine: decl.endLine } : {},
         signature: from ? `export { ${name2} } from "${from}"` : `export { ${name2} }`,
         exported: true,
         lang
@@ -2080,8 +2082,8 @@ function extractMarkdown(content) {
     if (t) frontTitle = t[2].trim();
     body2 = body2.slice(fm[0].length);
   }
-  const scan22 = stripFences(body2);
-  const lines = scan22.split(/\r?\n/);
+  const scan2 = stripFences(body2);
+  const lines = scan2.split(/\r?\n/);
   const headings = [];
   let title = frontTitle;
   let summary;
@@ -2118,9 +2120,9 @@ function extractMarkdown(content) {
   };
   const inline = /!?\[[^\]]*\]\(([^)]+)\)/g;
   let m;
-  while (m = inline.exec(scan22)) addRef(m[1]);
+  while (m = inline.exec(scan2)) addRef(m[1]);
   const refdef = /^\s*\[[^\]]+\]:\s+(\S+)/gm;
-  while (m = refdef.exec(scan22)) addRef(m[1]);
+  while (m = refdef.exec(scan2)) addRef(m[1]);
   return { title, summary, headings, refs };
 }
 var init_markdown = __esm({
@@ -7395,11 +7397,11 @@ function parseGoReplaces(text, modDir) {
   }
   return out2;
 }
-function buildResolveContext(scan22) {
-  const fileSet = new Set(scan22.files.map((f) => f.rel));
+function buildResolveContext(scan2) {
+  const fileSet = new Set(scan2.files.map((f) => f.rel));
   const filesByDir = /* @__PURE__ */ new Map();
   const dirSet = /* @__PURE__ */ new Set();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const dir = f.rel.includes("/") ? posix.dirname(f.rel) : "";
     let list = filesByDir.get(dir);
     if (!list) filesByDir.set(dir, list = []);
@@ -7418,7 +7420,7 @@ function buildResolveContext(scan22) {
     const isRootBase = rel === "tsconfig.base.json";
     if (base !== "tsconfig.json" && base !== "jsconfig.json" && !isRootBase) continue;
     const dir = rel.includes("/") ? posix.dirname(rel) : "";
-    const eff = readTsConfig(scan22.root, fileSet, rel, warnings, /* @__PURE__ */ new Set());
+    const eff = readTsConfig(scan2.root, fileSet, rel, warnings, /* @__PURE__ */ new Set());
     if (!eff?.paths) continue;
     const tsPaths = [];
     for (const [alias, targets] of Object.entries(eff.paths)) {
@@ -7434,7 +7436,7 @@ function buildResolveContext(scan22) {
   const goModules = [];
   for (const rel of fileSet) {
     if (rel !== "go.mod" && !rel.endsWith("/go.mod")) continue;
-    const text = readText(join32(scan22.root, rel));
+    const text = readText(join32(scan2.root, rel));
     const m = /^\s*module\s+(\S+)/m.exec(text);
     if (!m) continue;
     const dir = rel.includes("/") ? posix.dirname(rel) : "";
@@ -7444,7 +7446,7 @@ function buildResolveContext(scan22) {
   const rustCrates = [];
   for (const rel of fileSet) {
     if (rel !== "Cargo.toml" && !rel.endsWith("/Cargo.toml")) continue;
-    const text = readText(join32(scan22.root, rel));
+    const text = readText(join32(scan2.root, rel));
     const m = /\[package\][^[]*?^\s*name\s*=\s*"([^"]+)"/ms.exec(text);
     if (!m) continue;
     const dir = rel.includes("/") ? posix.dirname(rel) : "";
@@ -7454,7 +7456,7 @@ function buildResolveContext(scan22) {
   }
   rustCrates.sort((a, b) => b.dir.length - a.dir.length || (a.dir < b.dir ? -1 : 1));
   const javaRoots = /* @__PURE__ */ new Set();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (f.ext !== ".java" || !f.pkg) continue;
     const dir = f.rel.includes("/") ? posix.dirname(f.rel) : "";
     const pkgPath = f.pkg.replace(/\./g, "/");
@@ -7471,7 +7473,7 @@ function buildResolveContext(scan22) {
   const workspacePackages = [];
   for (const rel of fileSet) {
     if (rel !== "package.json" && !rel.endsWith("/package.json")) continue;
-    const pkg = tolerantJsonParse(readText(join32(scan22.root, rel)));
+    const pkg = tolerantJsonParse(readText(join32(scan2.root, rel)));
     if (pkg === void 0) {
       warnings.push(`unparseable ${rel} \u2014 skipped for workspace resolution`);
       continue;
@@ -7498,7 +7500,7 @@ function buildResolveContext(scan22) {
   const phpPsr4 = [];
   for (const rel of fileSet) {
     if (rel !== "composer.json" && !rel.endsWith("/composer.json")) continue;
-    const composer = tolerantJsonParse(readText(join32(scan22.root, rel)));
+    const composer = tolerantJsonParse(readText(join32(scan2.root, rel)));
     if (!composer) {
       warnings.push(`unparseable ${rel} \u2014 skipped for PHP PSR-4 resolution`);
       continue;
@@ -7516,7 +7518,7 @@ function buildResolveContext(scan22) {
   }
   phpPsr4.sort((a, b) => b.prefix.length - a.prefix.length);
   const csharpNamespaces = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (f.ext !== ".cs" || !f.pkg) continue;
     let arr = csharpNamespaces.get(f.pkg);
     if (!arr) csharpNamespaces.set(f.pkg, arr = []);
@@ -7932,9 +7934,9 @@ function summaryOf(path, members) {
   const where = path === ROOT_PATH ? "the repository root" : `\`${path}/\``;
   return `${members.length} file(s) in ${where}${langs.length ? ` (${langs.slice(0, 3).join(", ")})` : ""}.`;
 }
-function buildModules(scan22) {
+function buildModules(scan2) {
   const byDir = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const dir = dirOf(f.rel);
     let list = byDir.get(dir);
     if (!list) byDir.set(dir, list = []);
@@ -8019,10 +8021,10 @@ function pickCandidate(callerRel, cands) {
   }
   return tied ? void 0 : best;
 }
-function resolveCallEdges(scan22, importPairs) {
+function resolveCallEdges(scan2, importPairs) {
   const defs = /* @__PURE__ */ new Map();
   const seen = /* @__PURE__ */ new Set();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       if (!s.exported || REFERENCE_KINDS.has(s.kind)) continue;
       const dedup = `${s.name} ${s.file}`;
@@ -8034,7 +8036,7 @@ function resolveCallEdges(scan22, importPairs) {
     }
   }
   const agg = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (!f.calls?.length) continue;
     const family = familyOf(f.lang);
     const ownNames = new Set(f.symbols.map((s) => s.name));
@@ -8084,9 +8086,9 @@ function isDistinctive(name2) {
   const internalUpper = /[a-z][A-Z]/.test(name2) || /[A-Z]{2}/.test(name2);
   return internalUpper || name2.includes("_") || /\d/.test(name2);
 }
-function uniqueSymbolDefs(scan22) {
+function uniqueSymbolDefs(scan2) {
   const byName = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       if (!s.exported || REFERENCE_KINDS2.has(s.kind) || !isDistinctive(s.name)) continue;
       let set = byName.get(s.name);
@@ -8107,10 +8109,10 @@ function collect(edges, e) {
   }
   edges.set(k, { ...e });
 }
-function buildGraph(scan22, ctx, modules, moduleOf, meta) {
+function buildGraph(scan2, ctx, modules, moduleOf, meta) {
   const fileEdgeMap = /* @__PURE__ */ new Map();
   const importPairs = /* @__PURE__ */ new Set();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const ref of f.refs) {
       if (ref.kind === "doc-link") {
         const r = resolveDocLink(f.rel, ref.spec, ctx);
@@ -8133,13 +8135,13 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
     }
   }
   const callPairs = /* @__PURE__ */ new Set();
-  for (const e of resolveCallEdges(scan22, importPairs)) {
+  for (const e of resolveCallEdges(scan2, importPairs)) {
     collect(fileEdgeMap, e);
     callPairs.add(`${e.from}|${e.to}`);
   }
-  const unique = uniqueSymbolDefs(scan22);
+  const unique = uniqueSymbolDefs(scan2);
   if (unique.size) {
-    for (const f of scan22.files) {
+    for (const f of scan2.files) {
       if (f.kind !== "code" || !f.idents?.length) continue;
       const perTarget = /* @__PURE__ */ new Map();
       for (const id of f.idents) {
@@ -8155,9 +8157,9 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
     }
   }
   if (unique.size) {
-    for (const f of scan22.files) {
+    for (const f of scan2.files) {
       if (f.kind !== "doc") continue;
-      const content = scan22.docText.get(f.rel) ?? readText(join4(scan22.root, f.rel));
+      const content = scan2.docText.get(f.rel) ?? readText(join4(scan2.root, f.rel));
       if (!content) continue;
       const tokens = /* @__PURE__ */ new Map();
       for (const tok of content.split(/[^A-Za-z0-9_]+/)) {
@@ -8175,7 +8177,7 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
   );
   const degIn = /* @__PURE__ */ new Map();
   const degOut = /* @__PURE__ */ new Map();
-  const fileSet = new Set(scan22.files.map((f) => f.rel));
+  const fileSet = new Set(scan2.files.map((f) => f.rel));
   for (const e of fileEdges) {
     if (e.dangling || !fileSet.has(e.to)) continue;
     degOut.set(e.from, (degOut.get(e.from) ?? 0) + 1);
@@ -8204,7 +8206,7 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
     modDegOut.set(e.from, (modDegOut.get(e.from) ?? 0) + 1);
     modDegIn.set(e.to, (modDegIn.get(e.to) ?? 0) + 1);
   }
-  const files = scan22.files.map((f) => ({
+  const files = scan2.files.map((f) => ({
     id: f.rel,
     kind: "file",
     rel: f.rel,
@@ -8219,7 +8221,7 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
     degOut: degOut.get(f.rel) ?? 0
   })).sort((a, b) => byStr(a.rel, b.rel));
   const symbolsByModule = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const slug = moduleOf.get(f.rel) ?? "root";
     symbolsByModule.set(slug, (symbolsByModule.get(slug) ?? 0) + f.symbols.length);
   }
@@ -8239,9 +8241,9 @@ function buildGraph(scan22, ctx, modules, moduleOf, meta) {
   return {
     schemaVersion: meta?.schemaVersion ?? SCHEMA_VERSION,
     version: meta?.version ?? ENGINE_VERSION,
-    commit: scan22.commit,
-    fileCount: scan22.files.length,
-    languages: scan22.languages,
+    commit: scan2.commit,
+    fileCount: scan2.files.length,
+    languages: scan2.languages,
     files,
     modules: moduleNodes,
     fileEdges,
@@ -8262,10 +8264,10 @@ var init_graph = __esm({
     keyOf = (from, to, kind) => `${from}\0${to}\0${kind}`;
   }
 });
-function computeImportPairs(scan22) {
-  const ctx = buildResolveContext(scan22);
+function computeImportPairs(scan2) {
+  const ctx = buildResolveContext(scan2);
   const pairs = /* @__PURE__ */ new Set();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const ref of f.refs) {
       if (ref.kind !== "import") continue;
       const r = resolveImport(f.rel, f.ext, ref.spec, ctx);
@@ -8274,11 +8276,11 @@ function computeImportPairs(scan22) {
   }
   return pairs;
 }
-function buildCallerIndex(scan22, importPairs, opts = {}) {
-  const pairs = importPairs ?? computeImportPairs(scan22);
+function buildCallerIndex(scan2, importPairs, opts = {}) {
+  const pairs = importPairs ?? computeImportPairs(scan2);
   const recall = opts.recall === true;
   const defs = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const seen = /* @__PURE__ */ new Set();
     for (const s of f.symbols) {
       if (!s.exported || REFERENCE_KINDS3.has(s.kind)) continue;
@@ -8290,7 +8292,7 @@ function buildCallerIndex(scan22, importPairs, opts = {}) {
     }
   }
   const localDefs = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const byName = /* @__PURE__ */ new Map();
     for (const s of f.symbols) {
       if (!REFERENCE_KINDS3.has(s.kind) && !byName.has(s.name)) byName.set(s.name, s);
@@ -8303,7 +8305,7 @@ function buildCallerIndex(scan22, importPairs, opts = {}) {
     if (!entry) sites.set(def.name + "\0" + def.file, entry = { def, callers: [] });
     entry.callers.push(caller);
   };
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (!f.calls?.length) continue;
     const family = familyOf(f.lang);
     const own = localDefs.get(f.rel);
@@ -8340,11 +8342,14 @@ function buildCallerIndex(scan22, importPairs, opts = {}) {
   }
   return index;
 }
-function enclosingSymbol(scan22, file, line) {
-  const f = scan22.files.find((x) => x.rel === file);
+function enclosingSymbol(scan2, file, line) {
+  const f = scan2.files.find((x) => x.rel === file);
   if (!f?.symbols.length) return void 0;
+  return enclosingAmong(f.symbols, line);
+}
+function enclosingAmong(symbols, line) {
   let best;
-  for (const s of f.symbols) {
+  for (const s of symbols) {
     if (REFERENCE_KINDS3.has(s.kind)) continue;
     if (s.line > line) continue;
     if (s.endLine !== void 0 && line > s.endLine) continue;
@@ -8353,6 +8358,29 @@ function enclosingSymbol(scan22, file, line) {
     }
   }
   return best;
+}
+function buildRawCallerIndex(scan2) {
+  const byName = /* @__PURE__ */ new Map();
+  for (const f of scan2.files) {
+    if (!f.calls?.length) continue;
+    const symbols = f.symbols.filter((s) => !REFERENCE_KINDS3.has(s.kind));
+    for (const c2 of f.calls) {
+      const site = { file: f.rel, line: c2.line };
+      if (c2.receiver !== void 0) site.receiver = c2.receiver;
+      const enc = enclosingAmong(symbols, c2.line);
+      if (enc) site.enclosingSymbol = enc;
+      let arr = byName.get(c2.name);
+      if (!arr) byName.set(c2.name, arr = []);
+      arr.push(site);
+    }
+  }
+  const index = /* @__PURE__ */ new Map();
+  for (const name2 of [...byName.keys()].sort(byStr)) {
+    const sites = byName.get(name2);
+    sites.sort((a, b) => byStr(a.file, b.file) || a.line - b.line);
+    index.set(name2, sites);
+  }
+  return index;
 }
 var REFERENCE_KINDS3;
 var init_callers = __esm({
@@ -8364,19 +8392,19 @@ var init_callers = __esm({
     REFERENCE_KINDS3 = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
   }
 });
-function symbolsOverview(scan22, rel) {
-  const f = scan22.files.find((x) => x.rel === rel);
+function symbolsOverview(scan2, rel) {
+  const f = scan2.files.find((x) => x.rel === rel);
   if (!f) return [];
   return [...f.symbols].filter((s) => !REFERENCE_KINDS4.has(s.kind)).sort((a, b) => a.line - b.line || byStr(a.name, b.name));
 }
-function findSymbol(scan22, namePath, opts = {}) {
+function findSymbol(scan2, namePath, opts = {}) {
   const segments = namePath.split("/").filter(Boolean);
   if (!segments.length) return [];
   const leaf = segments[segments.length - 1];
   const parents = segments.slice(0, -1);
   const matchName = (name2, wanted) => opts.substring ? name2.toLowerCase().includes(wanted.toLowerCase()) : name2 === wanted;
   const out2 = [];
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       if (REFERENCE_KINDS4.has(s.kind)) continue;
       if (!matchName(s.name, leaf)) continue;
@@ -8394,32 +8422,32 @@ function findSymbol(scan22, namePath, opts = {}) {
   if (opts.includeBody) {
     for (const m of capped) {
       const end = m.endLine ?? m.line;
-      const content = readText(join5(scan22.root, m.file));
+      const content = readText(join5(scan2.root, m.file));
       if (!content) continue;
       m.body = content.split("\n").slice(m.line - 1, end).join("\n");
     }
   }
   return capped;
 }
-function findReferences(scan22, name2) {
+function findReferences(scan2, name2) {
   const defs = [];
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       if (s.name === name2 && !REFERENCE_KINDS4.has(s.kind)) defs.push(s);
     }
   }
   defs.sort((a, b) => byStr(a.file, b.file) || a.line - b.line);
-  const index = buildCallerIndex(scan22);
+  const index = buildCallerIndex(scan2);
   const entry = index.get(name2);
   const callSites = entry ? entry.callers : [];
   const referencingFiles = /* @__PURE__ */ new Set();
-  const unique = uniqueSymbolDefs(scan22);
+  const unique = uniqueSymbolDefs(scan2);
   const defFile = unique.get(name2);
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (f.rel === defFile) continue;
     if (f.kind === "code" && f.idents?.includes(name2)) referencingFiles.add(f.rel);
     else if (f.kind === "doc") {
-      const content = scan22.docText.get(f.rel);
+      const content = scan2.docText.get(f.rel);
       if (content && new RegExp(`\\b${name2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(content)) {
         referencingFiles.add(f.rel);
       }
@@ -8439,12 +8467,12 @@ var init_query = __esm({
     REFERENCE_KINDS4 = /* @__PURE__ */ new Set(["reexport", "reexport-all", "default"]);
   }
 });
-function resolveUniqueSymbol(scan22, namePath, file) {
-  let matches = findSymbol(scan22, namePath);
+function resolveUniqueSymbol(scan2, namePath, file) {
+  let matches = findSymbol(scan2, namePath);
   if (file) matches = matches.filter((m) => m.file === file);
   if (matches.length === 1) return matches[0];
   if (matches.length === 0) {
-    const near = findSymbol(scan22, namePath, { substring: true, maxResults: 5 }).map((m) => `${m.file}:${m.line} ${m.parent ? m.parent + "/" : ""}${m.name}`).join(", ");
+    const near = findSymbol(scan2, namePath, { substring: true, maxResults: 5 }).map((m) => `${m.file}:${m.line} ${m.parent ? m.parent + "/" : ""}${m.name}`).join(", ");
     throw new Error(`no symbol matches "${namePath}"${file ? ` in ${file}` : ""}${near ? ` \u2014 near matches: ${near}` : ""}`);
   }
   const list = matches.map((m) => `${m.file}:${m.line}`).join(", ");
@@ -8453,18 +8481,18 @@ function resolveUniqueSymbol(scan22, namePath, file) {
 function readLines(abs) {
   return readFileSync3(abs, "utf8").split("\n");
 }
-function replaceSymbolBody(scan22, namePath, body2, file) {
-  const sym = resolveUniqueSymbol(scan22, namePath, file);
+function replaceSymbolBody(scan2, namePath, body2, file) {
+  const sym = resolveUniqueSymbol(scan2, namePath, file);
   const end = sym.endLine ?? sym.line;
-  const abs = join6(scan22.root, sym.file);
+  const abs = join6(scan2.root, sym.file);
   const lines = readLines(abs);
   const newLines = body2.replace(/^\n+|\n+$/g, "").split("\n");
   lines.splice(sym.line - 1, end - sym.line + 1, ...newLines);
   writeFileSync(abs, lines.join("\n"));
   return { file: sym.file, startLine: sym.line, endLine: sym.line + newLines.length - 1, lines: newLines.length };
 }
-function insertAt(scan22, sym, body2, index, blankBefore, blankAfter) {
-  const abs = join6(scan22.root, sym.file);
+function insertAt(scan2, sym, body2, index, blankBefore, blankAfter) {
+  const abs = join6(scan2.root, sym.file);
   const lines = readLines(abs);
   const minGap = SEPARATED_KINDS.has(sym.kind) ? 1 : 0;
   const newLines = body2.replace(/^\n+|\n+$/g, "").split("\n");
@@ -8476,14 +8504,14 @@ function insertAt(scan22, sym, body2, index, blankBefore, blankAfter) {
   writeFileSync(abs, lines.join("\n"));
   return { file: sym.file, startLine: index + 1, endLine: index + block.length, lines: block.length };
 }
-function insertAfterSymbol(scan22, namePath, body2, file) {
-  const sym = resolveUniqueSymbol(scan22, namePath, file);
+function insertAfterSymbol(scan2, namePath, body2, file) {
+  const sym = resolveUniqueSymbol(scan2, namePath, file);
   const end = sym.endLine ?? sym.line;
-  return insertAt(scan22, sym, body2, end, true, true);
+  return insertAt(scan2, sym, body2, end, true, true);
 }
-function insertBeforeSymbol(scan22, namePath, body2, file) {
-  const sym = resolveUniqueSymbol(scan22, namePath, file);
-  return insertAt(scan22, sym, body2, sym.line - 1, true, true);
+function insertBeforeSymbol(scan2, namePath, body2, file) {
+  const sym = resolveUniqueSymbol(scan2, namePath, file);
+  return insertAt(scan2, sym, body2, sym.line - 1, true, true);
 }
 var SEPARATED_KINDS;
 var init_edit = __esm({
@@ -9597,8 +9625,8 @@ var init_surprise = __esm({
     DEP_KINDS = /* @__PURE__ */ new Set(["import", "call", "use"]);
   }
 });
-function computeSymbolRefs(scan22) {
-  const unique = uniqueSymbolDefs(scan22);
+function computeSymbolRefs(scan2) {
+  const unique = uniqueSymbolDefs(scan2);
   const refs = /* @__PURE__ */ new Map();
   if (!unique.size) return refs;
   const add = (name2, file) => {
@@ -9606,14 +9634,14 @@ function computeSymbolRefs(scan22) {
     if (!set) refs.set(name2, set = /* @__PURE__ */ new Set());
     set.add(file);
   };
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (f.kind === "code" && f.idents) {
       for (const id of f.idents) {
         const target = unique.get(id);
         if (target && target !== f.rel) add(id, f.rel);
       }
     } else if (f.kind === "doc") {
-      const content = scan22.docText.get(f.rel);
+      const content = scan2.docText.get(f.rel);
       if (!content) continue;
       for (const tok of content.split(/[^A-Za-z0-9_]+/)) {
         const target = unique.get(tok);
@@ -9623,9 +9651,9 @@ function computeSymbolRefs(scan22) {
   }
   return refs;
 }
-function buildSymbolIndex(scan22, refs = /* @__PURE__ */ new Map()) {
+function buildSymbolIndex(scan2, refs = /* @__PURE__ */ new Map()) {
   const defsByName = /* @__PURE__ */ new Map();
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       let arr = defsByName.get(s.name);
       if (!arr) defsByName.set(s.name, arr = []);
@@ -9678,10 +9706,10 @@ var init_graph_json = __esm({
   }
 });
 function buildIndexArtifacts(repo, opts = {}) {
-  const scan22 = scanRepo(repo, opts);
-  const ctx = buildResolveContext(scan22);
-  const { modules, moduleOf } = buildModules(scan22);
-  const graph = buildGraph(scan22, ctx, modules, moduleOf, opts.meta);
+  const scan2 = scanRepo(repo, opts);
+  const ctx = buildResolveContext(scan2);
+  const { modules, moduleOf } = buildModules(scan2);
+  const graph = buildGraph(scan2, ctx, modules, moduleOf, opts.meta);
   const communities = detectCommunities(graph.modules, graph.moduleEdges, opts.previousCommunities);
   for (const m of graph.modules) {
     const id = communities.get(m.slug);
@@ -9698,8 +9726,8 @@ function buildIndexArtifacts(repo, opts = {}) {
   }
   const surprises = computeSurprises(graph);
   if (surprises.length) graph.surprises = surprises;
-  const symbols = buildSymbolIndex(scan22, computeSymbolRefs(scan22));
-  return { scan: scan22, graph, symbols };
+  const symbols = buildSymbolIndex(scan2, computeSymbolRefs(scan2));
+  return { scan: scan2, graph, symbols };
 }
 var init_pipeline = __esm({
   "src/pipeline.ts"() {
@@ -9812,9 +9840,9 @@ function addTerms(doc, text) {
     doc.len++;
   }
 }
-function buildDocs(scan22) {
+function buildDocs(scan2) {
   const docs = [];
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const doc = { file: f.rel, tf: /* @__PURE__ */ new Map(), len: 0, symbols: [] };
     const seenSym = /* @__PURE__ */ new Set();
     for (const s of f.symbols) {
@@ -9852,7 +9880,7 @@ function buildTrigramIndex(docs) {
   }
   return index;
 }
-function searchIndex(scan22, query4, opts = {}) {
+function searchIndex(scan2, query4, opts = {}) {
   const terms = [];
   const seen = /* @__PURE__ */ new Set();
   for (const kw of keywords2(query4)) {
@@ -9863,7 +9891,7 @@ function searchIndex(scan22, query4, opts = {}) {
     }
   }
   if (!terms.length) return [];
-  const docs = buildDocs(scan22);
+  const docs = buildDocs(scan2);
   const n = docs.length;
   if (!n) return [];
   let totalLen = 0;
@@ -10011,16 +10039,33 @@ function loadEmbedModel(dir) {
   return { modelId, dim, unk, unkId, vocabSize, vocab: vmap, weights: flat };
 }
 function resolveEmbedPullUrl() {
-  const url = process.env.CODEINDEX_EMBED_URL;
-  return url && url.trim() ? url.trim() : void 0;
+  const env = process.env.CODEINDEX_EMBED_URL;
+  if (env && env.trim()) return { url: env.trim() };
+  return { url: DEFAULT_EMBED_URL, sha256: EMBED_ASSET_SHA256 };
+}
+async function fetchEmbedModel(url, expectedSha256) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+  const body2 = await res.text();
+  if (expectedSha256) {
+    const got = createHash2("sha256").update(body2).digest("hex");
+    if (got !== expectedSha256) {
+      throw new Error(`sha256 mismatch: expected ${expectedSha256}, got ${got}`);
+    }
+  }
+  return body2;
 }
 var EMBED_VERSION;
 var DEFAULT_EMBED_DIRNAME;
+var DEFAULT_EMBED_URL;
+var EMBED_ASSET_SHA256;
 var init_model = __esm({
   "src/embed/model.ts"() {
     "use strict";
     EMBED_VERSION = 1;
     DEFAULT_EMBED_DIRNAME = "models";
+    DEFAULT_EMBED_URL = "https://github.com/maxgfr/codeindex/releases/download/embed-model-v1/model.json";
+    EMBED_ASSET_SHA256 = "163ad053eab4e9a80d421ed4164f32292c83290f02fbbe6fe4b9b1cd6ea18d34";
   }
 });
 function basicTokenize(text) {
@@ -10116,9 +10161,9 @@ function symbolText(rel, name2, signature, summary) {
 function fileText(rel, title, summary, headings) {
   return [title ?? "", summary ?? "", ...headings, rel.replace(/\//g, " ")].join("\n");
 }
-function embeddingUnits(scan22) {
+function embeddingUnits(scan2) {
   const units = [];
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     const seen = /* @__PURE__ */ new Set();
     let hadSymbol = false;
     for (const s of f.symbols) {
@@ -10134,8 +10179,8 @@ function embeddingUnits(scan22) {
   }
   return units;
 }
-function buildEmbeddingIndex(scan22, model) {
-  const records = embeddingUnits(scan22).map((u) => {
+function buildEmbeddingIndex(scan2, model) {
+  const records = embeddingUnits(scan2).map((u) => {
     const rec = { file: u.file, vec: encode(model, u.text) };
     if (u.symbol !== void 0) rec.symbol = u.symbol;
     if (u.line !== void 0) rec.line = u.line;
@@ -10192,9 +10237,9 @@ var init_embed = __esm({
     MAGIC = "CIE1";
   }
 });
-function searchSemantic(scan22, query4, index, opts = {}) {
+function searchSemantic(scan2, query4, index, opts = {}) {
   const limit = opts.limit ?? DEFAULT_LIMIT2;
-  const lexical = searchIndex(scan22, query4, { limit: Math.max(limit, 50), fuzzy: opts.fuzzy });
+  const lexical = searchIndex(scan2, query4, { limit: Math.max(limit, 50), fuzzy: opts.fuzzy });
   const q = opts.queryVec ?? (opts.model ? encode(opts.model, query4) : void 0);
   if (!q || !index || index.records.length === 0) {
     return lexical.slice(0, limit);
@@ -10297,8 +10342,8 @@ async function encodeQueryViaEndpoint(query4, opts = {}) {
   if (!vec) throw new Error("embedding endpoint returned no vector for the query");
   return quantize(vec);
 }
-async function buildEndpointIndex(scan22, opts = {}) {
-  const units = embeddingUnits(scan22);
+async function buildEndpointIndex(scan2, opts = {}) {
+  const units = embeddingUnits(scan2);
   const batchSize = opts.batchSize && opts.batchSize > 0 ? opts.batchSize : 64;
   const records = [];
   let dim = 0;
@@ -10545,8 +10590,8 @@ function changeCoupling(dir, opts = {}) {
   out2.sort((x, y) => y.strength - x.strength || y.together - x.together || byStr(x.a, y.a) || byStr(x.b, y.b));
   return { ok: true, couplings: out2.slice(0, maxPairs) };
 }
-function rankHotspots(scan22, churn, top = 20) {
-  const out2 = scan22.files.filter((f) => f.kind === "code").map((f) => {
+function rankHotspots(scan2, churn, top = 20) {
+  const out2 = scan2.files.filter((f) => f.kind === "code").map((f) => {
     const commits = churn.get(f.rel) ?? 0;
     return { rel: f.rel, lines: f.lines, commits, score: Number((commits * Math.log2(f.lines + 1)).toFixed(2)) };
   });
@@ -10560,11 +10605,11 @@ var init_coupling = __esm({
     init_sort();
   }
 });
-function renderRepoMap(scan22, graph, opts = {}) {
+function renderRepoMap(scan2, graph, opts = {}) {
   const budgetChars = (opts.budgetTokens ?? 1024) * CHARS_PER_TOKEN;
   const maxSymbols = opts.maxSymbolsPerFile ?? 8;
   const ranked = [...graph.files].filter((f) => f.fileKind === "code").sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || b.symbols - a.symbols || byStr(a.rel, b.rel));
-  const records = new Map(scan22.files.map((f) => [f.rel, f]));
+  const records = new Map(scan2.files.map((f) => [f.rel, f]));
   const header = `# repo map \u2014 ${graph.fileCount} files
 `;
   let out2 = header;
@@ -10597,12 +10642,12 @@ var init_repomap = __esm({
     CHARS_PER_TOKEN = 4;
   }
 });
-function findDeadCode(scan22) {
-  const callers = buildCallerIndex(scan22);
-  const refs = computeSymbolRefs(scan22);
+function findDeadCode(scan2) {
+  const callers = buildCallerIndex(scan2);
+  const refs = computeSymbolRefs(scan2);
   const out2 = [];
   const consider = (s) => s.exported && !REFERENCE_KINDS6.has(s.kind) && !isTestPath(s.file) && !ENTRYPOINT_RE.test(s.file);
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     for (const s of f.symbols) {
       if (!consider(s)) continue;
       const entry = callers.get(s.name) ?? callers.get(`${s.name}@${s.file}`);
@@ -10630,13 +10675,13 @@ var init_deadcode = __esm({
 function complexityOfSource(source) {
   return 1 + (source.match(BRANCH_RE) ?? []).length;
 }
-function symbolComplexity(scan22, rel, top = 50) {
+function symbolComplexity(scan2, rel, top = 50) {
   const out2 = [];
-  for (const f of scan22.files) {
+  for (const f of scan2.files) {
     if (f.kind !== "code") continue;
     if (rel && f.rel !== rel) continue;
     if (!f.symbols.length) continue;
-    const lines = readText(join11(scan22.root, f.rel)).split("\n");
+    const lines = readText(join11(scan2.root, f.rel)).split("\n");
     for (const s of f.symbols) {
       if (s.kind === "reexport" || s.kind === "reexport-all") continue;
       const end = s.endLine ?? s.line;
@@ -10649,9 +10694,9 @@ function symbolComplexity(scan22, rel, top = 50) {
   out2.sort((a, b) => b.complexity - a.complexity || byStr(a.file, b.file) || a.line - b.line);
   return out2.slice(0, top);
 }
-function riskHotspots(scan22, churn, top = 20) {
-  const out2 = scan22.files.filter((f) => f.kind === "code").map((f) => {
-    const complexity = complexityOfSource(readText(join11(scan22.root, f.rel)));
+function riskHotspots(scan2, churn, top = 20) {
+  const out2 = scan2.files.filter((f) => f.kind === "code").map((f) => {
+    const complexity = complexityOfSource(readText(join11(scan2.root, f.rel)));
     const commits = churn.get(f.rel) ?? 0;
     return { file: f.rel, complexity, commits, score: (commits + 1) * complexity };
   });
@@ -10704,7 +10749,9 @@ var init_viz = __esm({
 });
 var mcp_exports = {};
 __export(mcp_exports, {
-  runMcpServer: () => runMcpServer
+  memoizedEmbeddingIndex: () => memoizedEmbeddingIndex,
+  runMcpServer: () => runMcpServer,
+  scanFingerprint: () => scanFingerprint
 });
 function str(v) {
   return typeof v === "string" && v ? v : void 0;
@@ -10712,14 +10759,27 @@ function str(v) {
 function strArray(v) {
   return Array.isArray(v) && v.every((x) => typeof x === "string") && v.length ? v : void 0;
 }
+function errMessage(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+function scanFingerprint(scan2) {
+  return sha1(scan2.files.map((f) => `${f.rel}:${f.hash}`).join("\n"));
+}
+async function memoizedEmbeddingIndex(key, build) {
+  const cacheKey = `${key.mode}:${key.identity}:${scanFingerprint(key.scan)}`;
+  if (embeddingIndexCache && embeddingIndexCache.key === cacheKey) return embeddingIndexCache.index;
+  const index = await build();
+  embeddingIndexCache = { key: cacheKey, index };
+  return index;
+}
 async function callTool(name2, args2) {
   const repo = str(args2.repo);
   if (!repo) throw new Error("`repo` is required (absolute path to the repository root)");
   const scanOpts = { scope: str(args2.scope), include: strArray(args2.include), exclude: strArray(args2.exclude) };
   if (name2 === "scan_summary") {
-    const scan22 = scanRepo(repo, scanOpts);
+    const scan2 = scanRepo(repo, scanOpts);
     return JSON.stringify(
-      { engineVersion: ENGINE_VERSION, commit: scan22.commit, fileCount: scan22.files.length, languages: scan22.languages, capped: scan22.capped },
+      { engineVersion: ENGINE_VERSION, commit: scan2.commit, fileCount: scan2.files.length, languages: scan2.languages, capped: scan2.capped },
       null,
       2
     );
@@ -10779,9 +10839,9 @@ async function callTool(name2, args2) {
     const namePath = str(args2.namePath);
     const body2 = typeof args2.body === "string" ? args2.body : void 0;
     if (!namePath || body2 === void 0) throw new Error("`namePath` and `body` are required");
-    const scan22 = scanRepo(repo, scanOpts);
+    const scan2 = scanRepo(repo, scanOpts);
     const fn = name2 === "replace_symbol_body" ? replaceSymbolBody : name2 === "insert_after_symbol" ? insertAfterSymbol : insertBeforeSymbol;
-    return JSON.stringify(fn(scan22, namePath, body2, str(args2.file)), null, 2);
+    return JSON.stringify(fn(scan2, namePath, body2, str(args2.file)), null, 2);
   }
   if (name2 === "write_memory") {
     const memName = str(args2.name);
@@ -10808,25 +10868,25 @@ async function callTool(name2, args2) {
     return JSON.stringify(findDeadCode(scanRepo(repo, scanOpts)), null, 2);
   }
   if (name2 === "complexity") {
-    const scan22 = scanRepo(repo, scanOpts);
+    const scan2 = scanRepo(repo, scanOpts);
     if (args2.risk === true) {
       const { churn, ok } = gitChurn(repo);
-      return JSON.stringify({ churnOk: ok, risks: riskHotspots(scan22, churn) }, null, 2);
+      return JSON.stringify({ churnOk: ok, risks: riskHotspots(scan2, churn) }, null, 2);
     }
-    return JSON.stringify(symbolComplexity(scan22, str(args2.file)), null, 2);
+    return JSON.stringify(symbolComplexity(scan2, str(args2.file)), null, 2);
   }
   if (name2 === "mermaid") {
     const { graph } = buildIndexArtifacts(repo, scanOpts);
     return renderMermaid(graph, { module: str(args2.module) });
   }
   if (name2 === "repo_map") {
-    const { scan: scan22, graph } = buildIndexArtifacts(repo, scanOpts);
-    return renderRepoMap(scan22, graph, { budgetTokens: typeof args2.budgetTokens === "number" ? args2.budgetTokens : void 0 });
+    const { scan: scan2, graph } = buildIndexArtifacts(repo, scanOpts);
+    return renderRepoMap(scan2, graph, { budgetTokens: typeof args2.budgetTokens === "number" ? args2.budgetTokens : void 0 });
   }
   if (name2 === "hotspots") {
-    const scan22 = scanRepo(repo, scanOpts);
+    const scan2 = scanRepo(repo, scanOpts);
     const { churn, ok } = gitChurn(repo, { since: str(args2.since) });
-    return JSON.stringify({ churnOk: ok, hotspots: rankHotspots(scan22, churn) }, null, 2);
+    return JSON.stringify({ churnOk: ok, hotspots: rankHotspots(scan2, churn) }, null, 2);
   }
   if (name2 === "coupling") {
     const { ok, couplings } = changeCoupling(repo, { since: str(args2.since) });
@@ -10845,28 +10905,44 @@ async function callTool(name2, args2) {
   if (name2 === "search") {
     const query4 = str(args2.query);
     if (!query4) throw new Error("`query` is required");
-    const scan22 = scanRepo(repo, scanOpts);
+    const scan2 = scanRepo(repo, scanOpts);
     const limit = typeof args2.limit === "number" ? args2.limit : void 0;
     const fuzzy = typeof args2.fuzzy === "boolean" ? args2.fuzzy : void 0;
     if (args2.semantic === true) {
       const endpoint = resolveEmbedEndpoint();
       if (endpoint) {
         try {
-          const index = await buildEndpointIndex(scan22);
+          const index = await memoizedEmbeddingIndex({ mode: "endpoint", identity: endpoint, scan: scan2 }, () => buildEndpointIndex(scan2));
           const queryVec = await encodeQueryViaEndpoint(query4);
-          return JSON.stringify(searchSemantic(scan22, query4, index, { queryVec, limit, fuzzy }), null, 2);
-        } catch {
-          return JSON.stringify(searchIndex(scan22, query4, { limit, fuzzy }), null, 2);
+          const results2 = searchSemantic(scan2, query4, index, { queryVec, limit, fuzzy });
+          return JSON.stringify({ results: results2, tier: "endpoint" }, null, 2);
+        } catch (e) {
+          const results2 = searchIndex(scan2, query4, { limit, fuzzy });
+          return JSON.stringify(
+            { results: results2, tier: "lexical", degradedReason: `embedding endpoint failed: ${errMessage(e)}` },
+            null,
+            2
+          );
         }
       }
       const modelDir = resolveEmbedModelDir(repo);
       const model = modelDir ? loadEmbedModel(modelDir) : void 0;
       if (model) {
-        const index = buildEmbeddingIndex(scan22, model);
-        return JSON.stringify(searchSemantic(scan22, query4, index, { model, limit, fuzzy }), null, 2);
+        const index = await memoizedEmbeddingIndex(
+          { mode: "static", identity: `${modelDir}#${model.modelId}`, scan: scan2 },
+          () => buildEmbeddingIndex(scan2, model)
+        );
+        const results2 = searchSemantic(scan2, query4, index, { model, limit, fuzzy });
+        return JSON.stringify({ results: results2, tier: "static" }, null, 2);
       }
+      const results = searchIndex(scan2, query4, { limit, fuzzy });
+      return JSON.stringify(
+        { results, tier: "lexical", degradedReason: "no embedding endpoint or static model configured \u2014 see embed_status" },
+        null,
+        2
+      );
     }
-    return JSON.stringify(searchIndex(scan22, query4, { limit, fuzzy }), null, 2);
+    return JSON.stringify(searchIndex(scan2, query4, { limit, fuzzy }), null, 2);
   }
   if (name2 === "embed_status") {
     const modelDir = resolveEmbedModelDir(repo);
@@ -10948,6 +11024,7 @@ async function runMcpServer() {
 var repoProp;
 var scopeProps;
 var TOOLS;
+var embeddingIndexCache;
 var init_mcp = __esm({
   "src/mcp.ts"() {
     "use strict";
@@ -10974,6 +11051,7 @@ var init_mcp = __esm({
     init_embed();
     init_search();
     init_endpoint();
+    init_hash();
     repoProp = { repo: { type: "string", description: "Absolute path to the repository root" } };
     scopeProps = {
       scope: { type: "string", description: "Restrict to one directory (repo-relative)" },
@@ -11186,7 +11264,7 @@ var init_mcp = __esm({
       },
       {
         name: "search",
-        description: 'Natural-language-ish lexical search: BM25 ranking (k1=1.2, b=0.75) over symbol names (camelCase/snake_case subtokens), file path segments, markdown headings and summary lines. NOT embeddings by default \u2014 deterministic, diacritic-folded, zero API keys. Answers "where is auth handled?"-style queries with ranked files, matched terms and top symbols. Query terms with zero document frequency get a deterministic trigram-fuzzy fallback (typo-tolerant) unless `fuzzy: false`. Set `semantic: true` to RRF-fuse the deterministic static-embedding tier when a model asset is present (degrades to lexical otherwise \u2014 see embed_status).',
+        description: 'Natural-language-ish lexical search: BM25 ranking (k1=1.2, b=0.75) over symbol names (camelCase/snake_case subtokens), file path segments, markdown headings and summary lines. NOT embeddings by default \u2014 deterministic, diacritic-folded, zero API keys. Answers "where is auth handled?"-style queries with ranked files, matched terms and top symbols. Query terms with zero document frequency get a deterministic trigram-fuzzy fallback (typo-tolerant) unless `fuzzy: false`. Set `semantic: true` to RRF-fuse an embedding tier (HTTP endpoint, else a local static model) with lexical \u2014 the response then wraps the ranked list as `{ results, tier, degradedReason? }`, `tier` being "endpoint"/"static" when fusion happened or "lexical" (with `degradedReason`) when it did not (see embed_status). Without `semantic`, the response is the bare ranked array, unchanged.',
         inputSchema: {
           type: "object",
           properties: {
@@ -11200,7 +11278,7 @@ var init_mcp = __esm({
             },
             semantic: {
               type: "boolean",
-              description: "RRF-fuse an embedding tier with lexical (default false). Precedence: the HTTP endpoint (CODEINDEX_EMBED_ENDPOINT) if set, else a local static model. Degrades silently to lexical-only when neither is available/reachable \u2014 see embed_status."
+              description: 'RRF-fuse an embedding tier with lexical (default false). Precedence: the HTTP endpoint (CODEINDEX_EMBED_ENDPOINT) if set, else a local static model. The response reports the effective tier as a top-level `tier` field ("endpoint"/"static" on success, "lexical" plus `degradedReason` when neither is available/reachable) instead of degrading silently \u2014 see embed_status.'
             }
           },
           required: ["repo", "query"]
@@ -11516,10 +11594,10 @@ function findWord(line, name2) {
     from = idx + 1;
   }
 }
-function renderScip(scan22, opts = {}) {
-  const projectRoot = opts.projectRoot ?? "file://" + scan22.root.replace(/\\/g, "/");
+function renderScip(scan2, opts = {}) {
+  const projectRoot = opts.projectRoot ?? "file://" + scan2.root.replace(/\\/g, "/");
   const toolVersion = opts.toolVersion ?? ENGINE_VERSION;
-  const docs = scan22.files.filter((f) => f.kind === "code" && f.symbols.length > 0);
+  const docs = scan2.files.filter((f) => f.kind === "code" && f.symbols.length > 0);
   const docDefs = /* @__PURE__ */ new Map();
   const defByName = /* @__PURE__ */ new Map();
   for (const f of docs) {
@@ -11544,7 +11622,7 @@ function renderScip(scan22, opts = {}) {
   };
   const documents = [];
   for (const f of docs) {
-    const text = readText(join9(scan22.root, f.rel));
+    const text = readText(join9(scan2.root, f.rel));
     const lines = text.split("\n").map((l) => l.endsWith("\r") ? l.slice(0, -1) : l);
     const locate = (lineNo, name2) => {
       const line = lines[lineNo - 1];
@@ -11676,8 +11754,9 @@ Commands:
                 embed status   Effective mode (none/static/endpoint), model +
                                EMBED_VERSION, and endpoint reachability (JSON)
                 embed build    Write embeddings.bin into --out <dir> (static tier)
-                embed pull     Fetch the model asset into CODEINDEX_EMBED_DIR (or
-                               <repo>/.codeindex/models/) \u2014 needs CODEINDEX_EMBED_URL
+                embed pull     Fetch the official model asset into CODEINDEX_EMBED_DIR
+                               (or <repo>/.codeindex/models/); sha256-verified. Override
+                               the source with CODEINDEX_EMBED_URL
                 embed serve    Print (or --run) the docker command that starts the
                                containerized embedding server (rich tier)
   rules       Architecture rules (forbidden edges, cycles, orphans) validated
@@ -11802,13 +11881,13 @@ async function runCli(argv) {
       }
     } catch {
     }
-    const { scan: scan22, graph, symbols } = buildIndexArtifacts(flags2.repo, { ...scanOptions(flags2), cache, out: outDir });
+    const { scan: scan2, graph, symbols } = buildIndexArtifacts(flags2.repo, { ...scanOptions(flags2), cache, out: outDir });
     writeFileSync3(join12(outDir, "graph.json"), renderGraphJson(graph));
     writeFileSync3(join12(outDir, "symbols.json"), renderSymbolsJson(symbols));
     const files = {};
-    for (const f of scan22.files) {
+    for (const f of scan2.files) {
       const entry = { hash: f.hash, record: f, size: f.size };
-      const mtime = scan22.mtimes.get(f.rel);
+      const mtime = scan2.mtimes.get(f.rel);
       if (mtime !== void 0) entry.mtimeMs = mtime;
       files[f.rel] = entry;
     }
@@ -11820,20 +11899,20 @@ async function runCli(argv) {
     const modelDir = resolveEmbedModelDir(flags2.repo);
     const model = modelDir ? loadEmbedModel(modelDir) : void 0;
     if (model) {
-      const index = buildEmbeddingIndex(scan22, model);
+      const index = buildEmbeddingIndex(scan2, model);
       writeFileSync3(join12(outDir, "embeddings.bin"), serializeEmbeddings(index));
       embedNote = ` + embeddings.bin (${index.records.length} records, model ${model.modelId})`;
     }
-    process.stderr.write(`codeindex: ${scan22.files.length} files \u2192 ${outDir}/graph.json + symbols.json${embedNote}${scan22.capped ? " (capped)" : ""}
+    process.stderr.write(`codeindex: ${scan2.files.length} files \u2192 ${outDir}/graph.json + symbols.json${embedNote}${scan2.capped ? " (capped)" : ""}
 `);
   } else if (cmd === "scan") {
-    const { scan: scan22 } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
+    const { scan: scan2 } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
     const summary = {
       engineVersion: ENGINE_VERSION,
-      commit: scan22.commit,
-      fileCount: scan22.files.length,
-      languages: scan22.languages,
-      capped: scan22.capped
+      commit: scan2.commit,
+      fileCount: scan2.files.length,
+      languages: scan2.languages,
+      capped: scan2.capped
     };
     emit(JSON.stringify(summary, null, 2) + "\n", flags2.out);
   } else if (cmd === "graph") {
@@ -11843,8 +11922,8 @@ async function runCli(argv) {
     const { symbols } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
     emit(renderSymbolsJson(symbols), flags2.out);
   } else if (cmd === "scip") {
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
-    const bytes = renderScip(scan22, { projectRoot: flags2.projectRoot });
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
+    const bytes = renderScip(scan2, { projectRoot: flags2.projectRoot });
     const out2 = flags2.out ?? resolve2("index.scip");
     if (out2 === "-") process.stdout.write(Buffer.from(bytes));
     else {
@@ -11853,25 +11932,25 @@ async function runCli(argv) {
 `);
     }
   } else if (cmd === "callers") {
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
-    const index = buildCallerIndex(scan22, void 0, { recall: flags2.recall });
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
+    const index = buildCallerIndex(scan2, void 0, { recall: flags2.recall });
     const obj = {};
     for (const [name2, entry] of index) obj[name2] = entry;
     emit(JSON.stringify(obj, null, 2) + "\n", flags2.out);
   } else if (cmd === "search") {
     if (!flags2.positional) throw new Error('search needs a query: cli.mjs search "<query>" --repo <dir>');
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
     if (flags2.semantic) {
       const endpoint = resolveEmbedEndpoint();
       const lexical = () => {
-        const results = searchIndex(scan22, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy });
+        const results = searchIndex(scan2, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy });
         emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
       };
       if (endpoint) {
         try {
-          const index = await buildEndpointIndex(scan22);
+          const index = await buildEndpointIndex(scan2);
           const queryVec = await encodeQueryViaEndpoint(flags2.positional);
-          const results = searchSemantic(scan22, flags2.positional, index, { queryVec, limit: flags2.limit, fuzzy: flags2.fuzzy });
+          const results = searchSemantic(scan2, flags2.positional, index, { queryVec, limit: flags2.limit, fuzzy: flags2.fuzzy });
           emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
         } catch (e) {
           process.stderr.write(
@@ -11889,13 +11968,13 @@ async function runCli(argv) {
           );
           lexical();
         } else {
-          const index = buildEmbeddingIndex(scan22, model);
-          const results = searchSemantic(scan22, flags2.positional, index, { model, limit: flags2.limit, fuzzy: flags2.fuzzy });
+          const index = buildEmbeddingIndex(scan2, model);
+          const results = searchSemantic(scan2, flags2.positional, index, { model, limit: flags2.limit, fuzzy: flags2.fuzzy });
           emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
         }
       }
     } else {
-      const results = searchIndex(scan22, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy });
+      const results = searchIndex(scan2, flags2.positional, { limit: flags2.limit, fuzzy: flags2.fuzzy });
       emit(JSON.stringify(results, null, 2) + "\n", flags2.out);
     }
   } else if (cmd === "embed") {
@@ -11951,32 +12030,26 @@ async function runCli(argv) {
       }
       const model = loadEmbedModel(modelDir);
       mkdirSync22(flags2.out, { recursive: true });
-      const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
-      const index = buildEmbeddingIndex(scan22, model);
+      const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
+      const index = buildEmbeddingIndex(scan2, model);
       writeFileSync3(join12(flags2.out, "embeddings.bin"), serializeEmbeddings(index));
       process.stderr.write(`codeindex: ${index.records.length} embedding records \u2192 ${flags2.out}/embeddings.bin (model ${model.modelId})
 `);
     } else if (sub === "pull") {
-      const url = resolveEmbedPullUrl();
-      if (!url) {
-        process.stderr.write(
-          "codeindex: no model URL configured. The official static-embedding asset is not published yet.\nSet CODEINDEX_EMBED_URL to a model.json URL (optionally CODEINDEX_EMBED_DIR as the destination), then re-run `codeindex embed pull`.\n"
-        );
-        process.exitCode = 1;
-        return;
-      }
+      const { url, sha256 } = resolveEmbedPullUrl();
       const destDir = process.env.CODEINDEX_EMBED_DIR ?? join12(flags2.repo, ".codeindex", "models");
       mkdirSync22(destDir, { recursive: true });
       process.stderr.write(`codeindex: fetching model from ${url} \u2192 ${join12(destDir, "model.json")}
 `);
-      const res = await fetch(url);
-      if (!res.ok) {
-        process.stderr.write(`codeindex: pull failed \u2014 HTTP ${res.status} from ${url}
+      let body2;
+      try {
+        body2 = await fetchEmbedModel(url, sha256);
+      } catch (e) {
+        process.stderr.write(`codeindex: pull failed \u2014 ${e instanceof Error ? e.message : String(e)} (nothing written)
 `);
         process.exitCode = 1;
         return;
       }
-      const body2 = await res.text();
       try {
         JSON.parse(body2);
       } catch {
@@ -12014,24 +12087,24 @@ async function runCli(argv) {
     for (const k of [...churn.keys()].sort()) sorted[k] = churn.get(k);
     emit(JSON.stringify({ ok, churn: sorted }, null, 2) + "\n", flags2.out);
   } else if (cmd === "repomap") {
-    const { scan: scan22, graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
-    emit(renderRepoMap(scan22, graph, { budgetTokens: flags2.budgetTokens }), flags2.out);
+    const { scan: scan2, graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
+    emit(renderRepoMap(scan2, graph, { budgetTokens: flags2.budgetTokens }), flags2.out);
   } else if (cmd === "hotspots") {
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
     const { churn, ok } = gitChurn(flags2.repo, { since: flags2.since });
-    emit(JSON.stringify({ churnOk: ok, hotspots: rankHotspots(scan22, churn) }, null, 2) + "\n", flags2.out);
+    emit(JSON.stringify({ churnOk: ok, hotspots: rankHotspots(scan2, churn) }, null, 2) + "\n", flags2.out);
   } else if (cmd === "coupling") {
     const { ok, couplings } = changeCoupling(flags2.repo, { since: flags2.since });
     emit(JSON.stringify({ ok, couplings }, null, 2) + "\n", flags2.out);
   } else if (cmd === "deadcode") {
     emit(JSON.stringify(findDeadCode(scanRepo(flags2.repo, scanOptions(flags2))), null, 2) + "\n", flags2.out);
   } else if (cmd === "complexity") {
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
-    emit(JSON.stringify(symbolComplexity(scan22, flags2.positional), null, 2) + "\n", flags2.out);
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
+    emit(JSON.stringify(symbolComplexity(scan2, flags2.positional), null, 2) + "\n", flags2.out);
   } else if (cmd === "risk") {
-    const scan22 = scanRepo(flags2.repo, scanOptions(flags2));
+    const scan2 = scanRepo(flags2.repo, scanOptions(flags2));
     const { churn, ok } = gitChurn(flags2.repo, { since: flags2.since });
-    emit(JSON.stringify({ churnOk: ok, risks: riskHotspots(scan22, churn) }, null, 2) + "\n", flags2.out);
+    emit(JSON.stringify({ churnOk: ok, risks: riskHotspots(scan2, churn) }, null, 2) + "\n", flags2.out);
   } else if (cmd === "mermaid") {
     const { graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2));
     emit(renderMermaid(graph, { module: flags2.positional }), flags2.out);
@@ -12067,143 +12140,12 @@ function walk2(root, opts = {}) {
   return walkDetailed(root, opts).files;
 }
 
-// src/lang/common.ts
-function scan2(rel, content, lang, rules) {
-  const out2 = [];
-  const lines = content.split(/\r?\n/);
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    const line = lines[i2];
-    if (!line.trim()) continue;
-    for (const rule of rules) {
-      const m = rule.re.exec(line);
-      if (!m) continue;
-      const name2 = m.groups?.name ?? m[1];
-      if (!name2) continue;
-      const exported = typeof rule.exported === "function" ? rule.exported(m, line) : rule.exported ?? false;
-      out2.push({
-        name: name2,
-        kind: rule.kind,
-        file: rel,
-        line: i2 + 1,
-        signature: line.trim().slice(0, 200),
-        exported,
-        lang
-      });
-      break;
-    }
-  }
-  return out2;
-}
-var EXPORT_LIST_RE2 = /export\s*\{([^}]*)\}\s*(from\b)?/g;
-var CJS_OBJECT_RE2 = /module\.exports\s*=\s*\{([^}]*)\}/g;
-var DEFAULT_ID_RE2 = /(^|\n)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*(?=\n|$)/g;
-function applyExportLists2(content, symbols, rel, lang) {
-  const byName = /* @__PURE__ */ new Map();
-  for (const s of symbols) if (!byName.has(s.name)) byName.set(s.name, s);
-  const markExported = (name2) => {
-    const s = byName.get(name2);
-    if (s) s.exported = true;
-    return s;
-  };
-  const handleList = (inner, cjs) => {
-    for (const raw of inner.split(",")) {
-      const part = raw.trim();
-      if (!part) continue;
-      const asMatch = /^([\w$]+)\s+as\s+([\w$]+)$/.exec(part);
-      if (asMatch) {
-        const orig = asMatch[1];
-        const alias = asMatch[2];
-        if (orig === "default" || alias === "default") continue;
-        const base = markExported(orig);
-        if (base && !byName.has(alias)) {
-          const clone = { ...base, name: alias, exported: true };
-          symbols.push(clone);
-          byName.set(alias, clone);
-        }
-        continue;
-      }
-      const name2 = /^([\w$]+)/.exec(cjs ? part : part.split(":")[0].trim())?.[1];
-      if (name2 && name2 !== "default") markExported(name2);
-    }
-  };
-  let m;
-  EXPORT_LIST_RE2.lastIndex = 0;
-  while (m = EXPORT_LIST_RE2.exec(content)) {
-    if (m[2]) continue;
-    handleList(m[1] ?? "", false);
-  }
-  CJS_OBJECT_RE2.lastIndex = 0;
-  while (m = CJS_OBJECT_RE2.exec(content)) handleList(m[1] ?? "", true);
-  DEFAULT_ID_RE2.lastIndex = 0;
-  while (m = DEFAULT_ID_RE2.exec(content)) {
-    const name2 = m[2];
-    if (!markExported(name2)) {
-      symbols.push({ name: name2, kind: "default", file: rel, line: 1, signature: `export default ${name2}`, exported: true, lang });
-      byName.set(name2, symbols[symbols.length - 1]);
-    }
-  }
-}
-
-// src/lang/js-ts.ts
-var RULES16 = [
-  { re: /^\s*export\s+(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: true },
-  { re: /^\s*export\s+default\s+(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: true },
-  { re: /^\s*export\s+default\s+(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: true },
-  { re: /^\s*(?:async\s+)?function\s+(?<name>[\w$]+)/, kind: "function", exported: false },
-  { re: /^\s*export\s+(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: true },
-  { re: /^\s*(?:abstract\s+)?class\s+(?<name>[\w$]+)/, kind: "class", exported: false },
-  { re: /^\s*export\s+interface\s+(?<name>[\w$]+)/, kind: "interface", exported: true },
-  { re: /^\s*interface\s+(?<name>[\w$]+)/, kind: "interface", exported: false },
-  { re: /^\s*export\s+type\s+(?<name>[\w$]+)/, kind: "type", exported: true },
-  { re: /^\s*type\s+(?<name>[\w$]+)\s*[=<]/, kind: "type", exported: false },
-  { re: /^\s*export\s+enum\s+(?<name>[\w$]+)/, kind: "enum", exported: true },
-  { re: /^\s*export\s+const\s+enum\s+(?<name>[\w$]+)/, kind: "enum", exported: true },
-  // exported const/let bound to an arrow fn or value
-  { re: /^\s*export\s+(?:const|let|var)\s+(?<name>[\w$]+)\s*[:=]/, kind: "const", exported: true },
-  // CommonJS named exports: `exports.foo = …`, `module.exports.foo = …`
-  { re: /^\s*exports\.(?<name>[\w$]+)\s*=/, kind: "const", exported: true },
-  { re: /^\s*module\.exports\.(?<name>[\w$]+)\s*=/, kind: "const", exported: true },
-  // top-level const arrow function (not exported)
-  { re: /^\s*(?:const|let)\s+(?<name>[\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*(?::[^=]+)?=>/, kind: "const", exported: false }
-];
-var ANON_DEFAULT_RE2 = /^\s*export\s+default\s+(?:async\s+)?(?:function|class)?\s*(?:\(|\{|extends\b)/;
-var NAMED_DEFAULT_RE2 = /^\s*export\s+default\s+(?:async\s+)?(?:function|class)\s+(?!extends\b)[\w$]+/;
-function stemOf2(rel) {
-  return (rel.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
-}
-var jsTs2 = {
-  lang: "javascript/typescript",
-  exts: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
-  extract(rel, content) {
-    const lang = rel.match(/\.(ts|tsx|mts|cts)$/) ? "typescript" : "javascript";
-    const symbols = scan2(rel, content, lang, RULES16);
-    const lines = content.split(/\r?\n/);
-    for (let i2 = 0; i2 < lines.length; i2++) {
-      const line = lines[i2];
-      if (ANON_DEFAULT_RE2.test(line) && !NAMED_DEFAULT_RE2.test(line)) {
-        symbols.push({ name: stemOf2(rel), kind: "default", file: rel, line: i2 + 1, signature: line.trim().slice(0, 200), exported: true, lang });
-        break;
-      }
-    }
-    applyExportLists2(content, symbols, rel, lang);
-    return symbols;
-  }
-};
-
 // src/lang/registry.ts
-var JS_TS_EXTS = new Set(jsTs2.exts);
 function extractSymbols2(rel, ext, content) {
-  if (JS_TS_EXTS.has(ext)) {
-    try {
-      return jsTs2.extract(rel, content);
-    } catch {
-      return [];
-    }
-  }
   return extractSymbols(rel, ext, content);
 }
 function languageOf2(ext) {
-  return JS_TS_EXTS.has(ext) ? jsTs2.lang : languageOf(ext);
+  return languageOf(ext);
 }
 
 // src/sources/doc-discovery.ts
@@ -14867,7 +14809,7 @@ async function runDoc(options, opts = {}) {
 }
 
 // src/check.ts
-import { createHash as createHash2 } from "crypto";
+import { createHash as createHash3 } from "crypto";
 import { existsSync as existsSync11, readFileSync as readFileSync13 } from "fs";
 import { basename as basename5, dirname as dirname6, join as join26, resolve as resolvePath, sep as sep2 } from "path";
 
@@ -15513,7 +15455,7 @@ function answerClaimSignature(answer, evidence) {
       parts2.push(`${text}::${[...new Set(ids)].sort().join(",")}`);
     }
   }
-  return createHash2("sha256").update(parts2.join("\n")).digest("hex").slice(0, 32);
+  return createHash3("sha256").update(parts2.join("\n")).digest("hex").slice(0, 32);
 }
 function applySemantic(dir, result, answer, evidence, allowUnverified = false, answerFile) {
   const p = join26(dir, "VERIFY.json");

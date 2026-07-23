@@ -97,15 +97,23 @@ describe("code search (Tier 1)", () => {
   it("folds plural queries onto singular text", () => {
     const idx = buildIndex(FIXTURE, REF.slug);
     // "backoffs" never appears in the fixture — only "backoff" does.
+    // src/index.ts now ranks first: since the v2.12.0 engine re-pin it carries
+    // a real kind:"reexport" symbol named `computeBackoff` (bare `export { … }
+    // from "./retry.js"`, previously untracked) — accepted product decision,
+    // see src/lang/registry.ts. The defining file still surfaces right after it.
     const { items } = searchCode(FIXTURE, REF, idx, "how are backoffs computed", 6);
-    expect(items[0]!.ref).toBe("src/retry.ts");
+    expect(items[0]!.ref).toBe("src/index.ts");
+    expect(items[1]!.ref).toBe("src/retry.ts");
   });
 
   it("reaches definitions via identifier subtokens", () => {
     const idx = buildIndex(FIXTURE, REF.slug);
     // No symbol is named retryBackoff; retry + backoff subtokens must carry it.
+    // src/index.ts ranks first here too, for the same reexport-symbol reason
+    // as above; the defining file is still the very next result.
     const { items } = searchCode(FIXTURE, REF, idx, "retryBackoff", 6);
-    expect(items[0]!.ref).toBe("src/retry.ts");
+    expect(items[0]!.ref).toBe("src/index.ts");
+    expect(items[1]!.ref).toBe("src/retry.ts");
   });
 
   it("boosts a file literally named after a query keyword", () => {
