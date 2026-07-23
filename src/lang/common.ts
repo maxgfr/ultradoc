@@ -54,14 +54,19 @@ const DEFAULT_ID_RE = /(^|\n)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*(?=
 // symbols for `as` renames, and flag a default-exported identifier. Mutates the
 // symbol list in place.
 //
-// Kept local as of the v2.10.0 engine re-pin: the vendored engine's own
-// applyExportLists (verified against scripts/engine.mjs) marks the original
-// declaration exported for `export { a, b as c }` / `module.exports = {...}`
-// exactly like this one does, but it does NOT clone a symbol under the alias
-// name `c` — only the local version does (the `asMatch` branch below pushes a
-// `clone`). That alias symbol is what lets ultradoc resolve "what does this
-// module export as c". Everything else this function does now has parity
-// with the engine's built-in extractor; this is the one remaining gap.
+// Kept local as of the v2.11.0 engine re-pin. v2.11.0 shipped an upstream fix
+// for exactly this alias-cloning gap ("emit symbols for export aliases",
+// EXTRACTOR_VERSION 7) — but it lives in the engine's `extractReexports`,
+// reachable only via the public `extractCode()` (CodeInfo), not via the plain
+// `extractSymbols()` this codebase calls through registry.ts. Called directly,
+// engine `extractSymbols` on `export { a, b as c }` still marks `a`/`b`
+// exported without adding `c` at all — unchanged from v2.10.0. See the longer
+// note in registry.ts for why switching to `extractCode` isn't a drop-in.
+// Everything else this function does (marking exported via export
+// lists/`module.exports = {...}`, default-identifier marking) already has
+// parity with the engine's built-in extractor; this alias clone (the
+// `asMatch` branch below pushing a `clone`) is the one remaining reason this
+// file exists.
 export function applyExportLists(content: string, symbols: CodeSymbol[], rel: string, lang: string): void {
   const byName = new Map<string, CodeSymbol>();
   for (const s of symbols) if (!byName.has(s.name)) byName.set(s.name, s);

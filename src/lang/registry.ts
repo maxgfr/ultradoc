@@ -8,19 +8,34 @@ import { jsTs } from "./js-ts.js";
 // elixir, scala) are byte-for-byte the ones that used to live here, so the
 // delegation changes nothing.
 //
-// JS/TS stays local (re-verified at the v2.10.0 re-pin — engine gap, reported
-// upstream). Most of the original 2.0.1-era gap has since closed: the
-// engine's own extractor now matches ultradoc's for CommonJS named exports
-// (`exports.foo = …`), `module.exports = { … }` object exports, and anonymous
-// default exports named after the file stem, and it now also marks the
-// ORIGINAL declaration exported on `export default Foo;` (it additionally
-// emits a redundant separate `default` symbol, which is harmless). The one
-// gap that remains: for `export { a, b as c }`, the engine's applyExportLists
-// marks `a` and `b` exported but does NOT add a symbol for the alias `c` —
-// ultradoc's local common.ts does (see applyExportLists there), which is
-// required for "what does this module export as c" lookups. Once the engine
-// clones alias symbols too, jsTs and common.ts can be deleted and this file
-// becomes a pure re-export.
+// JS/TS stays local (re-verified at the v2.11.0 re-pin — engine gap, reported
+// upstream, still open for this function). Most of the original 2.0.1-era gap
+// closed at v2.10.0: the engine's own extractor now matches ultradoc's for
+// CommonJS named exports (`exports.foo = …`), `module.exports = { … }` object
+// exports, and anonymous default exports named after the file stem, and it
+// also marks the ORIGINAL declaration exported on `export default Foo;` (it
+// additionally emits a redundant separate `default` symbol, which is
+// harmless).
+//
+// v2.11.0 shipped "emit symbols for export aliases" (EXTRACTOR_VERSION 7),
+// fixing `export { a, b as c }` to mirror `c`'s kind from `b`'s local
+// declaration (re-export-from and unresolvable aliases get kind "reexport").
+// Re-verified directly against the vendored engine.mjs: that fix lives ONLY
+// in `extractReexports`, an internal helper reachable exclusively through the
+// public `extractCode(rel, ext, content): CodeInfo` function — NOT through
+// the plain `extractSymbols(rel, ext, content): CodeSymbol[]` this file
+// calls. Calling engine `extractSymbols` directly on `export { Beta as
+// PublicBeta }` still returns no `PublicBeta` symbol at all, v2.10.0 and
+// v2.11.0 alike. Adopting the fix would mean switching this file's JS/TS path
+// (or, since extractCode's `ast ? ast.symbols : extractSymbols(...)` prefers
+// AST output over the regex extractor whenever a grammar is loaded, possibly
+// every language currently delegated here) from `extractSymbols` to
+// `extractCode(...).symbols`, discarding or threading through the extra
+// `CodeInfo` fields (summary/refs/pkg/idents/calls/importedNames) — a real
+// architecture change, not a drop-in, and out of scope for this re-pin. So:
+// jsTs/common.ts stay, unchanged, until that migration is deliberately taken
+// on. Once `extractSymbols` itself covers alias cloning (or ultradoc adopts
+// `extractCode`), this file becomes a pure re-export.
 
 const JS_TS_EXTS = new Set(jsTs.exts);
 
