@@ -53,6 +53,15 @@ const DEFAULT_ID_RE = /(^|\n)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*(?=
 // miss because the declaration and the export are on different lines), add alias
 // symbols for `as` renames, and flag a default-exported identifier. Mutates the
 // symbol list in place.
+//
+// Kept local as of the v2.10.0 engine re-pin: the vendored engine's own
+// applyExportLists (verified against scripts/engine.mjs) marks the original
+// declaration exported for `export { a, b as c }` / `module.exports = {...}`
+// exactly like this one does, but it does NOT clone a symbol under the alias
+// name `c` — only the local version does (the `asMatch` branch below pushes a
+// `clone`). That alias symbol is what lets ultradoc resolve "what does this
+// module export as c". Everything else this function does now has parity
+// with the engine's built-in extractor; this is the one remaining gap.
 export function applyExportLists(content: string, symbols: CodeSymbol[], rel: string, lang: string): void {
   const byName = new Map<string, CodeSymbol>();
   for (const s of symbols) if (!byName.has(s.name)) byName.set(s.name, s);

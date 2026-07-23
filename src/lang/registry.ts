@@ -6,14 +6,21 @@ import { jsTs } from "./js-ts.js";
 // language EXCEPT JavaScript/TypeScript. The engine's per-language rule sets
 // (python, go, ruby, java, rust, csharp, php, swift, kotlin, c, lua, shell,
 // elixir, scala) are byte-for-byte the ones that used to live here, so the
-// delegation changes nothing. JS/TS stays local because ultradoc's extractor
-// is richer than the engine's (engine gap, reported upstream): CommonJS named
-// exports (`exports.foo = …`), `export { a, b as c }` lists incl. aliases,
-// `module.exports = { … }` object exports, anonymous default exports named
-// after the file stem, and marking the ORIGINAL declaration exported on
-// `export default Foo;` (the engine emits a separate `default` symbol
-// instead). Once the engine covers those, jsTs and common.ts can be deleted
-// and this file becomes a pure re-export.
+// delegation changes nothing.
+//
+// JS/TS stays local (re-verified at the v2.10.0 re-pin — engine gap, reported
+// upstream). Most of the original 2.0.1-era gap has since closed: the
+// engine's own extractor now matches ultradoc's for CommonJS named exports
+// (`exports.foo = …`), `module.exports = { … }` object exports, and anonymous
+// default exports named after the file stem, and it now also marks the
+// ORIGINAL declaration exported on `export default Foo;` (it additionally
+// emits a redundant separate `default` symbol, which is harmless). The one
+// gap that remains: for `export { a, b as c }`, the engine's applyExportLists
+// marks `a` and `b` exported but does NOT add a symbol for the alias `c` —
+// ultradoc's local common.ts does (see applyExportLists there), which is
+// required for "what does this module export as c" lookups. Once the engine
+// clones alias symbols too, jsTs and common.ts can be deleted and this file
+// becomes a pure re-export.
 
 const JS_TS_EXTS = new Set(jsTs.exts);
 
