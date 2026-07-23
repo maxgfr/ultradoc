@@ -1,6 +1,6 @@
 {
   "name": "ultradoc",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Answer ultra-precise questions — and generate grounded, citation-checked reference docs — about any open-source project from its real source code, issues, PRs, docs and the web. Grounded retrieval, not the model's memory. A skills.sh agent skill.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
