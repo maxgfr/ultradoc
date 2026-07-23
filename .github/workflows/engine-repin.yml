@@ -92,7 +92,7 @@ jobs:
         if: steps.detect.outputs.stale == 'true'
         run: |
           git add src/vendor/engine.meta.json src/vendor/codeindex-engine.mjs src/vendor/codeindex-engine.d.mts scripts/ultradoc.mjs skills/ultradoc/scripts/ultradoc.mjs
-          git commit -m "chore(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "Automated re-pin. Gates run next; this commit is the adjudication material regardless of outcome."
+          git commit -m "feat(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "Automated re-pin. Gates run next; this commit is the adjudication material regardless of outcome."
 
       - name: Build is reproducible (committed bundle up to date)
         if: steps.detect.outputs.stale == 'true'
@@ -120,7 +120,7 @@ jobs:
         if: steps.detect.outputs.stale == 'true'
         run: |
           SUMMARY=$(grep -E "Tests +[0-9]+ passed" /tmp/repin-test.log | tail -1)
-          git commit --amend -m "chore(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "automated re-pin, all gates green, goldens byte-identical. ${SUMMARY:-test summary unavailable}."
+          git commit --amend -m "feat(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "automated re-pin, all gates green, goldens byte-identical. ${SUMMARY:-test summary unavailable}."
           git push origin HEAD:main
 
       - name: Trigger release workflow
