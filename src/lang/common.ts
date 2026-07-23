@@ -54,15 +54,17 @@ const DEFAULT_ID_RE = /(^|\n)\s*export\s+default\s+([A-Za-z_$][\w$]*)\s*;?\s*(?=
 // symbols for `as` renames, and flag a default-exported identifier. Mutates the
 // symbol list in place.
 //
-// Kept local as of the v2.11.0 engine re-pin. v2.11.0 shipped an upstream fix
-// for exactly this alias-cloning gap ("emit symbols for export aliases",
-// EXTRACTOR_VERSION 7) — but it lives in the engine's `extractReexports`,
-// reachable only via the public `extractCode()` (CodeInfo), not via the plain
-// `extractSymbols()` this codebase calls through registry.ts. Called directly,
-// engine `extractSymbols` on `export { a, b as c }` still marks `a`/`b`
-// exported without adding `c` at all — unchanged from v2.10.0. See the longer
-// note in registry.ts for why switching to `extractCode` isn't a drop-in.
-// Everything else this function does (marking exported via export
+// Kept local as of the v2.11.1 engine re-pin. v2.11.1 did move the alias fix
+// into the plain `extractSymbols()` this codebase calls through registry.ts
+// (previously it only lived behind `extractCode()`) — verified live by
+// swapping this file out for `engineExtractSymbols` and running the suite.
+// Still not adopted: it introduced three diffs against the golden fixture,
+// the significant one being that the engine's alias symbol cites the
+// `export { … }` statement's own line/signature instead of the original
+// declaration's (ultradoc's version below clones the original symbol, so the
+// alias still points at real code) — a real citation-precision loss for a
+// tool whose whole job is grounding answers in exact source lines. Full
+// detail in the note in registry.ts. Everything else this function does (marking exported via export
 // lists/`module.exports = {...}`, default-identifier marking) already has
 // parity with the engine's built-in extractor; this alias clone (the
 // `asMatch` branch below pushing a `clone`) is the one remaining reason this
