@@ -158,6 +158,19 @@ describe("discoverWorkspaces", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("returns no packages for a single-project Gradle repo (build.gradle, no settings.gradle)", () => {
+    // A lone build.gradle with no settings.gradle(.kts) is a single Gradle
+    // project, not a multi-project workspace — there is nothing to link, so
+    // this must behave like any other single-package repo (empty list), not
+    // be misread as a one-package "workspace". Verified live against the
+    // engine at the v2.5.0 re-pin (see the module doc comment above); pinned
+    // here so a regression trips in CI instead of only being caught by hand.
+    const dir = tmp();
+    writeFileSync(join(dir, "build.gradle"), "plugins {\n  id 'java'\n}\n");
+    expect(discoverWorkspaces(dir)).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("expands nested glob patterns like packages/*/plugins/*", () => {
     const dir = tmp();
     writeFileSync(join(dir, "package.json"), JSON.stringify({ workspaces: ["packages/*/plugins/*"] }));
