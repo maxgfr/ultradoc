@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.3.0](https://github.com/maxgfr/ultradoc/compare/v2.2.0...v2.3.0) (2026-07-23)
+
+
+### Features
+
+* **engine:** re-pin the codeindex engine at v2.10.0 ([a8af72e](https://github.com/maxgfr/ultradoc/commit/a8af72ed7d29ce3b3b3eb40328541f8a6cc11e97))
+* **engine:** re-pin the codeindex engine at v2.11.0 ([3e41e78](https://github.com/maxgfr/ultradoc/commit/3e41e780432438fc7c1c32d759a7a48bc6cdd44f))
+* **engine:** re-pin the codeindex engine at v2.11.1 ([3315318](https://github.com/maxgfr/ultradoc/commit/3315318c4e1f48cf186befcffc77c3d6768e5b3f)), closes [#1](https://github.com/maxgfr/ultradoc/issues/1)
+
 # [2.2.0](https://github.com/maxgfr/ultradoc/compare/v2.1.3...v2.2.0) (2026-07-22)
 
 
