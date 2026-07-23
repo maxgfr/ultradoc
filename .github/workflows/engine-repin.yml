@@ -67,8 +67,10 @@ jobs:
 
       - name: Re-pin engine
         if: steps.detect.outputs.stale == 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
         run: |
-          node scripts/sync-engine.mjs --ref "${{ steps.detect.outputs.latest }}"
+          node scripts/sync-engine.mjs --ref "$LATEST"
           node scripts/sync-engine.mjs --check
 
       - name: Typecheck
@@ -90,9 +92,11 @@ jobs:
       # even on failure.
       - name: Commit re-pinned engine + rebuilt bundle
         if: steps.detect.outputs.stale == 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
         run: |
           git add src/vendor/engine.meta.json src/vendor/codeindex-engine.mjs src/vendor/codeindex-engine.d.mts scripts/ultradoc.mjs skills/ultradoc/scripts/ultradoc.mjs
-          git commit -m "feat(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "Automated re-pin. Gates run next; this commit is the adjudication material regardless of outcome."
+          git commit -m "feat(engine): re-pin codeindex $LATEST" -m "Automated re-pin. Gates run next; this commit is the adjudication material regardless of outcome."
 
       - name: Build is reproducible (committed bundle up to date)
         if: steps.detect.outputs.stale == 'true'
@@ -118,10 +122,15 @@ jobs:
 
       - name: All gates green — finalize commit and push to main
         if: steps.detect.outputs.stale == 'true'
+        id: push
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
         run: |
           SUMMARY=$(grep -E "Tests +[0-9]+ passed" /tmp/repin-test.log | tail -1)
-          git commit --amend -m "feat(engine): re-pin codeindex ${{ steps.detect.outputs.latest }}" -m "automated re-pin, all gates green, goldens byte-identical. ${SUMMARY:-test summary unavailable}."
+          git commit --amend -m "feat(engine): re-pin codeindex $LATEST" -m "automated re-pin, all gates green, goldens byte-identical. ${SUMMARY:-test summary unavailable}."
+          git pull --rebase origin main
           git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Trigger release workflow
         if: steps.detect.outputs.stale == 'true'
@@ -132,9 +141,10 @@ jobs:
         run: gh workflow run ci.yml --ref main
 
       - name: On failure — push adjudication branch and open PR
-        if: steps.detect.outputs.stale == 'true' && failure()
+        if: steps.detect.outputs.stale == 'true' && failure() && steps.push.outputs.pushed != 'true'
+        env:
+          LATEST: ${{ steps.detect.outputs.latest }}
         run: |
-          LATEST="${{ steps.detect.outputs.latest }}"
           BRANCH="repin/${LATEST}"
           git add -A
           git diff --cached --quiet || git commit -m "chore(engine): re-pin codeindex ${LATEST}" -m "Automated re-pin — gates failed, pushed for manual adjudication."
