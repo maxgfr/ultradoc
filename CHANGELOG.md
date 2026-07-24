@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.7.0](https://github.com/maxgfr/ultradoc/compare/v2.6.0...v2.7.0) (2026-07-24)
+
+
+### Features
+
+* **engine:** re-pin codeindex v2.16.0 ([c301236](https://github.com/maxgfr/ultradoc/commit/c301236f2f1323fd2fb9dde192dd7143eb4550ec))
+
 # [2.6.0](https://github.com/maxgfr/ultradoc/compare/v2.5.0...v2.6.0) (2026-07-24)
 
 
