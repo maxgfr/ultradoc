@@ -12142,7 +12142,7 @@ ${HELP}`);
 }
 
 // src/types.ts
-var VERSION = "2.7.0";
+var VERSION = "2.7.1";
 
 // src/clone.ts
 import { existsSync as existsSync6, statSync as statSync5, mkdirSync as mkdirSync4, readdirSync as readdirSync4, renameSync as renameSync2 } from "fs";
