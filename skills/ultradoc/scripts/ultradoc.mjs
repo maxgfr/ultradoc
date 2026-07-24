@@ -551,7 +551,7 @@ function originUrl(dir) {
 }
 
 // src/index/structural.ts
-import { existsSync as existsSync5, mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, readFileSync as readFileSync7 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync4, writeFileSync as writeFileSync5, readFileSync as readFileSync8 } from "fs";
 import { join as join17 } from "path";
 
 // src/vendor/codeindex-engine.mjs
@@ -580,7 +580,7 @@ import { join as join11 } from "path";
 import { createHash as createHash3 } from "crypto";
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "fs";
 import { join as join13 } from "path";
-import { statSync as statSync4 } from "fs";
+import { readFileSync as readFileSync6, statSync as statSync4 } from "fs";
 import { join as join14 } from "path";
 import { createInterface } from "readline";
 import { basename as basename22 } from "path";
@@ -589,7 +589,7 @@ import { mkdirSync as mkdirSync3, writeFileSync } from "fs";
 import { dirname as dirname2, resolve as resolve2, sep as sep2 } from "path";
 import { gunzipSync } from "zlib";
 import { join as join12 } from "path";
-import { existsSync as existsSync4, mkdirSync as mkdirSync32, mkdtempSync, readFileSync as readFileSync6, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync4, mkdirSync as mkdirSync32, mkdtempSync, readFileSync as readFileSync7, renameSync as renameSync2, rmSync as rmSync2, writeFileSync as writeFileSync4 } from "fs";
 import { dirname as dirname4, join as join15, resolve as resolve22 } from "path";
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -606,7 +606,7 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.14.0";
+    ENGINE_VERSION = "2.15.0";
     SCHEMA_VERSION = 4;
     EXTRACTOR_VERSION = 10;
   }
@@ -10935,6 +10935,57 @@ function toCacheMap(scan2) {
   for (const f of scan2.files) m.set(f.rel, { hash: f.hash, record: f, size: f.size, mtimeMs: scan2.mtimes.get(f.rel) });
   return m;
 }
+function readPersistedIndex(repo) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync6(join14(repo, ".codeindex", "cache.json"), "utf8"));
+  } catch {
+    return void 0;
+  }
+  if (!parsed || parsed.schemaVersion !== SCHEMA_VERSION || parsed.extractorVersion !== EXTRACTOR_VERSION || !parsed.files) {
+    return void 0;
+  }
+  const cacheMap = new Map(Object.entries(parsed.files));
+  const meta = {
+    engineVersion: parsed.engineVersion,
+    commit: parsed.commit,
+    graphSha1: parsed.graphSha1,
+    symbolsSha1: parsed.symbolsSha1
+  };
+  return { cacheMap, meta };
+}
+function preloadArtifacts(repo, scan2, meta) {
+  if (!scan2.contentUnchanged || meta.engineVersion !== ENGINE_VERSION || meta.commit !== scan2.commit || meta.graphSha1 === void 0 || meta.symbolsSha1 === void 0) {
+    return void 0;
+  }
+  const dir = join14(repo, ".codeindex");
+  let graphBytes;
+  let symbolsBytes;
+  try {
+    graphBytes = readFileSync6(join14(dir, "graph.json"));
+    symbolsBytes = readFileSync6(join14(dir, "symbols.json"));
+  } catch {
+    return void 0;
+  }
+  if (sha1(graphBytes) !== meta.graphSha1 || sha1(symbolsBytes) !== meta.symbolsSha1) {
+    return void 0;
+  }
+  try {
+    const graph = JSON.parse(graphBytes.toString("utf8"));
+    const symbols = JSON.parse(symbolsBytes.toString("utf8"));
+    if (graph.schemaVersion !== SCHEMA_VERSION || symbols.schemaVersion !== SCHEMA_VERSION) return void 0;
+    return { scan: scan2, graph, symbols };
+  } catch {
+    return void 0;
+  }
+}
+function preloadSession(repo, opts) {
+  const persisted = readPersistedIndex(repo);
+  if (!persisted) return void 0;
+  const scan2 = scanRepo(repo, { ...opts, cache: persisted.cacheMap });
+  const arts = preloadArtifacts(repo, scan2, persisted.meta);
+  return { scan: scan2, cacheMap: toCacheMap(scan2), arts };
+}
 function getScan(repo, opts = {}) {
   const key = sessionKey(repo, opts);
   if (sessionCache && sessionCache.key === key) {
@@ -10946,6 +10997,11 @@ function getScan(repo, opts = {}) {
     }
     sessionCache = { key, scan: fresh, cacheMap: toCacheMap(fresh) };
     return fresh;
+  }
+  const preloaded = preloadSession(repo, opts);
+  if (preloaded) {
+    sessionCache = { key, scan: preloaded.scan, cacheMap: preloaded.cacheMap, arts: preloaded.arts };
+    return preloaded.scan;
   }
   const scan2 = scanRepo(repo, opts);
   sessionCache = { key, scan: scan2, cacheMap: toCacheMap(scan2) };
@@ -12211,7 +12267,7 @@ async function runCli(argv) {
     let cache;
     let meta = {};
     try {
-      const parsed = JSON.parse(readFileSync6(cachePath, "utf8"));
+      const parsed = JSON.parse(readFileSync7(cachePath, "utf8"));
       if (parsed.schemaVersion === SCHEMA_VERSION && parsed.extractorVersion === EXTRACTOR_VERSION) {
         cache = new Map(Object.entries(parsed.files));
         meta = {
@@ -12232,7 +12288,7 @@ async function runCli(argv) {
     const embedPath = join15(outDir, "embeddings.bin");
     const artifactSha = (path) => {
       try {
-        return sha1(readFileSync6(path));
+        return sha1(readFileSync7(path));
       } catch {
         return void 0;
       }
@@ -12482,7 +12538,7 @@ async function runCli(argv) {
       if (existsSync4(runtime) && expected && existsSync4(markerPath2)) {
         let marker = "";
         try {
-          marker = readFileSync6(markerPath2, "utf8").trim();
+          marker = readFileSync7(markerPath2, "utf8").trim();
         } catch {
         }
         if (marker === expected) {
@@ -12535,7 +12591,7 @@ async function runCli(argv) {
     }
   } else if (cmd === "rules") {
     if (!flags2.config) throw new Error("rules needs --config <codeindex.rules.json>");
-    const rules = parseRules(JSON.parse(readFileSync6(flags2.config, "utf8")));
+    const rules = parseRules(JSON.parse(readFileSync7(flags2.config, "utf8")));
     const { graph } = buildIndexArtifacts(flags2.repo, scanOptions(flags2, precomputedWalk));
     const violations = checkRules(graph, rules);
     const errors = violations.filter((v) => v.severity === "error").length;
@@ -12818,7 +12874,7 @@ function loadIndex(root) {
   const p = indexPath(root);
   if (!existsSync5(p)) return void 0;
   try {
-    const idx = JSON.parse(readFileSync7(p, "utf8"));
+    const idx = JSON.parse(readFileSync8(p, "utf8"));
     if (idx.schemaVersion !== SCHEMA_VERSION2) return void 0;
     const head = headCommit(root);
     if (idx.commit && head && !sameCommit(idx.commit, head)) return void 0;
@@ -13330,7 +13386,7 @@ function excerptWindows(lines, matcher, sym, fh, callLines) {
 }
 
 // src/index/semantic.ts
-import { existsSync as existsSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
+import { existsSync as existsSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
 import { join as join21, dirname as dirname6 } from "path";
 
 // src/sources/fetch.ts
@@ -13536,7 +13592,7 @@ function excerptsFromText(text, url, title, source, question, perSource) {
 }
 
 // src/index/compose.ts
-import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync8, writeFileSync as writeFileSync7 } from "fs";
+import { existsSync as existsSync6, mkdirSync as mkdirSync6, readFileSync as readFileSync9, writeFileSync as writeFileSync7 } from "fs";
 import { dirname as dirname5, join as join20 } from "path";
 var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode and web
 # search. Start it with \`ultradoc semantic up\` (or \`docker compose --profile all
@@ -13620,7 +13676,7 @@ function ensureComposeMaterialized() {
 }
 function writeIfChanged(path, content) {
   try {
-    if (existsSync6(path) && readFileSync8(path, "utf8") === content) return;
+    if (existsSync6(path) && readFileSync9(path, "utf8") === content) return;
     mkdirSync6(dirname5(path), { recursive: true });
     writeFileSync7(path, content);
   } catch {
@@ -13698,7 +13754,7 @@ async function buildIfNeeded(ctx) {
   const commit = ctx.index.commit ?? "HEAD";
   if (existsSync7(marker)) {
     try {
-      const m = JSON.parse(readFileSync9(marker, "utf8"));
+      const m = JSON.parse(readFileSync10(marker, "utf8"));
       if (m.collection === name2 && m.commit === commit && await collectionExists(name2)) {
         return { name: name2, notes: [] };
       }
@@ -13903,7 +13959,7 @@ async function codeSource(ctx) {
 
 // src/sources/docs.ts
 import { join as join23 } from "path";
-import { existsSync as existsSync8, readFileSync as readFileSync10, statSync as statSync6, writeFileSync as writeFileSync9, mkdirSync as mkdirSync8 } from "fs";
+import { existsSync as existsSync8, readFileSync as readFileSync11, statSync as statSync6, writeFileSync as writeFileSync9, mkdirSync as mkdirSync8 } from "fs";
 var DOCS_ENTRY_BOOST = 1.2;
 var DOCS_ROOT_BOOST = 1.5;
 function extdocsTtlMs() {
@@ -13916,7 +13972,7 @@ async function getDocText(repoDir, url) {
   let fresh = false;
   try {
     if (existsSync8(file)) {
-      cached = readFileSync10(file, "utf8");
+      cached = readFileSync11(file, "utf8");
       fresh = Date.now() - statSync6(file).mtimeMs < extdocsTtlMs();
     }
   } catch {
@@ -14941,7 +14997,7 @@ import { mkdirSync as mkdirSync10, writeFileSync as writeFileSync12 } from "fs";
 import { basename as basename4, join as join27 } from "path";
 
 // src/overview.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync9, readFileSync as readFileSync11, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync9, readFileSync as readFileSync12, writeFileSync as writeFileSync11 } from "fs";
 import { basename as basename3, dirname as dirname7, join as join26 } from "path";
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
@@ -15057,7 +15113,7 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
   const path = opts.out ?? overviewPath(repoDir);
   if (!opts.refresh && existsSync9(path)) {
     try {
-      const existing = readFileSync11(path, "utf8");
+      const existing = readFileSync12(path, "utf8");
       const commit = CACHE_MARK.exec(existing)?.[1];
       if (commit && commit === (index.commit ?? "unknown")) {
         return { path, markdown: existing, cached: true };
@@ -15280,7 +15336,7 @@ async function runDoc(options, opts = {}) {
 
 // src/check.ts
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync11, readFileSync as readFileSync13 } from "fs";
+import { existsSync as existsSync11, readFileSync as readFileSync14 } from "fs";
 import { basename as basename5, dirname as dirname8, join as join29, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
@@ -15511,7 +15567,7 @@ function claimCoverage(text, _evidence) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync10, readFileSync as readFileSync12, writeFileSync as writeFileSync13 } from "fs";
+import { existsSync as existsSync10, readFileSync as readFileSync13, writeFileSync as writeFileSync13 } from "fs";
 import { join as join28 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
@@ -15527,11 +15583,11 @@ function claimStrings(text) {
 function buildWorklist(dir, opts = {}) {
   const evidencePath = join28(dir, "evidence.json");
   if (!existsSync10(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
-  const evidence = JSON.parse(readFileSync12(evidencePath, "utf8"));
+  const evidence = JSON.parse(readFileSync13(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
-  const answer = readFileSync12(answerPath, "utf8");
+  const answer = readFileSync13(answerPath, "utf8");
   const pairs = [];
   const uncitedClaims = [];
   let claimNo = 0;
@@ -15611,7 +15667,7 @@ function applyVerdicts(dir, verdictsPath) {
   if (!existsSync10(verdictsPath)) {
     throw new Error(`No verdicts file at ${verdictsPath} \u2014 adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
   }
-  const raw = JSON.parse(readFileSync12(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync13(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { pairs: [...] } or { verdicts: [...] } with at least one row.`);
@@ -15653,7 +15709,7 @@ function expectedClaims(dir) {
   try {
     const todoPath = join28(dir, "VERIFY.todo.json");
     if (!existsSync10(todoPath)) return null;
-    const todo = JSON.parse(readFileSync12(todoPath, "utf8"));
+    const todo = JSON.parse(readFileSync13(todoPath, "utf8"));
     if (!Array.isArray(todo?.pairs)) return null;
     return [...new Set(todo.pairs.map((p) => p.claimId))];
   } catch {
@@ -15665,8 +15721,8 @@ function answerSignatureFor(dir) {
     const answerPath = resolveAnswerPath(dir);
     const evidencePath = join28(dir, "evidence.json");
     if (!answerPath || !existsSync10(evidencePath)) return null;
-    const evidence = JSON.parse(readFileSync12(evidencePath, "utf8"));
-    return answerClaimSignature(readFileSync12(answerPath, "utf8"), evidence);
+    const evidence = JSON.parse(readFileSync13(evidencePath, "utf8"));
+    return answerClaimSignature(readFileSync13(answerPath, "utf8"), evidence);
   } catch {
     return null;
   }
@@ -15751,7 +15807,7 @@ function pinnedClone(dir) {
   try {
     const metaPath = join29(dir, "meta.json");
     if (!existsSync11(metaPath)) return pin;
-    const meta = JSON.parse(readFileSync13(metaPath, "utf8"));
+    const meta = JSON.parse(readFileSync14(metaPath, "utf8"));
     pin.meta = meta;
     if (!meta.commit) return pin;
     pin.recordedRepoDir = meta.repoDir;
@@ -15848,7 +15904,7 @@ function revalidateEvidence(pin, evidence, errors, warnings) {
     }
     let lines;
     try {
-      lines = readFileSync13(abs, "utf8").split(/\r?\n/);
+      lines = readFileSync14(abs, "utf8").split(/\r?\n/);
     } catch (e) {
       fail2("missing-file", `file is unreadable (${e.message})`);
       continue;
@@ -15896,7 +15952,7 @@ function missingDocSections(dir, answerPath, answer) {
   if (!existsSync11(planPath)) return void 0;
   let plan;
   try {
-    plan = JSON.parse(readFileSync13(planPath, "utf8"));
+    plan = JSON.parse(readFileSync14(planPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -15944,7 +16000,7 @@ function applySemantic(dir, result, answer, evidence, allowUnverified = false, a
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync13(p, "utf8"));
+    sem = JSON.parse(readFileSync14(p, "utf8"));
   } catch (e) {
     unverified(`VERIFY.json is unreadable (${e.message})`);
     return;
@@ -16013,7 +16069,7 @@ function checkRun(dir, opts = {}) {
   }
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync13(evidencePath, "utf8"));
+    evidence = JSON.parse(readFileSync14(evidencePath, "utf8"));
   } catch (e) {
     return {
       ok: false,
@@ -16037,7 +16093,7 @@ function checkRun(dir, opts = {}) {
       warnings: []
     };
   }
-  const answer = readFileSync13(answerPath, "utf8");
+  const answer = readFileSync14(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const { tokens: citations, fencedOnly } = collectCitations(answer);
@@ -16219,7 +16275,7 @@ function formatCacheStatus(s) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync11, readFileSync as readFileSync14, writeFileSync as writeFileSync14 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync11, readFileSync as readFileSync15, writeFileSync as writeFileSync14 } from "fs";
 import { join as join32, resolve as resolve3 } from "path";
 
 // src/orchestrate-templates.ts
@@ -16461,7 +16517,7 @@ function listPhases(runDir, engineAbs) {
   let drillReady = false;
   if (existsSync13(drillPath)) {
     try {
-      const plan = JSON.parse(readFileSync14(drillPath, "utf8"));
+      const plan = JSON.parse(readFileSync15(drillPath, "utf8"));
       if (plan && Array.isArray(plan.cells)) {
         drillReady = true;
         drillIds = plan.cells.map((c2) => c2.id);
@@ -16474,7 +16530,7 @@ function listPhases(runDir, engineAbs) {
   let verReady = false;
   if (existsSync13(verPath)) {
     try {
-      const todo = JSON.parse(readFileSync14(verPath, "utf8"));
+      const todo = JSON.parse(readFileSync15(verPath, "utf8"));
       if (todo && Array.isArray(todo.pairs)) {
         verReady = true;
         verIds = todo.pairs.map((p) => `${p.claimId}:${p.evidenceId}`);
@@ -16487,7 +16543,7 @@ function listPhases(runDir, engineAbs) {
   let docReady = false;
   if (existsSync13(docPath)) {
     try {
-      const plan = JSON.parse(readFileSync14(docPath, "utf8"));
+      const plan = JSON.parse(readFileSync15(docPath, "utf8"));
       if (plan && Array.isArray(plan.sections)) {
         docReady = true;
         docIds = plan.sections.map((s) => s.id);
