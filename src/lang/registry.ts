@@ -1,5 +1,5 @@
 import type { CodeSymbol } from "../types.js";
-import { extToLang, extractSymbols as engineExtractSymbols, languageOf as engineLanguageOf } from "../vendor/codeindex-engine.mjs";
+import { extToLang, extractCode as engineExtractCode, languageOf as engineLanguageOf } from "../vendor/codeindex-engine.mjs";
 
 // Symbol extraction, delegated entirely to the vendored codeindex engine for
 // every language, including JavaScript/TypeScript.
@@ -18,10 +18,23 @@ import { extToLang, extractSymbols as engineExtractSymbols, languageOf as engine
 // jsTs/common.ts are gone; see git history for the local extractor this
 // replaced.
 
+// Through v2.15.0 this called the engine's `extractSymbols`, which is the REGEX
+// registry alone — so ultradoc cited regex-guessed symbols even on a machine
+// with every tree-sitter grammar present. `extractCode` is the engine's own
+// AST-preferred wrapper: tree-sitter when the file's grammar is loaded (methods
+// nested in classes, exact `line`/`endLine`), the same regex extractors when it
+// is not, and `extractReexports` folded in either way — the behavior this
+// function already had. The AST tier only engages after the CLI's
+// `warmGrammars` (src/cli.ts); without it this is byte-identical to before.
+//
+// Citation precision is ultradoc's whole product: a symbol the regex tier never
+// emits is a symbol `check` cannot resolve and an answer that has to fall back
+// to a file-level citation.
+
 // Extract declared symbols from one file. Returns [] for languages without a
 // dedicated extractor (their content is still fully searchable via ripgrep).
 export function extractSymbols(rel: string, ext: string, content: string): CodeSymbol[] {
-  return engineExtractSymbols(rel, ext, content);
+  return engineExtractCode(rel, ext, content).symbols;
 }
 
 // Human-readable language label for an extension (used for the language

@@ -1,6 +1,7 @@
 import { join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, realpathSync } from "node:fs";
+import { warmGrammars } from "./vendor/codeindex-engine.mjs";
 import { VERSION } from "./types.js";
 import type { AskOptions, SourceKind, WebEngine, DossierMeta } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
@@ -307,8 +308,21 @@ function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMark
   }
 }
 
+// Commands that index the repo — i.e. that extract symbols. Only these pay for
+// the grammar warm-up; `check`/`verify`/`cache`/`semantic` re-read an existing
+// dossier or manage state and must never trigger the ~22 MB grammar pull.
+const INDEXING_COMMANDS = new Set(["ask", "code", "issues", "prs", "docs", "releases", "history", "discussions", "so", "web", "overview", "doc", "index"]);
+
 export async function run(argv: string[] = process.argv.slice(2)): Promise<void> {
   const p = parseArgs(argv);
+
+  // Load the tree-sitter grammars once, up front — the only async step; the
+  // index pipeline stays synchronous and parses against the warmed grammars.
+  // Without this the engine's AST tier can never engage and every symbol
+  // ultradoc cites comes from the regex extractors, which miss methods nested
+  // in classes entirely. First run on a fresh machine pulls the wasm into the
+  // shared cache; offline ⇒ regex fallback, announced rather than silent.
+  if (p.command && INDEXING_COMMANDS.has(p.command)) await warmGrammars({ label: "ultradoc" });
 
   switch (p.command) {
     case "ask": {
