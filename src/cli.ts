@@ -3,7 +3,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { existsSync, realpathSync } from "node:fs";
 import { warmGrammars } from "./vendor/codeindex-engine.mjs";
 import { VERSION } from "./types.js";
-import type { AskOptions, SourceKind, WebEngine, DossierMeta } from "./types.js";
+import type { AskOptions, SourceKind, SemanticTier, WebEngine, DossierMeta } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
 import { runDoc } from "./doc.js";
 import { renderEvidenceMarkdown } from "./dossier.js";
@@ -11,7 +11,7 @@ import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
-import { semanticControl } from "./index/semantic/index.js";
+import { semanticControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
@@ -32,7 +32,7 @@ Usage:
   ultradoc check --run <dossier-dir> [--strict] [--coverage-min <0..1>] [--semantic [--allow-unverified]] [--answer <file>]
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc orchestrate --run <dossier-dir> [--phase drill|verify|doc] [--eco] [--list]
-  ultradoc semantic up|down|status
+  ultradoc semantic up|down|status|pull
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
 Commands:
@@ -69,7 +69,11 @@ Commands:
              dispatch contracts + a sequential RUNBOOK.md fallback, under
              <run>/orchestration/. Subagents RETURN fragments; the folds
              (verdicts.json, ANSWER.md/DOC.md) stay with the orchestrator.
-  semantic   Manage the optional local Docker stack (Qdrant + embeddings + SearXNG).
+  semantic   Manage the optional vector backends. 'pull' fetches the local
+             static model (~21 MB, once per machine) so --semantic works with
+             NO container; 'up|down|status' drive the Docker stack (Qdrant +
+             Ollama + SearXNG), which embeds real code/doc content and is the
+             strongest tier — select it with --semantic-tier docker.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
 Options:
@@ -98,7 +102,10 @@ Options:
   --list               For 'orchestrate': print the phases + readiness as JSON
   --strict             For 'check': require EVERY claim to be cited (coverage 100%)
   --coverage-min <r>   For 'check': min fraction of claims that must cite [0..1] (default: 0.7)
-  --semantic           Use the optional local vector backend (falls back if absent)
+  --semantic           Add vector retrieval to the lexical tier (falls back if absent)
+  --semantic-tier <t>  auto | static | endpoint | docker | off       (default: auto)
+                       auto tries endpoint → static → docker, i.e. the backends
+                       needing no infrastructure first
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
   -h, --help           Show this help
@@ -159,6 +166,7 @@ const VALUE_FLAGS = new Set([
   "coverage-min",
   "phase",
   "name",
+  "semantic-tier",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
 
@@ -293,6 +301,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
   const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude"]);
+  const semanticTier = oneOf<SemanticTier>("semantic-tier", p.values["semantic-tier"] ?? "auto", ["auto", "static", "endpoint", "docker", "off"]);
 
   return {
     repo,
@@ -303,6 +312,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
     pkg: p.values.package,
     out: p.values.out ? resolve(p.values.out) : undefined,
     semantic: p.bools.has("semantic"),
+    semanticTier,
     webEngine,
     perSource,
     json: p.bools.has("json"),
@@ -677,8 +687,25 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
 
     case "semantic": {
       const action = p.positional[0] ?? "status";
+      // `pull` fetches the local static model — the tier that needs no Docker
+      // at all — so it is not part of the compose lifecycle.
+      if (action === "pull") {
+        const r = await pullStaticModel({ force: p.bools.has("refresh") });
+        process.stdout.write(r.message + "\n");
+        if (!r.ok) process.exit(1);
+        return;
+      }
       const r = semanticControl(action);
       process.stdout.write(r.message + "\n");
+      // `status` also reports the keyless tier, which the compose stack knows
+      // nothing about: "no services running" must not read as "no semantic".
+      if (action === "status") {
+        process.stdout.write(
+          hasStaticModel()
+            ? `\n  local static model: ready at ${modelPath()} — \`--semantic\` works with no container.\n`
+            : `\n  local static model: not pulled — \`ultradoc semantic pull\` enables \`--semantic\` with no container.\n`,
+        );
+      }
       if (r.code !== 0) process.exit(r.code);
       return;
     }

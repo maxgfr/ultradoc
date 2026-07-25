@@ -110,6 +110,12 @@ export interface IndexStats {
 // Which web-discovery engine to use; "auto" tries searxng → ddg → claude.
 export type WebEngine = "auto" | "searxng" | "ddg" | "claude";
 
+// Which vector backend `--semantic` should use. "auto" tries endpoint → static
+// → docker, i.e. the tiers that need no infrastructure first. "docker" is the
+// strongest (it embeds real code and doc content, not just symbol names) and is
+// selected explicitly after `ultradoc semantic up`.
+export type SemanticTier = "auto" | "static" | "endpoint" | "docker" | "off";
+
 // Resolved options for a single `ask` (or single-source) run.
 export interface AskOptions {
   repo: string;
@@ -120,6 +126,7 @@ export interface AskOptions {
   pkg?: string; // scope retrieval to one workspace package (name or dir)
   out?: string;
   semantic: boolean;
+  semanticTier?: SemanticTier; // which vector backend (default: auto)
   webEngine: WebEngine;
   perSource: number; // cap on evidence items kept per source
   json: boolean;
