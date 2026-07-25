@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.8.0](https://github.com/maxgfr/ultradoc/compare/v2.7.1...v2.8.0) (2026-07-25)
+
+
+### Features
+
+* **index:** build the index from one codeindex scanRepo pass ([c6e0dcf](https://github.com/maxgfr/ultradoc/commit/c6e0dcf283d3da3f6ccea062b98c6b1af0bb2bfe))
+* **overview,doc:** shape the map and the outline from the module graph ([0381870](https://github.com/maxgfr/ultradoc/commit/03818702fe1110a309a3bb47e20c6ebec96851e2))
+* **search:** anchor code excerpts on the declaration's real body ([1ce4e94](https://github.com/maxgfr/ultradoc/commit/1ce4e94b3246bdc763152a4433ea589ef8399fa4))
+* **search:** resolve call sites from the index instead of a regex over grep output ([03ce28f](https://github.com/maxgfr/ultradoc/commit/03ce28f92653fdffaf15b28a49a3bd5879473edf))
+* **semantic:** keyless vector tiers, so --semantic works with no Docker ([94cbe94](https://github.com/maxgfr/ultradoc/commit/94cbe946e1144ae71ddce4aa4285a2198315391e))
+* **symbol:** resolve a declaration, its body and its callers ([90caf1f](https://github.com/maxgfr/ultradoc/commit/90caf1f3d76b3897d9d7ecaefe3a0e45c9dd6ade))
+
 ## [2.7.1](https://github.com/maxgfr/ultradoc/compare/v2.7.0...v2.7.1) (2026-07-24)
 
 
