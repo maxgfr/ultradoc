@@ -6,6 +6,7 @@ import { buildIndex } from "../src/index/structural.js";
 import { searchCode, RANKING, callableNames } from "../src/index/search.js";
 import { buildMatcher } from "../src/util.js";
 import { resolveRepo } from "../src/clone.js";
+import type { StructuralIndex } from "../src/types.js";
 
 function repoWith(files: Record<string, string>): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "ud-search-"));
@@ -25,6 +26,101 @@ describe("RANKING constants", () => {
     expect(RANKING.CALLSITE_MAX_NAMES).toBe(4);
     expect(RANKING.CALLSITE_SECOND_ITEM_FACTOR).toBe(0.95);
     expect(RANKING.CALLSITE_MERGE_GAP).toBe(12);
+  });
+});
+
+// The suite never warms the tree-sitter grammars, so buildIndex here is always
+// the regex tier — no endLine. These helpers graft the AST tier's spans onto a
+// real index so the excerpt logic can be exercised deterministically, without
+// depending on which grammars happen to be cached on the machine.
+function withSpans(idx: StructuralIndex, spans: Record<string, { end: number; parent?: string }>): StructuralIndex {
+  return {
+    ...idx,
+    symbols: idx.symbols.map((s) => {
+      const span = spans[s.name];
+      return span ? { ...s, endLine: span.end, ...(span.parent ? { parent: span.parent } : {}) } : s;
+    }),
+  };
+}
+
+describe("symbol-anchored excerpts (AST tier)", () => {
+  const body = [
+    "export function retryRequest(n: number): number {", // 1
+    "  let total = 0;", // 2
+    "  for (let i = 0; i < n; i++) {", // 3
+    "    total += i;", // 4
+    "  }", // 5
+    "  return total;", // 6
+    "}", // 7
+    "", // 8
+    "export const unrelated = 1;", // 9
+  ].join("\n");
+
+  it("spans the declaration's real body instead of a fixed window", () => {
+    const { dir, cleanup } = repoWith({ "src/retry.ts": body });
+    const ref = resolveRepo(dir);
+    const idx = withSpans(buildIndex(dir, ref.slug), { retryRequest: { end: 7 } });
+    const { items } = searchCode(dir, ref, idx, "retryRequest", 4);
+    const hit = items.find((i) => i.ref === "src/retry.ts")!;
+    // The whole function, closing brace included — and NOT the unrelated
+    // declaration that a blind 18-line window would have swept in.
+    expect(hit.snippet).toContain("export function retryRequest");
+    expect(hit.snippet).toContain("  return total;");
+    expect(hit.snippet).not.toContain("export const unrelated");
+    expect(hit.title).toBe("src/retry.ts — function retryRequest");
+    cleanup();
+  });
+
+  it("qualifies a method by its parent and records a clipped body's true span", () => {
+    const long = ["export class HttpClient {", "  request(): void {", ...Array.from({ length: 40 }, (_, i) => `    const v${i} = ${i};`), "  }", "}"].join(
+      "\n",
+    );
+    const { dir, cleanup } = repoWith({ "src/client.ts": long });
+    const ref = resolveRepo(dir);
+    // request() spans lines 2..43 — well past the 30-line excerpt cap.
+    const idx = withSpans(buildIndex(dir, ref.slug), { request: { end: 43, parent: "HttpClient" } });
+    // The regex tier doesn't see nested methods, so declare the symbol the way
+    // the AST tier would.
+    idx.symbols.push({
+      name: "request",
+      kind: "method",
+      file: "src/client.ts",
+      line: 2,
+      endLine: 43,
+      parent: "HttpClient",
+      exported: true,
+      lang: "typescript",
+    });
+    const { items } = searchCode(dir, ref, idx, "request", 4);
+    const hit = items.find((i) => i.meta?.symbol === "request")!;
+    expect(hit.title).toBe("src/client.ts — method HttpClient.request");
+    // Clipped to the cap, but the citation still carries the real extent.
+    expect(hit.snippet.split("\n").length).toBeLessThanOrEqual(30);
+    expect(hit.meta?.symbolSpan).toBe("2-43");
+    cleanup();
+  });
+
+  it("names the declaration a non-anchored match landed inside", () => {
+    const { dir, cleanup } = repoWith({ "src/retry.ts": body });
+    const ref = resolveRepo(dir);
+    const idx = withSpans(buildIndex(dir, ref.slug), { retryRequest: { end: 7 } });
+    // "total" matches lexically inside retryRequest but names no symbol, so the
+    // excerpt is a plain region — which must still say what it is part of.
+    const { items } = searchCode(dir, ref, idx, "total", 4);
+    const hit = items.find((i) => i.ref === "src/retry.ts")!;
+    expect(hit.title).toBe("src/retry.ts — in function retryRequest");
+    cleanup();
+  });
+
+  it("falls back to the fixed window when the tier reported no endLine", () => {
+    const { dir, cleanup } = repoWith({ "src/retry.ts": body });
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug); // regex tier: no endLine anywhere
+    const { items } = searchCode(dir, ref, idx, "retryRequest", 4);
+    const hit = items.find((i) => i.ref === "src/retry.ts")!;
+    expect(hit.title).toBe("src/retry.ts — function retryRequest");
+    expect(hit.meta?.symbolSpan).toBeUndefined();
+    cleanup();
   });
 });
 

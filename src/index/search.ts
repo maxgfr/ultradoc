@@ -426,6 +426,15 @@ export function searchCode(
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
 
+  // Declarations grouped per file, so an excerpt can be labelled with the symbol
+  // it sits inside. Built once for the whole result set.
+  const symsByFile = new Map<string, CodeSymbol[]>();
+  for (const s of index.symbols) {
+    const arr = symsByFile.get(s.file);
+    if (arr) arr.push(s);
+    else symsByFile.set(s.file, [s]);
+  }
+
   const items: RawItem[] = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
@@ -433,12 +442,12 @@ export function searchCode(
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const call = callHits.get(f.rel);
-    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? []);
+    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
     for (let wi = 0; wi < windows.length; wi++) {
       if (items.length >= perSource) break;
       const win = windows[wi]!;
       const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
-      const label = win.callSite ? `call site${call?.name ? ` (${call.name})` : ""}` : win.label;
+      const label = win.callSite ? `${win.label}${call?.name ? ` (${call.name})` : ""}` : win.label;
       const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${win.start}-L${win.end}`;
       items.push({
         source: "code",
@@ -448,7 +457,14 @@ export function searchCode(
         score: Number(score.toFixed(3)),
         snippet: lines.slice(win.start - 1, win.end).join("\n"),
         url,
-        meta: { matchedKeywords: f.fh ? [...f.fh.matchedKw] : [], symbol: f.sym?.name, ...(win.callSite ? { callSite: true } : {}) },
+        meta: {
+          matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
+          symbol: f.sym?.name,
+          // The declaration's full range when the excerpt clipped it, so a
+          // reader knows the citation shows the head of a longer body.
+          ...(win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {}),
+          ...(win.callSite ? { callSite: true } : {}),
+        },
       });
     }
   }
@@ -518,30 +534,66 @@ export function searchCode(
   return { items, notes, fallback: usedRg ? undefined : "js-scan" };
 }
 
-type ExcerptWindow = { start: number; end: number; label: string; callSite?: boolean };
+type ExcerptWindow = { start: number; end: number; label: string; callSite?: boolean; span?: { start: number; end: number } };
 
-// Choose the excerpt window(s) for one result. The PRIMARY window is unchanged:
-// a matching symbol definition wins (anchored at its line); else the densest
-// lexical region; else the file head. When the query surfaced call sites in this
-// file, the best call region either folds into the primary window (if it is
-// within CALLSITE_MERGE_GAP and the merged span fits) or becomes a SECOND
-// excerpt — so a call site far from the definition is never lost. Returns 1 or 2
-// windows with 1-based inclusive line numbers.
+// How far past a matching symbol's definition line to read when the extraction
+// tier gave no `endLine` (regex tier). Kept as the documented fallback: the AST
+// tier reports the declaration's real last line and the excerpt uses that.
+const SYMBOL_FALLBACK_LINES = 18;
+
+// The innermost declaration whose span contains `line`. Only the AST tier
+// records `endLine`, so on a regex-tier index this returns undefined and the
+// caller falls back to a generic label rather than guessing at containment.
+export function enclosingSymbol(fileSyms: CodeSymbol[], line: number): CodeSymbol | undefined {
+  let best: CodeSymbol | undefined;
+  for (const s of fileSyms) {
+    if (s.endLine === undefined || s.line > line || s.endLine < line) continue;
+    if (!best || s.endLine - s.line < best.endLine! - best.line) best = s;
+  }
+  return best;
+}
+
+// How a symbol reads in an excerpt title, qualified by its parent so a method
+// is `method HttpClient.request`, not a bare `method request`.
+function symbolLabel(s: CodeSymbol): string {
+  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
+}
+
+// Choose the excerpt window(s) for one result. The PRIMARY window: a matching
+// symbol definition wins — anchored at its line and spanning its real body when
+// the AST tier resolved one; else the densest lexical region; else the file
+// head. When the query surfaced call sites in this file, the best call region
+// either folds into the primary window (if it is within CALLSITE_MERGE_GAP and
+// the merged span fits) or becomes a SECOND excerpt — so a call site far from
+// the definition is never lost. Returns 1 or 2 windows with 1-based inclusive
+// line numbers; `span` carries the declaration's true range when the excerpt
+// had to clip it.
 export function excerptWindows(
   lines: string[],
   matcher: KeywordMatcher,
   sym: CodeSymbol | undefined,
   fh: FileHits | undefined,
   callLines: number[],
+  fileSyms: CodeSymbol[] = [],
 ): ExcerptWindow[] {
   let primary: ExcerptWindow;
   if (sym) {
-    const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, sym.line + 18), sym.line);
-    primary = { start: w.start, end: w.end, label: `${sym.kind} ${sym.name}` };
+    // The declaration's real end when the AST tier knows it: a 25-line function
+    // is cited whole instead of its first 20 lines, and a 300-line one is
+    // clipped by MAX_EXCERPT_LINES with its true span still recorded.
+    const bodyEnd = sym.endLine ?? sym.line + SYMBOL_FALLBACK_LINES;
+    const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, bodyEnd), sym.line);
+    primary = { start: w.start, end: w.end, label: symbolLabel(sym) };
+    if (sym.endLine !== undefined && (w.start > sym.line || w.end < sym.endLine)) {
+      primary.span = { start: sym.line, end: sym.endLine };
+    }
   } else if (fh) {
     const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0]!;
     const w = expandWindow(lines, region.start, region.end, region.anchor);
-    primary = { start: w.start, end: w.end, label: "match" };
+    // Name the declaration the match landed inside, so a reader (and the model
+    // citing it) knows what this excerpt is part of.
+    const host = enclosingSymbol(fileSyms, region.anchor);
+    primary = { start: w.start, end: w.end, label: host ? `in ${symbolLabel(host)}` : "match" };
   } else {
     primary = { start: 1, end: Math.min(lines.length, 20), label: "match" };
   }
@@ -559,8 +611,11 @@ export function excerptWindows(
   const mergedEnd = Math.max(primary.end, best.end);
   if (gap <= RANKING.CALLSITE_MERGE_GAP && mergedEnd - mergedStart + 1 <= MAX_EXCERPT_LINES) {
     const w = expandWindow(lines, mergedStart, mergedEnd, sym?.line ?? best.start);
-    return [{ start: w.start, end: w.end, label: primary.label }];
+    return [{ start: w.start, end: w.end, label: primary.label, ...(primary.span ? { span: primary.span } : {}) }];
   }
   const cw = expandWindow(lines, best.start, best.end, best.start);
-  return [primary, { start: cw.start, end: cw.end, label: "call site", callSite: true }];
+  // The caller whose body holds the invocation — "who calls this" is only half
+  // the answer; "from where" is the other half.
+  const caller = enclosingSymbol(fileSyms, best.start);
+  return [primary, { start: cw.start, end: cw.end, label: caller ? `call site in ${symbolLabel(caller)}` : "call site", callSite: true }];
 }
