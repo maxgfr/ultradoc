@@ -5,6 +5,7 @@ import { runSources } from "./sources/registry.js";
 import { renderEvidenceMarkdown, SOURCE_ORDER } from "./dossier.js";
 import { ensureOverview } from "./overview.js";
 import { indexDir } from "./index/structural.js";
+import { repoGraph, type RankedModule } from "./index/modules.js";
 import { readText } from "./walk.js";
 import { looksLikeTestFile, slugify } from "./util.js";
 import { LIMITS } from "./config.js";
@@ -98,7 +99,13 @@ export function detectProjectTraits(repoDir: string, index: StructuralIndex): Pr
 // Every section carries a retrieval query and the sources to ground it on;
 // runDoc fills evidenceIds. A monorepo (unscoped) gets one section per package;
 // otherwise a CLI gets a "Commands" section and a library gets "Public API".
-export function buildOutline(index: StructuralIndex, name: string, scopePkg?: WorkspacePackage, traits?: ProjectTraits): Omit<DocSection, "evidenceIds">[] {
+export function buildOutline(
+  index: StructuralIndex,
+  name: string,
+  scopePkg?: WorkspacePackage,
+  traits?: ProjectTraits,
+  modules: RankedModule[] = [],
+): Omit<DocSection, "evidenceIds">[] {
   const sections: Omit<DocSection, "evidenceIds">[] = [];
   let n = 0;
   const add = (title: string, query: string, sources: SourceKind[]) => sections.push({ id: `S${++n}`, title, query, sources });
@@ -127,6 +134,18 @@ export function buildOutline(index: StructuralIndex, name: string, scopePkg?: Wo
     add("Configuration", `${name} configuration options config settings environment flags`, ["code", "docs"]);
   }
   add("Architecture & internals", `${name} architecture design internals how it works module structure`, ["docs", "code"]);
+
+  // One section per subsystem the rest of the repo actually depends on, so the
+  // doc follows THIS project's shape instead of a fixed template. Skipped in a
+  // monorepo, where the package sections above already carve it up. Each query
+  // names the module's path and its own symbols, since that is what retrieval
+  // can match; the generic "architecture" query above cannot reach them.
+  if (!index.packages.length || scopePkg) {
+    for (const m of modules.slice(0, LIMITS.docModules)) {
+      const syms = topExportedSymbols(index, m.path === "(root)" ? undefined : m.path, 5);
+      add(`Subsystem: ${m.path}`, `${m.path} ${m.title} ${syms.join(" ")}`.trim(), ["code", "docs"]);
+    }
+  }
   return sections;
 }
 
@@ -189,6 +208,12 @@ function renderDocTodo(plan: DocPlan, evidence: EvidenceItem[]): string {
       `explicitly — never write from memory. Then run \`ultradoc check --run <dir>\`.`,
   );
   out.push("");
+  out.push(
+    `> \`ARCHITECTURE.mmd\` (when present) is a Mermaid module diagram generated from ` +
+      `the import graph. Like \`OVERVIEW.md\` it is NAVIGATION, not evidence — embed it if ` +
+      `useful, but every claim around it still needs a \`[E#]\` citation.`,
+  );
+  out.push("");
   for (const s of plan.sections) {
     out.push(`## ${s.id} · ${s.title}`);
     out.push(`_query:_ \`${s.query}\``);
@@ -217,6 +242,7 @@ export interface DocPaths {
   todoMd: string;
   metaJson: string;
   overviewPath?: string;
+  architecturePath?: string; // deterministic module diagram (navigation, not evidence)
 }
 
 export interface DocResult {
@@ -240,7 +266,17 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
   const ctx = buildContext(options);
   const name = ctx.repoRef.repo ?? basename(ctx.repoDir);
   const traits = detectProjectTraits(ctx.repoDir, ctx.index);
-  const outline = buildOutline(ctx.index, name, ctx.scopePkg, traits);
+  // The module graph shapes the outline and the architecture diagram. Derived
+  // work: a repo it can't be built for still gets the template outline.
+  let graph: ReturnType<typeof repoGraph> | undefined;
+  let modules: RankedModule[] = [];
+  try {
+    graph = repoGraph(ctx.repoDir);
+    modules = graph.modules(LIMITS.docModules);
+  } catch {
+    /* outline falls back to the fixed sections */
+  }
+  const outline = buildOutline(ctx.index, name, ctx.scopePkg, traits, modules);
 
   // Ground each section independently (clone + index are cached; only retrieval
   // re-runs). Sections are independent, so retrieve them concurrently.
@@ -306,6 +342,19 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
   writeFileSync(todoMd, renderDocTodo(plan, evidence));
   writeFileSync(metaJson, JSON.stringify(meta, null, 2));
 
+  // A deterministic module diagram beside the doc. Like OVERVIEW.md it is
+  // NAVIGATION, not evidence: it is generated from the import graph, so nothing
+  // in DOC.md may cite it — the architecture section still has to cite code.
+  let architecturePath: string | undefined;
+  if (graph) {
+    try {
+      architecturePath = join(dir, "ARCHITECTURE.mmd");
+      writeFileSync(architecturePath, graph.mermaid());
+    } catch {
+      architecturePath = undefined;
+    }
+  }
+
   // Refresh the navigation overview beside the doc so the model can orient and
   // refine sections; it is navigation, not citable evidence.
   let overviewPath: string | undefined;
@@ -315,5 +364,5 @@ export async function runDoc(options: AskOptions, opts: { sourcesOverride?: Sour
     /* overview is best-effort; the doc scaffold stands without it */
   }
 
-  return { dir, plan, evidence, paths: { dir, evidenceJson, evidenceMd, planJson, todoMd, metaJson, overviewPath } };
+  return { dir, plan, evidence, paths: { dir, evidenceJson, evidenceMd, planJson, todoMd, metaJson, overviewPath, architecturePath } };
 }

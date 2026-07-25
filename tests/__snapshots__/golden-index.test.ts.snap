@@ -244,6 +244,15 @@ This is a monorepo with 2 packages. Scope any question with \`--package <name|di
 - \`(root)\` — 4 files
 - \`docs/\` — 1 files
 
+## Core modules
+
+Ranked by how much the rest of the repo depends on them (PageRank over the import graph), not by size. Start here when you don't know where a behavior lives.
+
+| module | symbols | tests | what it is |
+|--------|---------|-------|------------|
+| \`packages/alpha/src\` | 12 | 0 | 5 file(s) in \`packages/alpha/src/\` (typescript). |
+| \`packages/beta/src\` | 5 | 0 | 3 file(s) in \`packages/beta/src/\` (javascript). |
+
 ## Public API
 
 ### @golden/alpha (\`packages/alpha\`)

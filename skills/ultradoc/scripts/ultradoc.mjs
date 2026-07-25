@@ -12550,6 +12550,8 @@ var LIMITS = {
   // GitHub releases fetched
   docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6),
   // monorepo packages given doc sections
+  docModules: envInt("ULTRADOC_MAX_DOC_MODULES", 5),
+  // subsystems given their own doc section
   verifyPairs: envInt("ULTRADOC_MAX_VERIFY", 40),
   // claim↔evidence pairs (CLI --max-verify wins)
   embedChunks: envInt("ULTRADOC_MAX_CHUNKS", 800),
@@ -15381,6 +15383,43 @@ import { basename as basename5, join as join31 } from "path";
 // src/overview.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync12, readFileSync as readFileSync14, writeFileSync as writeFileSync13 } from "fs";
 import { basename as basename4, dirname as dirname7, join as join30 } from "path";
+
+// src/index/modules.ts
+var NOISE_DIR = /(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e|docs?|website|site)(\/|$)/i;
+function cleanSummary(raw) {
+  return raw.replace(/^\s*@(module|description|fileoverview|file)\s+/i, "").split(/\s@(?:example|param|returns?|see|throws|template|typedef)\b|```/)[0].replace(/\s+/g, " ").trim();
+}
+function rankModules(graph, limit) {
+  const tests = computeTestMap(graph);
+  return graph.modules.filter((m) => m.symbols > 0 && !NOISE_DIR.test(m.path)).sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || a.path.localeCompare(b.path)).slice(0, limit).map((m) => ({
+    slug: m.slug,
+    path: m.path,
+    title: m.title,
+    summary: cleanSummary(m.summary),
+    symbols: m.symbols,
+    pagerank: m.pagerank ?? 0,
+    tests: tests.testedByModule.get(m.slug) ?? []
+  }));
+}
+function repoGraph(repoDir) {
+  const { graph } = buildArtifactsFromScan(repoScan(repoDir));
+  applyCentrality(graph);
+  return {
+    graph,
+    modules: (limit) => rankModules(graph, limit),
+    mermaid: (maxEdges = 60) => renderMermaid(graph, { maxEdges })
+  };
+}
+
+// src/overview.ts
+var CORE_MODULES = 8;
+function coreModules(repoDir) {
+  try {
+    return repoGraph(repoDir).modules(CORE_MODULES);
+  } catch {
+    return [];
+  }
+}
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
   return join30(repoDir, ".ultradoc", "OVERVIEW.md");
@@ -15466,6 +15505,21 @@ function renderOverview(index, ref, repoDir) {
   out2.push("");
   for (const l of layout(repoDir, index)) out2.push(`- \`${l.dir}\` \u2014 ${l.files} files`);
   out2.push("");
+  const core = coreModules(repoDir);
+  if (core.length) {
+    out2.push("## Core modules");
+    out2.push("");
+    out2.push(
+      "Ranked by how much the rest of the repo depends on them (PageRank over the import graph), not by size. Start here when you don't know where a behavior lives."
+    );
+    out2.push("");
+    out2.push("| module | symbols | tests | what it is |");
+    out2.push("|--------|---------|-------|------------|");
+    for (const m of core) {
+      out2.push(`| \`${m.path}\` | ${m.symbols} | ${m.tests.length} | ${m.summary.slice(0, 100)} |`);
+    }
+    out2.push("");
+  }
   out2.push("## Public API");
   out2.push("");
   if (index.packages.length) {
@@ -15554,7 +15608,7 @@ function detectProjectTraits(repoDir, index) {
   const hasConfigSurface = bases.has(".env.example") || index.configFiles.some((f) => /(^|\/)(config|settings)\.(json|ya?ml|toml|ini|js|ts)$/i.test(f)) || index.symbols.some((s) => s.exported && /config|options?|settings/i.test(s.name)) || index.configFiles.length > 0;
   return { isCli, isLib, hasConfigSurface };
 }
-function buildOutline(index, name2, scopePkg, traits) {
+function buildOutline(index, name2, scopePkg, traits, modules = []) {
   const sections = [];
   let n = 0;
   const add = (title, query4, sources) => sections.push({ id: `S${++n}`, title, query: query4, sources });
@@ -15576,6 +15630,12 @@ function buildOutline(index, name2, scopePkg, traits) {
     add("Configuration", `${name2} configuration options config settings environment flags`, ["code", "docs"]);
   }
   add("Architecture & internals", `${name2} architecture design internals how it works module structure`, ["docs", "code"]);
+  if (!index.packages.length || scopePkg) {
+    for (const m of modules.slice(0, LIMITS.docModules)) {
+      const syms = topExportedSymbols(index, m.path === "(root)" ? void 0 : m.path, 5);
+      add(`Subsystem: ${m.path}`, `${m.path} ${m.title} ${syms.join(" ")}`.trim(), ["code", "docs"]);
+    }
+  }
   return sections;
 }
 var dedupKey = (it) => `${it.source}|${it.ref}|${it.location ?? ""}|${(it.snippet ?? "").slice(0, 120)}`;
@@ -15620,6 +15680,10 @@ function renderDocTodo(plan, evidence) {
     `> Write the final document to \`DOC.md\` in this folder. Write each section below as grounded prose and **cite the evidence ids** ([E#]) \u2014 every factual claim needs a citation that resolves. Read \`EVIDENCE.md\` for the full snippets. If a section's evidence is thin, drill more (\`ultradoc code|docs --repo \u2026 --q \u2026\`) or state the gap explicitly \u2014 never write from memory. Then run \`ultradoc check --run <dir>\`.`
   );
   out2.push("");
+  out2.push(
+    `> \`ARCHITECTURE.mmd\` (when present) is a Mermaid module diagram generated from the import graph. Like \`OVERVIEW.md\` it is NAVIGATION, not evidence \u2014 embed it if useful, but every claim around it still needs a \`[E#]\` citation.`
+  );
+  out2.push("");
   for (const s of plan.sections) {
     out2.push(`## ${s.id} \xB7 ${s.title}`);
     out2.push(`_query:_ \`${s.query}\``);
@@ -15647,7 +15711,14 @@ async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
   const name2 = ctx.repoRef.repo ?? basename5(ctx.repoDir);
   const traits = detectProjectTraits(ctx.repoDir, ctx.index);
-  const outline = buildOutline(ctx.index, name2, ctx.scopePkg, traits);
+  let graph;
+  let modules = [];
+  try {
+    graph = repoGraph(ctx.repoDir);
+    modules = graph.modules(LIMITS.docModules);
+  } catch {
+  }
+  const outline = buildOutline(ctx.index, name2, ctx.scopePkg, traits, modules);
   const perSection = await Promise.all(
     outline.map(async (section) => {
       const sources = opts.sourcesOverride ?? section.sources;
@@ -15703,12 +15774,21 @@ async function runDoc(options, opts = {}) {
   writeFileSync14(planJson, JSON.stringify(plan, null, 2));
   writeFileSync14(todoMd, renderDocTodo(plan, evidence));
   writeFileSync14(metaJson, JSON.stringify(meta, null, 2));
+  let architecturePath;
+  if (graph) {
+    try {
+      architecturePath = join31(dir, "ARCHITECTURE.mmd");
+      writeFileSync14(architecturePath, graph.mermaid());
+    } catch {
+      architecturePath = void 0;
+    }
+  }
   let overviewPath2;
   try {
     overviewPath2 = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir).path;
   } catch {
   }
-  return { dir, plan, evidence, paths: { dir, evidenceJson, evidenceMd, planJson, todoMd, metaJson, overviewPath: overviewPath2 } };
+  return { dir, plan, evidence, paths: { dir, evidenceJson, evidenceMd, planJson, todoMd, metaJson, overviewPath: overviewPath2, architecturePath } };
 }
 
 // src/check.ts

@@ -86,6 +86,30 @@ describe("buildOutline", () => {
     expect(api.query).not.toMatch(/TestRetry|TestServe|test_pool/);
     expect(api.query).not.toMatch(/__init__|_private/);
   });
+
+  it("adds one section per central subsystem, after the template sections", () => {
+    const index = buildIndex(resolve("tests/fixtures/sample-lib"), "test-sample");
+    const modules = [
+      { slug: "src", path: "src", title: "src", summary: "the library", symbols: 12, pagerank: 9, tests: [] },
+      { slug: "src-io", path: "src/io", title: "io", summary: "transport", symbols: 4, pagerank: 3, tests: [] },
+    ];
+    const outline = buildOutline(index, "sample-lib", undefined, undefined, modules);
+    const titles = outline.map((s) => s.title);
+    expect(titles.slice(-2)).toEqual(["Subsystem: src", "Subsystem: src/io"]);
+    // Grounded on the module's own path and symbols — the generic architecture
+    // query cannot reach a specific subsystem.
+    expect(outline.find((s) => s.title === "Subsystem: src")!.query).toContain("src");
+    // Ids stay sequential across the whole outline.
+    expect(outline.map((s) => s.id)).toEqual(outline.map((_, i) => `S${i + 1}`));
+  });
+
+  it("leaves a monorepo outline to its package sections", () => {
+    const index = buildIndex(resolve("tests/fixtures/sample-mono"), "test-mono");
+    const modules = [{ slug: "packages-api-src", path: "packages/api/src", title: "api", summary: "", symbols: 3, pagerank: 4, tests: [] }];
+    const titles = buildOutline(index, "sample-mono", undefined, undefined, modules).map((s) => s.title);
+    expect(titles.some((t) => t.startsWith("Package:"))).toBe(true);
+    expect(titles.some((t) => t.startsWith("Subsystem:"))).toBe(false);
+  });
 });
 
 describe("runDoc (offline integration)", () => {
@@ -98,7 +122,14 @@ describe("runDoc (offline integration)", () => {
       expect(existsSync(join(out, f))).toBe(true);
     }
     expect(r.evidence.length).toBeGreaterThan(0);
-    expect(r.plan.sections.length).toBe(5);
+    // The five template sections, plus one per central subsystem the graph found
+    // in this fixture.
+    const subsystems = r.plan.sections.filter((s) => s.title.startsWith("Subsystem: "));
+    expect(r.plan.sections.length).toBe(5 + subsystems.length);
+    expect(subsystems.length).toBeGreaterThan(0);
+    // The module diagram is written beside the doc, and labelled navigation.
+    expect(existsSync(join(out, "ARCHITECTURE.mmd"))).toBe(true);
+    expect(readFileSync(join(out, "DOC.todo.md"), "utf8")).toContain("NAVIGATION, not evidence");
 
     // Every section's evidenceIds resolve to a real id in the merged set, and at
     // least one section is actually grounded.

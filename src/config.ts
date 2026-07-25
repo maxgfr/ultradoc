@@ -33,6 +33,7 @@ export const LIMITS = {
   callSitesPerSymbol: envInt("ULTRADOC_MAX_CALL_SITES", 30),
   releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20), // GitHub releases fetched
   docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6), // monorepo packages given doc sections
+  docModules: envInt("ULTRADOC_MAX_DOC_MODULES", 5), // subsystems given their own doc section
   verifyPairs: envInt("ULTRADOC_MAX_VERIFY", 40), // claim↔evidence pairs (CLI --max-verify wins)
   embedChunks: envInt("ULTRADOC_MAX_CHUNKS", 800), // semantic chunks embedded per repo
   embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4), // parallel embed requests

@@ -37,6 +37,13 @@ import type { RepoRef, StructuralIndex } from "../src/types.js";
 // extraction paths over express, hono and matomo (11 536 files): 0 symbols
 // lost, 0 gained. `astTier` is false here because the suite never warms the
 // tree-sitter grammars, which is the documented regex-tier fallback.
+//
+// ADJUDICATED when the overview gained its module graph — OVERVIEW.md only: a
+// "Core modules" section between Layout and Public API, listing the modules the
+// rest of the repo depends on (PageRank over the import graph) rather than the
+// biggest directories. index.json is untouched by that change. On this fixture
+// it resolves to the two package source dirs, which is correct: the repo root
+// and the docs tree carry no symbols and are ranked out by design.
 
 function writeFixture(dir: string): void {
   const files: Record<string, string> = {

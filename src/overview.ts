@@ -2,6 +2,22 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { CodeSymbol, RepoRef, StructuralIndex } from "./types.js";
 import { walk, readText } from "./walk.js";
+import { repoGraph, type RankedModule } from "./index/modules.js";
+
+// How many modules the overview headlines. Enough to orient, few enough that
+// the map stays a map.
+const CORE_MODULES = 8;
+
+// The graph is derived work: a repo it cannot be built for (unreadable tree,
+// nothing importable) must degrade to an overview without the section, never
+// fail the command that asked for a navigation map.
+function coreModules(repoDir: string): RankedModule[] {
+  try {
+    return repoGraph(repoDir).modules(CORE_MODULES);
+  } catch {
+    return [];
+  }
+}
 
 // Generate a deterministic markdown digest of a repository (no LLM): what it
 // is, its workspace packages, layout, exported API surface and documentation
@@ -122,6 +138,25 @@ export function renderOverview(index: StructuralIndex, ref: RepoRef, repoDir: st
   out.push("");
   for (const l of layout(repoDir, index)) out.push(`- \`${l.dir}\` — ${l.files} files`);
   out.push("");
+
+  // Which modules the rest of the codebase actually depends on. The layout above
+  // ranks by file count, which says how big a directory is, not how central it
+  // is — the module a question is usually about is the one everything imports.
+  const core = coreModules(repoDir);
+  if (core.length) {
+    out.push("## Core modules");
+    out.push("");
+    out.push(
+      "Ranked by how much the rest of the repo depends on them (PageRank over the import graph), not by size. Start here when you don't know where a behavior lives.",
+    );
+    out.push("");
+    out.push("| module | symbols | tests | what it is |");
+    out.push("|--------|---------|-------|------------|");
+    for (const m of core) {
+      out.push(`| \`${m.path}\` | ${m.symbols} | ${m.tests.length} | ${m.summary.slice(0, 100)} |`);
+    }
+    out.push("");
+  }
 
   out.push("## Public API");
   out.push("");
