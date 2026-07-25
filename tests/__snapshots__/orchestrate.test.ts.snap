@@ -13,7 +13,7 @@ grounding gates; only wall-clock differs. Fan-out is an optimization, not a requ
 
 | Phase | Worklist | Status | Produce it with |
 |---|---|---|---|
-| drill | \`<RUN>/drill-plan.json\` | ready (23 item(s)) | \`node <ENGINE> ask --repo <url|path> --q "<question>" --out <RUN>\` |
+| drill | \`<RUN>/drill-plan.json\` | ready (25 item(s)) | \`node <ENGINE> ask --repo <url|path> --q "<question>" --out <RUN>\` |
 | verify | \`<RUN>/VERIFY.todo.json\` | ready (4 item(s)) | \`node <ENGINE> verify --run <RUN>\` |
 | doc | \`<RUN>/DOC.plan.json\` | not ready | \`node <ENGINE> doc --repo <url|path> --out <RUN>\` |
 

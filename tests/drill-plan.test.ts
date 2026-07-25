@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runAsk } from "../src/ask.js";
-import { DRILL_COMMAND, DRILL_SOURCES, MAX_DRILL_CELLS, buildDrillPlan, writeDrillPlan } from "../src/drill-plan.js";
+import { DRILL_COMMAND, DRILL_SOURCES, MAX_DRILL_CELLS, MAX_SYMBOL_CELLS, buildDrillPlan, writeDrillPlan } from "../src/drill-plan.js";
 import type { SourceKind } from "../src/types.js";
 
 const LIB = resolve("tests/fixtures/sample-lib");
@@ -48,13 +48,40 @@ describe("drill-plan — deriving the retrieval fan-out from the ask", () => {
     expect(plan.cells.filter((c) => c.variant === "prose").length).toBe(DRILL_SOURCES.length - ASKED.length);
   });
 
+  it("plans one symbol cell per named identifier, without spending the query budget", () => {
+    const plan = buildDrillPlan({
+      question: 'why does `retryBackoff` throw "request timed out" after MAX_RETRIES?',
+      repo: LIB,
+      askedSources: ASKED,
+    });
+    const symbols = plan.cells.filter((c) => c.variant === "symbol");
+    // Resolved as declarations, one per identifier, and planned first.
+    expect(symbols.map((c) => c.query)).toEqual(["retryBackoff", "MAX_RETRIES"]);
+    expect(plan.cells.slice(0, symbols.length)).toEqual(symbols);
+    // The query matrix is untouched — adding symbol cells must not push drills
+    // off the tail of the fan-out. Identifier and literal cover every source,
+    // prose covers the ones the seed ask did not.
+    expect(plan.cells.filter((c) => c.variant !== "symbol").length).toBe(DRILL_SOURCES.length * 2 + (DRILL_SOURCES.length - ASKED.length));
+  });
+
+  it("caps symbol cells on an identifier-heavy question", () => {
+    const plan = buildDrillPlan({
+      question: "does `parseHeader` call `normalizeName` before `writeChunk` or `flushBuffer`?",
+      repo: LIB,
+      askedSources: ASKED,
+    });
+    expect(plan.cells.filter((c) => c.variant === "symbol")).toHaveLength(MAX_SYMBOL_CELLS);
+  });
+
   it("is deterministic, with sequential D# ids and the cell count capped", () => {
     const opts = { question: 'is `computeBackoff` capped by MAX_DELAY or "retry limit reached"?', repo: LIB, askedSources: ["code"] as SourceKind[] };
     const a = buildDrillPlan(opts);
     const b = buildDrillPlan(opts);
     expect(b).toEqual(a);
     expect(a.cells.map((c) => c.id)).toEqual(a.cells.map((_, i) => `D${i + 1}`));
-    expect(a.cells.length).toBeLessThanOrEqual(MAX_DRILL_CELLS);
+    // Two budgets: the query matrix and the symbol lookups are capped apart.
+    expect(a.cells.filter((c) => c.variant !== "symbol").length).toBeLessThanOrEqual(MAX_DRILL_CELLS);
+    expect(a.cells.filter((c) => c.variant === "symbol").length).toBeLessThanOrEqual(MAX_SYMBOL_CELLS);
   });
 
   it("plans no cells when the ask already covered every drillable source", () => {

@@ -6,7 +6,7 @@ import { renderEvidenceMarkdown, SOURCE_ORDER } from "./dossier.js";
 import { ensureOverview } from "./overview.js";
 import { indexDir } from "./index/structural.js";
 import { readText } from "./walk.js";
-import { slugify } from "./util.js";
+import { looksLikeTestFile, slugify } from "./util.js";
 import { LIMITS } from "./config.js";
 import type { AskOptions, DocPlan, DocSection, DossierMeta, EvidenceItem, RunContext, SourceKind, StructuralIndex, WorkspacePackage } from "./types.js";
 
@@ -20,17 +20,6 @@ import type { AskOptions, DocPlan, DocSection, DossierMeta, EvidenceItem, RunCon
 // Default sources for a doc: the cheap, deterministic, offline-safe ones. The
 // caller can override with --sources (e.g. to fold in issues/prs/web).
 export const DEFAULT_DOC_SOURCES: SourceKind[] = ["code", "docs"];
-
-// Test, spec, example, fixture and benchmark files — their symbols are NOT the
-// project's public API. search.ts down-weights such *directories* in retrieval,
-// but this must also catch the per-language *basename* conventions
-// (foo_test.go, test_foo.py, foo.test.ts, foo.spec.js, index.test-d.ts) so a
-// bare "public API" query isn't polluted by TestX / test_x identifiers.
-function looksLikeTestFile(rel: string): boolean {
-  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel)) return true;
-  const base = (rel.split("/").pop() ?? "").toLowerCase();
-  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
-}
 
 // The most representative exported symbol names, best public surface first,
 // optionally restricted to one package's subtree. Used to ground the API

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join34, resolve as resolve5 } from "path";
+import { join as join36, resolve as resolve5 } from "path";
 import { pathToFileURL, fileURLToPath as fileURLToPath2 } from "url";
 import { existsSync as existsSync16, realpathSync as realpathSync2 } from "fs";
 
@@ -12181,6 +12181,11 @@ function have2(cmd) {
 function slugify2(input) {
   return input.toLowerCase().replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120);
 }
+function looksLikeTestFile(rel) {
+  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel)) return true;
+  const base = (rel.split("/").pop() ?? "").toLowerCase();
+  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
+}
 function escapeRegExp2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -12552,6 +12557,7 @@ var LIMITS = {
   embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4)
   // parallel embed requests
 };
+var CACHE_DIR_NAME = ".ultradoc";
 function cacheRoot() {
   const override = process.env.ULTRADOC_CACHE_DIR?.trim();
   if (override) return override;
@@ -12693,15 +12699,38 @@ function originUrl(dir) {
 
 // src/index/structural.ts
 import { existsSync as existsSync7, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5, readFileSync as readFileSync9 } from "fs";
-import { join as join19 } from "path";
+import { join as join20 } from "path";
 
 // src/lang/registry.ts
 function languageOf2(ext) {
   return languageOf(ext);
 }
 
-// src/sources/doc-discovery.ts
+// src/index/scan.ts
 import { join as join18 } from "path";
+var memo = /* @__PURE__ */ new Map();
+function scanOptions2(root, maxFiles) {
+  return {
+    maxFiles: maxFiles ?? LIMITS.maxFiles,
+    maxBytes: LIMITS.maxFileBytes,
+    // Exclude ultradoc's own cache dir by absolute path — the engine only knows
+    // to skip its own.
+    out: join18(root, CACHE_DIR_NAME)
+  };
+}
+function publishScan(root, scan2) {
+  memo.set(root, scan2);
+}
+function repoScan(root) {
+  const hit = memo.get(root);
+  if (hit) return hit;
+  const scan2 = scanRepo(root, scanOptions2(root));
+  memo.set(root, scan2);
+  return scan2;
+}
+
+// src/sources/doc-discovery.ts
+import { join as join19 } from "path";
 
 // src/walk.ts
 function walkDetailed(root, opts = {}) {
@@ -12771,7 +12800,7 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   };
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
   if (readme) {
-    const text = readText(join18(repoDir, readme)).slice(0, 4e4);
+    const text = readText(join19(repoDir, readme)).slice(0, 4e4);
     let m;
     const link = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
     while (m = link.exec(text)) add(m[2], m[1]);
@@ -12783,7 +12812,7 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   }
   for (const cfg of configFiles) {
     const base = cfg.split("/").pop().toLowerCase();
-    const text = readText(join18(repoDir, cfg));
+    const text = readText(join19(repoDir, cfg));
     if (!text) continue;
     if (base === "package.json" || base === "composer.json") {
       try {
@@ -12850,10 +12879,10 @@ var CONFIG_BASENAME2 = /* @__PURE__ */ new Set([
   "manifest.json"
 ]);
 function indexDir(root) {
-  return join19(root, ".ultradoc");
+  return join20(root, ".ultradoc");
 }
 function indexPath(root) {
-  return join19(indexDir(root), "index.json");
+  return join20(indexDir(root), "index.json");
 }
 function isDoc2(rel, ext) {
   const base = rel.split("/").pop().toLowerCase();
@@ -12886,11 +12915,8 @@ function buildCallSites(files, declared) {
   return { callSites, capHits };
 }
 function buildIndex(root, slug, opts = {}) {
-  const scan2 = scanRepo(root, {
-    maxFiles: opts.maxFiles ?? LIMITS.maxFiles,
-    maxBytes: LIMITS.maxFileBytes,
-    out: indexDir(root)
-  });
+  const scan2 = scanRepo(root, scanOptions2(root, opts.maxFiles));
+  if (!scan2.capped && opts.maxFiles === void 0) publishScan(root, scan2);
   const languages = {};
   const symbols = [];
   const docFiles = [];
@@ -12972,7 +12998,7 @@ function ensureIndex(root, slug, opts = {}) {
 
 // src/dossier.ts
 import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync6 } from "fs";
-import { join as join20 } from "path";
+import { join as join21 } from "path";
 var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var SOURCE_LABEL = {
   code: "Code",
@@ -12996,7 +13022,7 @@ function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(repoDir, d) {
-  return join20(indexDir(repoDir), "runs", runId(d));
+  return join21(indexDir(repoDir), "runs", runId(d));
 }
 function assignIds2(results) {
   const flat = results.flatMap((r) => r.items);
@@ -13047,9 +13073,9 @@ function renderEvidenceMarkdown(evidence, meta) {
 }
 function writeDossier(dir, evidence, meta) {
   mkdirSync6(dir, { recursive: true });
-  const evidenceJson = join20(dir, "evidence.json");
-  const evidenceMd = join20(dir, "EVIDENCE.md");
-  const metaJson = join20(dir, "meta.json");
+  const evidenceJson = join21(dir, "evidence.json");
+  const evidenceMd = join21(dir, "EVIDENCE.md");
+  const metaJson = join21(dir, "meta.json");
   writeFileSync6(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync6(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync6(metaJson, JSON.stringify(meta, null, 2));
@@ -13058,7 +13084,7 @@ function writeDossier(dir, evidence, meta) {
 
 // src/index/search.ts
 import { statSync as statSync6 } from "fs";
-import { join as join21 } from "path";
+import { join as join22 } from "path";
 
 // src/index/bm25.ts
 function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
@@ -13078,10 +13104,63 @@ function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
   return scores;
 }
 
-// src/index/search.ts
-var MAX_KEYWORDS = 8;
+// src/index/excerpt.ts
 var MAX_EXCERPT_LINES = 30;
 var EXCERPT_PAD = 8;
+function expandWindow(lines, start2, end, anchor) {
+  const blank = (n) => /^\s*$/.test(lines[n - 1] ?? "");
+  let s = Math.max(1, start2);
+  let e = Math.min(lines.length, end);
+  while (s > 1 && start2 - s < EXCERPT_PAD && !blank(s - 1)) s--;
+  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
+  if (e - s + 1 > MAX_EXCERPT_LINES) {
+    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
+    let ne = ns + MAX_EXCERPT_LINES - 1;
+    if (ne > e) {
+      ne = e;
+      ns = ne - MAX_EXCERPT_LINES + 1;
+    }
+    s = ns;
+    e = ne;
+  }
+  return { start: s, end: e };
+}
+function enclosingSymbol2(fileSyms, line) {
+  let best;
+  for (const s of fileSyms) {
+    if (s.endLine === void 0 || s.line > line || s.endLine < line) continue;
+    if (!best || s.endLine - s.line < best.endLine - best.line) best = s;
+  }
+  return best;
+}
+function symbolLabel(s) {
+  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
+}
+function symbolsByFile(symbols) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const s of symbols) {
+    const arr = byFile.get(s.file);
+    if (arr) arr.push(s);
+    else byFile.set(s.file, [s]);
+  }
+  return byFile;
+}
+function codeItem(args2) {
+  const { ref, index, rel, lines, start: start2, end, label, score, meta } = args2;
+  return {
+    source: "code",
+    title: `${rel} \u2014 ${label}`,
+    ref: rel,
+    location: `${rel}:${start2}-${end}`,
+    score: Number(score.toFixed(3)),
+    snippet: lines.slice(start2 - 1, end).join("\n"),
+    url: ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${rel}#L${start2}-L${end}`,
+    ...meta ? { meta } : {}
+  };
+}
+
+// src/index/search.ts
+var MAX_KEYWORDS = 8;
 var RANKING = {
   BM25_K1: 1.2,
   // b=0.3: code corpora mix tiny config files with huge implementation files,
@@ -13174,24 +13253,6 @@ function scoreRegion(cur, matcher) {
     }
   }
   return { start: cur.start, end: cur.end, anchor, kwCount: covered.size };
-}
-function expandWindow(lines, start2, end, anchor) {
-  const blank = (n) => /^\s*$/.test(lines[n - 1] ?? "");
-  let s = Math.max(1, start2);
-  let e = Math.min(lines.length, end);
-  while (s > 1 && start2 - s < EXCERPT_PAD && !blank(s - 1)) s--;
-  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
-  if (e - s + 1 > MAX_EXCERPT_LINES) {
-    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
-    let ne = ns + MAX_EXCERPT_LINES - 1;
-    if (ne > e) {
-      ne = e;
-      ns = ne - MAX_EXCERPT_LINES + 1;
-    }
-    s = ns;
-    e = ne;
-  }
-  return { start: s, end: e };
 }
 function scoreSymbol(sym, matcher) {
   const name2 = foldTerm(sym.name);
@@ -13378,7 +13439,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const candidates = [...files].filter((rel) => lexical.has(rel)).map((rel) => {
     let len = 1e3;
     try {
-      len = Math.max(1, statSync6(join21(root, rel)).size / 5);
+      len = Math.max(1, statSync6(join22(root, rel)).size / 5);
     } catch {
     }
     return { key: rel, tf: lexical.get(rel).kwCounts, len };
@@ -13401,16 +13462,11 @@ function searchCode(root, ref, index, question, perSource, scope) {
     scored.push({ rel, score, fh: lexical.get(rel), sym: symbols.get(rel)?.sym });
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
-  const symsByFile = /* @__PURE__ */ new Map();
-  for (const s of index.symbols) {
-    const arr = symsByFile.get(s.file);
-    if (arr) arr.push(s);
-    else symsByFile.set(s.file, [s]);
-  }
+  const symsByFile = symbolsByFile(index.symbols);
   const items = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
-    const content = readText(join21(root, f.rel));
+    const content = readText(join22(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const call = callHits.get(f.rel);
@@ -13420,24 +13476,26 @@ function searchCode(root, ref, index, question, perSource, scope) {
       const win = windows[wi];
       const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
       const label = win.callSite ? `${win.label}${call?.name ? ` (${call.name})` : ""}` : win.label;
-      const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${win.start}-L${win.end}`;
-      items.push({
-        source: "code",
-        title: `${f.rel} \u2014 ${label}`,
-        ref: f.rel,
-        location: `${f.rel}:${win.start}-${win.end}`,
-        score: Number(score.toFixed(3)),
-        snippet: lines.slice(win.start - 1, win.end).join("\n"),
-        url,
-        meta: {
-          matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
-          symbol: f.sym?.name,
-          // The declaration's full range when the excerpt clipped it, so a
-          // reader knows the citation shows the head of a longer body.
-          ...win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {},
-          ...win.callSite ? { callSite: true } : {}
-        }
-      });
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: win.start,
+          end: win.end,
+          label,
+          score,
+          meta: {
+            matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
+            symbol: f.sym?.name,
+            // The declaration's full range when the excerpt clipped it, so a
+            // reader knows the citation shows the head of a longer body.
+            ...win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {},
+            ...win.callSite ? { callSite: true } : {}
+          }
+        })
+      );
     }
   }
   const pins = [];
@@ -13457,7 +13515,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   if (pins.length) {
     items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
     for (const { f, kw, n, res } of pins) {
-      const content = readText(join21(root, f.rel));
+      const content = readText(join22(root, f.rel));
       if (!content) continue;
       const lines = content.split(/\r?\n/);
       const anchor = f.fh.lines.find((l) => {
@@ -13465,34 +13523,25 @@ function searchCode(root, ref, index, question, perSource, scope) {
         return res.some((re) => re.test(full));
       })?.line ?? f.fh.lines[0].line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
-      const url = ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
-      items.push({
-        source: "code",
-        title: `${f.rel} \u2014 rare-term match (${kw})`,
-        ref: f.rel,
-        location: `${f.rel}:${w.start}-${w.end}`,
-        score: Number(f.score.toFixed(3)),
-        snippet: lines.slice(w.start - 1, w.end).join("\n"),
-        url,
-        meta: { matchedKeywords: [...f.fh.matchedKw], pinnedRareTerm: kw }
-      });
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: w.start,
+          end: w.end,
+          label: `rare-term match (${kw})`,
+          score: f.score,
+          meta: { matchedKeywords: [...f.fh.matchedKw], pinnedRareTerm: kw }
+        })
+      );
       notes.push(`Query term "${kw}" matches only ${n} file(s); pinned ${f.rel} into the results.`);
     }
   }
   return { items, notes, fallback: usedRg ? void 0 : "js-scan" };
 }
 var SYMBOL_FALLBACK_LINES = 18;
-function enclosingSymbol2(fileSyms, line) {
-  let best;
-  for (const s of fileSyms) {
-    if (s.endLine === void 0 || s.line > line || s.endLine < line) continue;
-    if (!best || s.endLine - s.line < best.endLine - best.line) best = s;
-  }
-  return best;
-}
-function symbolLabel(s) {
-  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
-}
 function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
   let primary;
   if (sym) {
@@ -13528,7 +13577,7 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 
 // src/index/semantic.ts
 import { existsSync as existsSync9, readFileSync as readFileSync11, writeFileSync as writeFileSync8, mkdirSync as mkdirSync8 } from "fs";
-import { join as join23, dirname as dirname5 } from "path";
+import { join as join24, dirname as dirname5 } from "path";
 
 // src/sources/fetch.ts
 var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
@@ -13734,7 +13783,7 @@ function excerptsFromText(text, url, title, source, question, perSource) {
 
 // src/index/compose.ts
 import { existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync7 } from "fs";
-import { dirname as dirname4, join as join22 } from "path";
+import { dirname as dirname4, join as join23 } from "path";
 var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode and web
 # search. Start it with \`ultradoc semantic up\` (or \`docker compose --profile all
 # up -d\`). The published bundle stays dependency-free \u2014 it only speaks HTTP to
@@ -13808,9 +13857,9 @@ search:
     - json
 `;
 function ensureComposeMaterialized() {
-  const base = join22(cacheRoot(), "compose");
-  const composePath = join22(base, "docker-compose.yml");
-  const settingsPath = join22(base, "docker", "searxng", "settings.yml");
+  const base = join23(cacheRoot(), "compose");
+  const composePath = join23(base, "docker-compose.yml");
+  const settingsPath = join23(base, "docker", "searxng", "settings.yml");
   writeIfChanged(composePath, COMPOSE_YAML);
   writeIfChanged(settingsPath, SEARXNG_SETTINGS_YAML);
   return composePath;
@@ -13883,7 +13932,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join23(repoDir, ".ultradoc", "semantic.json");
+  return join24(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name2) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name2}`);
@@ -13917,7 +13966,7 @@ async function buildIfNeeded(ctx) {
       capped = true;
       break;
     }
-    const content = readText(join23(ctx.repoDir, rel));
+    const content = readText(join24(ctx.repoDir, rel));
     if (!content) continue;
     const isDoc3 = ctx.index.docFiles.includes(rel);
     for (const c2 of chunkFile(rel, content, isDoc3, symbolLines.get(rel) ?? [])) {
@@ -14099,7 +14148,7 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
-import { join as join24 } from "path";
+import { join as join25 } from "path";
 import { existsSync as existsSync10, readFileSync as readFileSync12, statSync as statSync7, writeFileSync as writeFileSync9, mkdirSync as mkdirSync9 } from "fs";
 var DOCS_ENTRY_BOOST = 1.2;
 var DOCS_ROOT_BOOST = 1.5;
@@ -14107,8 +14156,8 @@ function extdocsTtlMs() {
   return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
 }
 async function getDocText(repoDir, url) {
-  const dir = join24(repoDir, ".ultradoc", "extdocs");
-  const file = join24(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
+  const dir = join25(repoDir, ".ultradoc", "extdocs");
+  const file = join25(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
   let cached;
   let fresh = false;
   try {
@@ -14139,7 +14188,7 @@ async function docsSource(ctx) {
   for (const rel of ctx.index.docFiles) {
     if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join24(ctx.repoDir, rel));
+    const content = readText(join25(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -14192,7 +14241,7 @@ async function docsSource(ctx) {
 }
 
 // src/sources/releases.ts
-import { join as join25 } from "path";
+import { join as join26 } from "path";
 
 // src/providers/shared.ts
 function ghAuthHeaders() {
@@ -14329,7 +14378,7 @@ async function releasesSource(ctx) {
     (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel)
   );
   for (const rel of changelogs) {
-    const content = readText(join25(ctx.repoDir, rel));
+    const content = readText(join26(ctx.repoDir, rel));
     if (!content) continue;
     const scored = changelogSections(rel, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
     for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
@@ -15008,14 +15057,14 @@ async function runSources(ctx) {
 
 // src/drill-plan.ts
 import { writeFileSync as writeFileSync10 } from "fs";
-import { join as join26 } from "path";
+import { join as join27 } from "path";
 var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var MAX_DRILL_CELLS = 24;
+var MAX_SYMBOL_CELLS = 3;
 var IDENT_RE = /\b[A-Za-z][A-Za-z0-9]*(?:[_.][A-Za-z0-9]+)+\b|\b[a-z][a-z0-9]*(?:[A-Z][a-z0-9]+)+[a-zA-Z0-9]*\b|\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g;
 var CODE_SPAN_RE = /`([^`\n]+)`/g;
 var QUOTED_RE = /"([^"\n]{3,})"|(?<![A-Za-z])'([^'\n]{3,})'(?![A-Za-z])/g;
-function deriveVariants(question) {
-  const out2 = [{ variant: "prose", query: question }];
+function deriveIdentifiers(question) {
   const idents = [];
   const seen = /* @__PURE__ */ new Set();
   const push = (tok) => {
@@ -15032,6 +15081,11 @@ function deriveVariants(question) {
   }
   const noQuotes = rest.replace(QUOTED_RE, " ");
   for (const m of noQuotes.matchAll(IDENT_RE)) push(m[0]);
+  return { idents, rest };
+}
+function deriveVariants(question) {
+  const out2 = [{ variant: "prose", query: question }];
+  const { idents, rest } = deriveIdentifiers(question);
   if (idents.length) out2.push({ variant: "identifier", query: idents.join(" ") });
   const literals = [];
   for (const m of rest.matchAll(QUOTED_RE)) {
@@ -15044,10 +15098,15 @@ function deriveVariants(question) {
 function buildDrillPlan(opts) {
   const cells = [];
   let n = 0;
+  for (const ident of deriveIdentifiers(opts.question).idents.slice(0, MAX_SYMBOL_CELLS)) {
+    cells.push({ id: `D${++n}`, variant: "symbol", query: ident, source: "code" });
+  }
+  let queryCells = 0;
   for (const v of deriveVariants(opts.question)) {
     for (const source of DRILL_SOURCES) {
       if (v.variant === "prose" && opts.askedSources.includes(source)) continue;
-      if (cells.length >= MAX_DRILL_CELLS) break;
+      if (queryCells >= MAX_DRILL_CELLS) break;
+      queryCells++;
       cells.push({ id: `D${++n}`, variant: v.variant, query: v.query, source });
     }
   }
@@ -15061,7 +15120,7 @@ function buildDrillPlan(opts) {
   };
 }
 function writeDrillPlan(dir, plan) {
-  const p = join26(dir, "drill-plan.json");
+  const p = join27(dir, "drill-plan.json");
   writeFileSync10(p, JSON.stringify(plan, null, 2));
   return p;
 }
@@ -15135,19 +15194,19 @@ async function runSingleSource(options, kind) {
 
 // src/doc.ts
 import { mkdirSync as mkdirSync11, writeFileSync as writeFileSync12 } from "fs";
-import { basename as basename5, join as join28 } from "path";
+import { basename as basename5, join as join29 } from "path";
 
 // src/overview.ts
 import { existsSync as existsSync11, mkdirSync as mkdirSync10, readFileSync as readFileSync13, writeFileSync as writeFileSync11 } from "fs";
-import { basename as basename4, dirname as dirname6, join as join27 } from "path";
+import { basename as basename4, dirname as dirname6, join as join28 } from "path";
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join27(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join28(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join27(repoDir, readme));
+  const text = readText(join28(repoDir, readme));
   const out2 = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -15269,11 +15328,6 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
 }
 
 // src/doc.ts
-function looksLikeTestFile(rel) {
-  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel)) return true;
-  const base = (rel.split("/").pop() ?? "").toLowerCase();
-  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
-}
 function topExportedSymbols(index, prefix, n) {
   const byFile = /* @__PURE__ */ new Map();
   const names = [];
@@ -15300,7 +15354,7 @@ function detectProjectTraits(repoDir, index) {
   const bases = new Map(index.configFiles.map((f) => [f.split("/").pop().toLowerCase(), f]));
   const readCfg = (base) => {
     const rel = bases.get(base);
-    return rel ? readText(join28(repoDir, rel)) : "";
+    return rel ? readText(join29(repoDir, rel)) : "";
   };
   let isCli = false;
   const pkg = readCfg("package.json");
@@ -15404,8 +15458,8 @@ function renderDocTodo(plan, evidence) {
   return out2.join("\n");
 }
 function defaultDocDir(repoDir, scopePkg) {
-  const base = join28(indexDir(repoDir), "doc");
-  return scopePkg ? join28(base, slugify2(scopePkg.name)) : base;
+  const base = join29(indexDir(repoDir), "doc");
+  return scopePkg ? join29(base, slugify2(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
@@ -15457,11 +15511,11 @@ async function runDoc(options, opts = {}) {
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
   mkdirSync11(dir, { recursive: true });
-  const evidenceJson = join28(dir, "evidence.json");
-  const evidenceMd = join28(dir, "EVIDENCE.md");
-  const planJson = join28(dir, "DOC.plan.json");
-  const todoMd = join28(dir, "DOC.todo.md");
-  const metaJson = join28(dir, "meta.json");
+  const evidenceJson = join29(dir, "evidence.json");
+  const evidenceMd = join29(dir, "EVIDENCE.md");
+  const planJson = join29(dir, "DOC.plan.json");
+  const todoMd = join29(dir, "DOC.todo.md");
+  const metaJson = join29(dir, "meta.json");
   writeFileSync12(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync12(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync12(planJson, JSON.stringify(plan, null, 2));
@@ -15478,7 +15532,7 @@ async function runDoc(options, opts = {}) {
 // src/check.ts
 import { createHash as createHash4 } from "crypto";
 import { existsSync as existsSync13, readFileSync as readFileSync15 } from "fs";
-import { basename as basename6, dirname as dirname7, join as join30, resolve as resolvePath, sep as sep3 } from "path";
+import { basename as basename6, dirname as dirname7, join as join31, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
@@ -15709,7 +15763,7 @@ function claimCoverage(text, _evidence) {
 
 // src/verify.ts
 import { existsSync as existsSync12, readFileSync as readFileSync14, writeFileSync as writeFileSync13 } from "fs";
-import { join as join29 } from "path";
+import { join as join30 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -15722,7 +15776,7 @@ function claimStrings(text) {
   return out2;
 }
 function buildWorklist(dir, opts = {}) {
-  const evidencePath = join29(dir, "evidence.json");
+  const evidencePath = join30(dir, "evidence.json");
   if (!existsSync12(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
   const evidence = JSON.parse(readFileSync14(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
@@ -15767,8 +15821,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims: worklist.uncitedClaims
   };
-  writeFileSync13(join29(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync13(join29(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync13(join30(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync13(join30(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -15843,12 +15897,12 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync13(join29(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
+  writeFileSync13(join30(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
   try {
-    const todoPath = join29(dir, "VERIFY.todo.json");
+    const todoPath = join30(dir, "VERIFY.todo.json");
     if (!existsSync12(todoPath)) return null;
     const todo = JSON.parse(readFileSync14(todoPath, "utf8"));
     if (!Array.isArray(todo?.pairs)) return null;
@@ -15860,7 +15914,7 @@ function expectedClaims(dir) {
 function answerSignatureFor(dir) {
   try {
     const answerPath = resolveAnswerPath(dir);
-    const evidencePath = join29(dir, "evidence.json");
+    const evidencePath = join30(dir, "evidence.json");
     if (!answerPath || !existsSync12(evidencePath)) return null;
     const evidence = JSON.parse(readFileSync14(evidencePath, "utf8"));
     return answerClaimSignature(readFileSync14(answerPath, "utf8"), evidence);
@@ -15921,11 +15975,11 @@ function formatVerifyReport(r) {
 var COVERAGE_MIN_DEFAULT = 0.7;
 function resolveAnswerPath(dir, answerFile) {
   if (answerFile) {
-    const p = join30(dir, answerFile);
+    const p = join31(dir, answerFile);
     return existsSync13(p) ? p : null;
   }
   for (const name2 of ["ANSWER.md", "DOC.md"]) {
-    const p = join30(dir, name2);
+    const p = join31(dir, name2);
     if (existsSync13(p)) return p;
   }
   return null;
@@ -15946,7 +16000,7 @@ var REVALIDATION = {
 function pinnedClone(dir) {
   const pin = { headMatches: false };
   try {
-    const metaPath = join30(dir, "meta.json");
+    const metaPath = join31(dir, "meta.json");
     if (!existsSync13(metaPath)) return pin;
     const meta = JSON.parse(readFileSync15(metaPath, "utf8"));
     pin.meta = meta;
@@ -16089,7 +16143,7 @@ function headingsOf(answer) {
 }
 function missingDocSections(dir, answerPath, answer) {
   if (basename6(answerPath) !== "DOC.md") return void 0;
-  const planPath = join30(dir, "DOC.plan.json");
+  const planPath = join31(dir, "DOC.plan.json");
   if (!existsSync13(planPath)) return void 0;
   let plan;
   try {
@@ -16125,7 +16179,7 @@ function answerClaimSignature(answer, evidence) {
   return createHash4("sha256").update(parts2.join("\n")).digest("hex").slice(0, 32);
 }
 function applySemantic(dir, result, answer, evidence, allowUnverified = false, answerFile) {
-  const p = join30(dir, "VERIFY.json");
+  const p = join31(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
     if (allowUnverified) {
@@ -16196,7 +16250,7 @@ function checkRun(dir, opts = {}) {
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
-  const evidencePath = join30(dir, "evidence.json");
+  const evidencePath = join31(dir, "evidence.json");
   if (!existsSync13(evidencePath)) {
     return {
       ok: false,
@@ -16336,9 +16390,113 @@ function formatCheckReport(r, dir) {
   return lines.join("\n");
 }
 
+// src/index/symbols.ts
+import { join as join32 } from "path";
+var DEF_SCORE = 100;
+var CALL_SCORE = 60;
+var UNCORROBORATED = "unique-name";
+function symbolEvidence(ctx, name2, opts = {}) {
+  const max = opts.max ?? ctx.options.perSource;
+  const notes = [];
+  const items = [];
+  const scan2 = repoScan(ctx.repoDir);
+  const inScope = (rel) => !ctx.scopeDir || rel.startsWith(`${ctx.scopeDir}/`);
+  const symsByFile = symbolsByFile(ctx.index.symbols);
+  const lineCache = /* @__PURE__ */ new Map();
+  const linesOf = (rel) => {
+    if (!lineCache.has(rel)) {
+      const content = readText(join32(ctx.repoDir, rel));
+      lineCache.set(rel, content ? content.split(/\r?\n/) : void 0);
+    }
+    return lineCache.get(rel);
+  };
+  const defs = findSymbol(scan2, name2, { maxResults: max }).filter((d) => inScope(d.file));
+  if (!defs.length) {
+    const near = findSymbol(scan2, name2, { substring: true, maxResults: 8 }).filter((d) => inScope(d.file)).map((d) => `${d.name} (${d.file}:${d.line})`);
+    notes.push(
+      near.length ? `No declaration named "${name2}". Similar names in this repo: ${near.join(", ")}.` : `No declaration named "${name2}" \u2014 check the spelling, or drill with \`code --q "${name2}"\` if it is not a declared symbol (a config key, a string literal, a callback property).`
+    );
+  }
+  for (const def of defs) {
+    if (items.length >= max) break;
+    const lines = linesOf(def.file);
+    if (!lines) continue;
+    const end = def.endLine ?? def.line + 18;
+    const w = expandWindow(lines, Math.max(1, def.line - 1), Math.min(lines.length, end), def.line);
+    items.push(
+      codeItem({
+        ref: ctx.repoRef,
+        index: ctx.index,
+        rel: def.file,
+        lines,
+        start: w.start,
+        end: w.end,
+        label: `${symbolLabel(def)} (definition)`,
+        score: DEF_SCORE,
+        meta: {
+          symbol: def.name,
+          definition: true,
+          exported: def.exported,
+          ...def.endLine !== void 0 && (w.start > def.line || w.end < def.endLine) ? { symbolSpan: `${def.line}-${def.endLine}` } : {}
+        }
+      })
+    );
+  }
+  const refs = findReferences(scan2, name2);
+  const callers = refs.callSites.filter((c2) => inScope(c2.file)).sort((a, b) => Number(looksLikeTestFile(a.file)) - Number(looksLikeTestFile(b.file)) || a.file.localeCompare(b.file) || a.line - b.line);
+  let uncorroborated = 0;
+  for (const site of callers) {
+    if (items.length >= max) break;
+    const lines = linesOf(site.file);
+    if (!lines) continue;
+    const w = expandWindow(lines, Math.max(1, site.line - 2), Math.min(lines.length, site.line + 4), site.line);
+    const host = enclosingSymbol2(symsByFile.get(site.file) ?? [], site.line);
+    if (site.confidence === UNCORROBORATED) uncorroborated++;
+    items.push(
+      codeItem({
+        ref: ctx.repoRef,
+        index: ctx.index,
+        rel: site.file,
+        lines,
+        start: w.start,
+        end: w.end,
+        label: host ? `calls ${name2} \u2014 from ${symbolLabel(host)}` : `calls ${name2}`,
+        score: CALL_SCORE,
+        meta: {
+          symbol: name2,
+          callSite: true,
+          callLine: site.line,
+          // "corroborated" means an import path ties this file to the
+          // declaration; "unique-name" means only the name matched.
+          ...site.confidence ? { confidence: site.confidence } : {}
+        }
+      })
+    );
+  }
+  if (defs.length && !callers.length) {
+    notes.push(`No call site for "${name2}" in this repo \u2014 it may be public API called from outside, invoked dynamically, or dead.`);
+  }
+  if (uncorroborated) {
+    notes.push(
+      `${uncorroborated} of ${callers.length} call site(s) matched on name alone (no import ties the caller to this declaration) \u2014 treat those as leads to confirm, not as evidence.`
+    );
+  }
+  if (callers.length > items.filter((i2) => i2.meta?.callSite).length) {
+    notes.push(`Showing ${items.filter((i2) => i2.meta?.callSite).length} of ${callers.length} call site(s); raise --per-source for more.`);
+  }
+  if (ctx.index.stats?.astTier === false) {
+    notes.push("Built without the tree-sitter grammars: methods nested in classes are invisible and call sites include matches inside comments and strings.");
+  }
+  const otherFiles = refs.referencingFiles.filter((f) => inScope(f) && !items.some((i2) => i2.ref === f));
+  if (otherFiles.length) {
+    notes.push(`Also mentioned (not a call) in: ${otherFiles.slice(0, 8).join(", ")}${otherFiles.length > 8 ? `, +${otherFiles.length - 8} more` : ""}.`);
+  }
+  return { items, notes };
+}
+
 // src/cache.ts
 import { existsSync as existsSync14, readdirSync as readdirSync5, rmSync as rmSync3, statSync as statSync8 } from "fs";
-import { join as join31 } from "path";
+import { join as join33 } from "path";
 function dirSize(dir) {
   let total = 0;
   let entries;
@@ -16348,7 +16506,7 @@ function dirSize(dir) {
     return 0;
   }
   for (const name2 of entries) {
-    const p = join31(dir, name2);
+    const p = join33(dir, name2);
     let st;
     try {
       st = statSync8(p);
@@ -16367,7 +16525,7 @@ function cacheStatus() {
   try {
     slugs = readdirSync5(root).filter((n) => {
       try {
-        return statSync8(join31(root, n)).isDirectory();
+        return statSync8(join33(root, n)).isDirectory();
       } catch {
         return false;
       }
@@ -16376,7 +16534,7 @@ function cacheStatus() {
   }
   for (const slug of slugs) {
     if (slug === "compose") continue;
-    const dir = join31(root, slug);
+    const dir = join33(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit2(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
@@ -16397,7 +16555,7 @@ function cacheClean(opts) {
   }
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
-    const dir = join31(root, slug);
+    const dir = join33(root, slug);
     if (existsSync14(dir)) {
       rmSync3(dir, { recursive: true, force: true });
       removed.push(slug);
@@ -16417,10 +16575,10 @@ function formatCacheStatus(s) {
 
 // src/orchestrate.ts
 import { existsSync as existsSync15, mkdirSync as mkdirSync12, readFileSync as readFileSync16, writeFileSync as writeFileSync14 } from "fs";
-import { join as join33, resolve as resolve4 } from "path";
+import { join as join35, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
-import { join as join32 } from "path";
+import { join as join34 } from "path";
 var ONE_WRITER_FOOTER = `
 ## Return, don't write
 
@@ -16524,7 +16682,7 @@ function toBatches(ids, batchSize) {
 }
 function phaseWorkflowScript(ph, runAbs, engineAbs, batchSize) {
   const spec = phaseSpec(ph.name);
-  const scriptPath = join32(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const scriptPath = join34(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
   const meta = { name: `ultradoc-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
   return [
     `export const meta = ${JSON.stringify(meta)}`,
@@ -16568,12 +16726,16 @@ function agentContracts(runAbs, engineAbs) {
 
 You run ONE slice of an ultradoc retrieval fan-out \u2014 a few drill cells, each one stateless, read-only CLI call against the cached clone+index. Recall is the first lever of a grounded answer: your cells are exactly the query-variant \xD7 source pairs the seed \`ask\` did not cover.
 
-Worklist: \`${join32(runAbs, "drill-plan.json")}\` (an object with \`question\`, \`repo\`, optional \`ref\`/\`pkg\`, and \`cells[]\`; each cell has \`id\`, \`variant\`, \`query\`, \`source\`). Handle ONLY the cells whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join34(runAbs, "drill-plan.json")}\` (an object with \`question\`, \`repo\`, optional \`ref\`/\`pkg\`, and \`cells[]\`; each cell has \`id\`, \`variant\`, \`query\`, \`source\`). Handle ONLY the cells whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your cells:
 
-1. Compose the drill command \u2014 the cell's \`source\` maps to a CLI command (code\u2192\`code\`, docs\u2192\`docs\`, release\u2192\`releases\`, history\u2192\`history\`, issue\u2192\`issues\`, pr\u2192\`prs\`, discussion\u2192\`discussions\`, so\u2192\`so\`, web\u2192\`web\`):
-   \`node ${engineAbs} <command> --repo <plan.repo> --q <cell.query>\` (add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them).
+1. Compose the drill command.
+   - \`variant: "symbol"\` resolves ONE declaration rather than running a search:
+     \`node ${engineAbs} symbol --repo <plan.repo> --name <cell.query>\` \u2014 it returns the definition (real body), every call site with the caller it sits in, and where else the name is mentioned. If it reports no such declaration, say so in \`dry\` and move on; do NOT fall back to a lexical search for it, another cell already covers that.
+   - Otherwise the cell's \`source\` maps to a CLI command (code\u2192\`code\`, docs\u2192\`docs\`, release\u2192\`releases\`, history\u2192\`history\`, issue\u2192\`issues\`, pr\u2192\`prs\`, discussion\u2192\`discussions\`, so\u2192\`so\`, web\u2192\`web\`):
+     \`node ${engineAbs} <command> --repo <plan.repo> --q <cell.query>\`.
+   Add \`--package <plan.pkg>\` / \`--ref <plan.ref>\` when the plan sets them.
    Queries are free text \u2014 quote them safely for YOUR shell (single-quote and escape embedded \`'\`; never paste a query into double quotes where \`$\`/backticks expand), and quote \`<plan.repo>\` too.
 2. Run it and read the printed evidence. These single-source drills print to stdout and write nothing \u2014 they are the only engine commands you may run.
 3. Triage before returning (playbook rules): keep an item only if its snippet names the symbol/behavior or describes the same mechanism, not just a shared keyword. Drop keyword-coincidences, vendored/example/fixture code, and superseded discussion.
@@ -16584,7 +16746,7 @@ ${footer}`,
 
 You are an adversarial skeptic verifying that an ultradoc answer's citations actually SUPPORT its claims. Default to disbelief: the cited evidence must back the claim, not merely mention its keywords.
 
-Worklist: \`${join32(runAbs, "VERIFY.todo.json")}\` (an object with \`pairs[]\`; each pair has \`claimId\`, \`claim\`, \`evidenceId\`, \`ref\`, \`source\`, \`digest\`, and sometimes \`crossCheck: true\`). Handle ONLY the pairs whose \`<claimId>:<evidenceId>\` id is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join34(runAbs, "VERIFY.todo.json")}\` (an object with \`pairs[]\`; each pair has \`claimId\`, \`claim\`, \`evidenceId\`, \`ref\`, \`source\`, \`digest\`, and sometimes \`crossCheck: true\`). Handle ONLY the pairs whose \`<claimId>:<evidenceId>\` id is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your pairs:
 
@@ -16604,11 +16766,11 @@ ${footer}`,
 
 You draft section(s) of an ultradoc grounded reference doc. The engine already retrieved and merged the evidence; your job is cited prose, not new retrieval.
 
-Worklist: \`${join32(runAbs, "DOC.plan.json")}\` (a plan with \`sections[]\`; each section has \`id\`, \`title\`, \`query\`, \`evidenceIds\`). Handle ONLY the sections whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join34(runAbs, "DOC.plan.json")}\` (a plan with \`sections[]\`; each section has \`id\`, \`title\`, \`query\`, \`evidenceIds\`). Handle ONLY the sections whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your sections:
 
-1. Read its entry in \`${join32(runAbs, "DOC.todo.md")}\` and the cited snippets in \`${join32(runAbs, "EVIDENCE.md")}\` (\`evidence.json\` holds the full items).
+1. Read its entry in \`${join34(runAbs, "DOC.todo.md")}\` and the cited snippets in \`${join34(runAbs, "EVIDENCE.md")}\` (\`evidence.json\` holds the full items).
 2. Draft the section's markdown: its heading plus grounded prose where EVERY factual claim cites a resolvable evidence id like \`[E3]\`. Cite only ids that exist in the run's \`evidence.json\`; never write from memory.
 3. Thin evidence? You may drill read-only for context (\`node ${engineAbs} code|docs|issues|prs|releases|history|discussions|so|web --repo \u2026 --q "\u2026"\`), but a claim may still only cite the run's existing \`[E#]\` ids \u2014 anything the dossier does not contain stays a gap.
 4. State what the evidence does not settle in \`gaps\` (explicit unknowns) instead of papering over it.
@@ -16636,14 +16798,14 @@ ${status}
 
 ## The loop (play every role yourself, one item at a time)
 
-1. **Seed** (if not done): \`${engine} ask --repo <url|path> --q "<question>" --out ${runAbs}\` \u2192 \`${join32(runAbs, "EVIDENCE.md")}\`, \`${join32(runAbs, "evidence.json")}\` and the drill plan \`${join32(runAbs, "drill-plan.json")}\`.
-2. **Drill the plan** \u2014 for EVERY cell in \`${join32(runAbs, "drill-plan.json")}\`, apply \`${join32(runAbs, "orchestration", "agents", "explorer.md")}\` yourself (run the cell's read-only drill command, triage, keep \u22648 items per round). When your harness runs parallel tool-calls, batch the independent drills of a round in one message.
-3. **Write** \`${join32(runAbs, "ANSWER.md")}\` (cite \`[E#]\`), then gate: \`${engine} check --run ${runAbs} --strict\`.
-4. **Verify the claims** \u2014 \`${engine} verify --run ${runAbs}\` writes \`${join32(runAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join32(runAbs, "orchestration", "agents", "skeptic.md")}\` yourself (verdict supported/partial/refuted/unsupported + note), collect every verdict into ONE \`${join32(runAbs, "verdicts.json")}\`, then fold: \`${engine} verify --apply verdicts.json --run ${runAbs}\`.
+1. **Seed** (if not done): \`${engine} ask --repo <url|path> --q "<question>" --out ${runAbs}\` \u2192 \`${join34(runAbs, "EVIDENCE.md")}\`, \`${join34(runAbs, "evidence.json")}\` and the drill plan \`${join34(runAbs, "drill-plan.json")}\`.
+2. **Drill the plan** \u2014 for EVERY cell in \`${join34(runAbs, "drill-plan.json")}\`, apply \`${join34(runAbs, "orchestration", "agents", "explorer.md")}\` yourself (run the cell's read-only drill command, triage, keep \u22648 items per round). When your harness runs parallel tool-calls, batch the independent drills of a round in one message.
+3. **Write** \`${join34(runAbs, "ANSWER.md")}\` (cite \`[E#]\`), then gate: \`${engine} check --run ${runAbs} --strict\`.
+4. **Verify the claims** \u2014 \`${engine} verify --run ${runAbs}\` writes \`${join34(runAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join34(runAbs, "orchestration", "agents", "skeptic.md")}\` yourself (verdict supported/partial/refuted/unsupported + note), collect every verdict into ONE \`${join34(runAbs, "verdicts.json")}\`, then fold: \`${engine} verify --apply verdicts.json --run ${runAbs}\`.
 5. **Gate**: \`${engine} check --semantic --run ${runAbs}\` must exit 0 before presenting anything.
-6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join32(runAbs, "DOC.plan.json")}\` + \`${join32(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join32(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join32(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
+6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join34(runAbs, "DOC.plan.json")}\` + \`${join34(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join34(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join34(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
 
-With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join32(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join34(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
 `;
 }
 
@@ -16653,7 +16815,7 @@ var SMALL_WORKLIST = 3;
 var BATCH_SIZE = 8;
 function listPhases(runDir, engineAbs) {
   const run3 = resolve4(runDir);
-  const drillPath = join33(run3, "drill-plan.json");
+  const drillPath = join35(run3, "drill-plan.json");
   let drillIds = [];
   let drillReady = false;
   if (existsSync15(drillPath)) {
@@ -16666,7 +16828,7 @@ function listPhases(runDir, engineAbs) {
     } catch {
     }
   }
-  const verPath = join33(run3, "VERIFY.todo.json");
+  const verPath = join35(run3, "VERIFY.todo.json");
   let verIds = [];
   let verReady = false;
   if (existsSync15(verPath)) {
@@ -16679,7 +16841,7 @@ function listPhases(runDir, engineAbs) {
     } catch {
     }
   }
-  const docPath = join33(run3, "DOC.plan.json");
+  const docPath = join35(run3, "DOC.plan.json");
   let docIds = [];
   let docReady = false;
   if (existsSync15(docPath)) {
@@ -16748,14 +16910,14 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
     }
     selected = [ph];
   }
-  const orchDir = join33(run3, "orchestration");
-  const agentsDir = join33(orchDir, "agents");
-  mkdirSync12(join33(orchDir, "out"), { recursive: true });
+  const orchDir = join35(run3, "orchestration");
+  const agentsDir = join35(orchDir, "agents");
+  mkdirSync12(join35(orchDir, "out"), { recursive: true });
   mkdirSync12(agentsDir, { recursive: true });
   const written = [];
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(run3, engineAbs))) {
-    const p = join33(agentsDir, `${name2}.md`);
+    const p = join35(agentsDir, `${name2}.md`);
     writeFileSync14(p, content);
     written.push(p);
   }
@@ -16768,12 +16930,12 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
       if (ph.items <= SMALL_WORKLIST) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
       }
-      const p = join33(orchDir, `${ph.name}.workflow.mjs`);
+      const p = join35(orchDir, `${ph.name}.workflow.mjs`);
       writeFileSync14(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
       written.push(p);
     }
   }
-  const rb = join33(orchDir, "RUNBOOK.md");
+  const rb = join35(orchDir, "RUNBOOK.md");
   writeFileSync14(rb, runbookMd(phases, run3, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
@@ -16788,6 +16950,7 @@ Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
   ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
+  ultradoc symbol --repo <url|path> --name <symbol> [--package <p>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
@@ -16806,6 +16969,11 @@ Commands:
   history    Drill into git history (pickaxe: "when/why did X change?").
   discussions  Drill into GitHub Discussions (needs the gh CLI).
   web        Discover + fetch web pages (keyless: SearXNG \u2192 DuckDuckGo \u2192 WebSearch).
+  symbol     Resolve ONE declaration: its definition (real body), every call
+             site with the caller it sits in, and where else it is mentioned.
+             Use it for "where is X used / who calls X / is X dead" \u2014 lexical
+             search answers those badly, since the name also appears in prose,
+             imports and unrelated identifiers.
   overview   Generate (once) a cached markdown digest of the repo \u2014 packages,
              layout, public API, docs map \u2014 to answer follow-up questions
              without re-indexing. Reused while the commit is unchanged.
@@ -16840,6 +17008,8 @@ Options:
   --docs-url <url>     Official docs page to fetch + ground against
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
+  --name <symbol>      For 'symbol': the declaration to resolve (Class/method
+                       also works, e.g. --name HttpClient/request)
   --per-source <n>     Max evidence items kept per source           (default: 6)
   --out <dir>          Dossier output dir   (default: <clone>/.ultradoc/runs/<id>)
   --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
@@ -16884,6 +17054,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "discussions",
   "so",
   "web",
+  "symbol",
   "overview",
   "doc",
   "index",
@@ -16910,7 +17081,8 @@ var VALUE_FLAGS = /* @__PURE__ */ new Set([
   "max-verify",
   "answer",
   "coverage-min",
-  "phase"
+  "phase",
+  "name"
 ]);
 var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
 function fail(message) {
@@ -17044,7 +17216,22 @@ function printEvidence(p, evidence, meta) {
     process.stdout.write(renderEvidenceMarkdown(evidence, meta) + "\n");
   }
 }
-var INDEXING_COMMANDS = /* @__PURE__ */ new Set(["ask", "code", "issues", "prs", "docs", "releases", "history", "discussions", "so", "web", "overview", "doc", "index"]);
+var INDEXING_COMMANDS = /* @__PURE__ */ new Set([
+  "ask",
+  "code",
+  "issues",
+  "prs",
+  "docs",
+  "releases",
+  "history",
+  "discussions",
+  "so",
+  "web",
+  "symbol",
+  "overview",
+  "doc",
+  "index"
+]);
 async function run2(argv = process.argv.slice(2)) {
   const p = parseArgs(argv);
   if (p.command && INDEXING_COMMANDS.has(p.command)) await warmGrammars({ label: "ultradoc" });
@@ -17098,6 +17285,29 @@ async function run2(argv = process.argv.slice(2)) {
         commit: ctx.index.commit,
         sources: [kind],
         semantic: opts.semantic,
+        evidenceCount: evidence.length,
+        builtAt: (/* @__PURE__ */ new Date()).toISOString(),
+        notes
+      };
+      printEvidence(p, evidence, meta);
+      return;
+    }
+    case "symbol": {
+      const name2 = p.values.name;
+      if (!name2) fail("missing --name <symbol> (e.g. --name retryRequest)");
+      const opts = buildAskOptions({ ...p, values: { ...p.values, q: name2 } });
+      const ctx = buildContext(opts);
+      const { items, notes } = symbolEvidence(ctx, name2);
+      const evidence = assignIds2([{ source: "code", items, notes }]);
+      const meta = {
+        question: `symbol: ${name2}`,
+        repo: ctx.repoRef.raw,
+        host: ctx.repoRef.host,
+        ref: opts.ref,
+        commit: ctx.index.commit,
+        pkg: ctx.scopePkg?.name,
+        sources: ["code"],
+        semantic: false,
         evidenceCount: evidence.length,
         builtAt: (/* @__PURE__ */ new Date()).toISOString(),
         notes
@@ -17319,7 +17529,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join34(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join36(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).

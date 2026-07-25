@@ -5,6 +5,9 @@ import { have, rrf, foldTerm, subtokens, escapeRegExp, buildMatcher, matcherFrom
 import { grepRepo } from "../vendor/codeindex-engine.mjs";
 import { readText } from "../walk.js";
 import { bm25 } from "./bm25.js";
+import { MAX_EXCERPT_LINES, codeItem, enclosingSymbol, expandWindow, symbolLabel, symbolsByFile } from "./excerpt.js";
+
+export { expandWindow, enclosingSymbol };
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -25,8 +28,6 @@ interface Region {
 }
 
 const MAX_KEYWORDS = 8;
-const MAX_EXCERPT_LINES = 30; // hard cap on one excerpt
-const EXCERPT_PAD = 8; // how far an excerpt may grow past the hit region
 
 // Named ranking constants (previously scattered magic numbers). Tuning these
 // changes result ordering — the offline evals (evals/run.mjs) guard against a
@@ -136,29 +137,6 @@ function scoreRegion(cur: { start: number; end: number; lines: { line: number; t
     }
   }
   return { start: cur.start, end: cur.end, anchor, kwCount: covered.size };
-}
-
-// Grow an excerpt window to natural boundaries: extend each side until a blank
-// line (paragraph/function boundary) or EXCERPT_PAD lines, never shrinking the
-// seed region; then cap at MAX_EXCERPT_LINES, keeping the anchor in view.
-// start/end/anchor are 1-based inclusive line numbers.
-export function expandWindow(lines: string[], start: number, end: number, anchor: number): { start: number; end: number } {
-  const blank = (n: number) => /^\s*$/.test(lines[n - 1] ?? "");
-  let s = Math.max(1, start);
-  let e = Math.min(lines.length, end);
-  while (s > 1 && start - s < EXCERPT_PAD && !blank(s - 1)) s--;
-  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
-  if (e - s + 1 > MAX_EXCERPT_LINES) {
-    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
-    let ne = ns + MAX_EXCERPT_LINES - 1;
-    if (ne > e) {
-      ne = e;
-      ns = ne - MAX_EXCERPT_LINES + 1;
-    }
-    s = ns;
-    e = ne;
-  }
-  return { start: s, end: e };
 }
 
 // Score one declared symbol by name similarity to the query keywords. Exact
@@ -482,14 +460,8 @@ export function searchCode(
   }
   scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
 
-  // Declarations grouped per file, so an excerpt can be labelled with the symbol
-  // it sits inside. Built once for the whole result set.
-  const symsByFile = new Map<string, CodeSymbol[]>();
-  for (const s of index.symbols) {
-    const arr = symsByFile.get(s.file);
-    if (arr) arr.push(s);
-    else symsByFile.set(s.file, [s]);
-  }
+  // Built once for the whole result set.
+  const symsByFile = symbolsByFile(index.symbols);
 
   const items: RawItem[] = [];
   for (const f of scored) {
@@ -504,24 +476,26 @@ export function searchCode(
       const win = windows[wi]!;
       const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
       const label = win.callSite ? `${win.label}${call?.name ? ` (${call.name})` : ""}` : win.label;
-      const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${win.start}-L${win.end}`;
-      items.push({
-        source: "code",
-        title: `${f.rel} — ${label}`,
-        ref: f.rel,
-        location: `${f.rel}:${win.start}-${win.end}`,
-        score: Number(score.toFixed(3)),
-        snippet: lines.slice(win.start - 1, win.end).join("\n"),
-        url,
-        meta: {
-          matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
-          symbol: f.sym?.name,
-          // The declaration's full range when the excerpt clipped it, so a
-          // reader knows the citation shows the head of a longer body.
-          ...(win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {}),
-          ...(win.callSite ? { callSite: true } : {}),
-        },
-      });
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: win.start,
+          end: win.end,
+          label,
+          score,
+          meta: {
+            matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
+            symbol: f.sym?.name,
+            // The declaration's full range when the excerpt clipped it, so a
+            // reader knows the citation shows the head of a longer body.
+            ...(win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {}),
+            ...(win.callSite ? { callSite: true } : {}),
+          },
+        }),
+      );
     }
   }
 
@@ -572,17 +546,19 @@ export function searchCode(
           return res.some((re) => re.test(full));
         })?.line ?? f.fh!.lines[0]!.line;
       const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
-      const url = ref.isLocal ? undefined : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${f.rel}#L${w.start}-L${w.end}`;
-      items.push({
-        source: "code",
-        title: `${f.rel} — rare-term match (${kw})`,
-        ref: f.rel,
-        location: `${f.rel}:${w.start}-${w.end}`,
-        score: Number(f.score.toFixed(3)),
-        snippet: lines.slice(w.start - 1, w.end).join("\n"),
-        url,
-        meta: { matchedKeywords: [...f.fh!.matchedKw], pinnedRareTerm: kw },
-      });
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: w.start,
+          end: w.end,
+          label: `rare-term match (${kw})`,
+          score: f.score,
+          meta: { matchedKeywords: [...f.fh!.matchedKw], pinnedRareTerm: kw },
+        }),
+      );
       notes.push(`Query term "${kw}" matches only ${n} file(s); pinned ${f.rel} into the results.`);
     }
   }
@@ -596,24 +572,6 @@ type ExcerptWindow = { start: number; end: number; label: string; callSite?: boo
 // tier gave no `endLine` (regex tier). Kept as the documented fallback: the AST
 // tier reports the declaration's real last line and the excerpt uses that.
 const SYMBOL_FALLBACK_LINES = 18;
-
-// The innermost declaration whose span contains `line`. Only the AST tier
-// records `endLine`, so on a regex-tier index this returns undefined and the
-// caller falls back to a generic label rather than guessing at containment.
-export function enclosingSymbol(fileSyms: CodeSymbol[], line: number): CodeSymbol | undefined {
-  let best: CodeSymbol | undefined;
-  for (const s of fileSyms) {
-    if (s.endLine === undefined || s.line > line || s.endLine < line) continue;
-    if (!best || s.endLine - s.line < best.endLine! - best.line) best = s;
-  }
-  return best;
-}
-
-// How a symbol reads in an excerpt title, qualified by its parent so a method
-// is `method HttpClient.request`, not a bare `method request`.
-function symbolLabel(s: CodeSymbol): string {
-  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
-}
 
 // Choose the excerpt window(s) for one result. The PRIMARY window: a matching
 // symbol definition wins — anchored at its line and spanning its real body when

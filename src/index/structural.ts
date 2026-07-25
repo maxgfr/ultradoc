@@ -4,6 +4,7 @@ import type { StructuralIndex, CodeSymbol } from "../types.js";
 import { LIMITS } from "../config.js";
 import { languageOf } from "../lang/registry.js";
 import { scanRepo, grammarKeysForExts, grammarReady } from "../vendor/codeindex-engine.mjs";
+import { publishScan, scanOptions } from "./scan.js";
 import { headCommit, sameCommit } from "../clone.js";
 import { discoverDocsRoot, discoverDocsUrl } from "../sources/doc-discovery.js";
 import { discoverWorkspaces } from "./workspaces.js";
@@ -98,13 +99,12 @@ function buildCallSites(
 // engine scan does the walk, the reads and the extraction in a single pass. No
 // LLM, no network. Persisted under <root>/.ultradoc/index.json for reuse.
 export function buildIndex(root: string, slug: string, opts: { maxFiles?: number; project?: string[] } = {}): StructuralIndex {
-  // `out` excludes ultradoc's own cache dir from the scan by absolute path —
-  // the engine only knows to skip its own (.ultraindex).
-  const scan = scanRepo(root, {
-    maxFiles: opts.maxFiles ?? LIMITS.maxFiles,
-    maxBytes: LIMITS.maxFileBytes,
-    out: indexDir(root),
-  });
+  const scan = scanRepo(root, scanOptions(root, opts.maxFiles));
+  // Hand the scan to whatever needs the full picture later in this process —
+  // the symbol drill, the semantic tier, the module graph — so an `overview`
+  // that just indexed doesn't scan the tree a second time. A truncated scan
+  // (maxFiles override) is not representative, so it is not published.
+  if (!scan.capped && opts.maxFiles === undefined) publishScan(root, scan);
   const languages: Record<string, number> = {};
   const symbols: CodeSymbol[] = [];
   const docFiles: string[] = [];

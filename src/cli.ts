@@ -12,6 +12,7 @@ import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./veri
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl } from "./index/semantic.js";
+import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
@@ -24,6 +25,7 @@ Usage:
   ultradoc ask --repo <url|path> --q "<question>" [options]
   ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
+  ultradoc symbol --repo <url|path> --name <symbol> [--package <p>]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
@@ -42,6 +44,11 @@ Commands:
   history    Drill into git history (pickaxe: "when/why did X change?").
   discussions  Drill into GitHub Discussions (needs the gh CLI).
   web        Discover + fetch web pages (keyless: SearXNG → DuckDuckGo → WebSearch).
+  symbol     Resolve ONE declaration: its definition (real body), every call
+             site with the caller it sits in, and where else it is mentioned.
+             Use it for "where is X used / who calls X / is X dead" — lexical
+             search answers those badly, since the name also appears in prose,
+             imports and unrelated identifiers.
   overview   Generate (once) a cached markdown digest of the repo — packages,
              layout, public API, docs map — to answer follow-up questions
              without re-indexing. Reused while the commit is unchanged.
@@ -76,6 +83,8 @@ Options:
   --docs-url <url>     Official docs page to fetch + ground against
   --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
+  --name <symbol>      For 'symbol': the declaration to resolve (Class/method
+                       also works, e.g. --name HttpClient/request)
   --per-source <n>     Max evidence items kept per source           (default: 6)
   --out <dir>          Dossier output dir   (default: <clone>/.ultradoc/runs/<id>)
   --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
@@ -121,6 +130,7 @@ const COMMANDS = new Set([
   "discussions",
   "so",
   "web",
+  "symbol",
   "overview",
   "doc",
   "index",
@@ -148,6 +158,7 @@ const VALUE_FLAGS = new Set([
   "answer",
   "coverage-min",
   "phase",
+  "name",
 ]);
 const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
 
@@ -311,7 +322,22 @@ function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMark
 // Commands that index the repo — i.e. that extract symbols. Only these pay for
 // the grammar warm-up; `check`/`verify`/`cache`/`semantic` re-read an existing
 // dossier or manage state and must never trigger the ~22 MB grammar pull.
-const INDEXING_COMMANDS = new Set(["ask", "code", "issues", "prs", "docs", "releases", "history", "discussions", "so", "web", "overview", "doc", "index"]);
+const INDEXING_COMMANDS = new Set([
+  "ask",
+  "code",
+  "issues",
+  "prs",
+  "docs",
+  "releases",
+  "history",
+  "discussions",
+  "so",
+  "web",
+  "symbol",
+  "overview",
+  "doc",
+  "index",
+]);
 
 export async function run(argv: string[] = process.argv.slice(2)): Promise<void> {
   const p = parseArgs(argv);
@@ -375,6 +401,32 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         commit: ctx.index.commit,
         sources: [kind],
         semantic: opts.semantic,
+        evidenceCount: evidence.length,
+        builtAt: new Date().toISOString(),
+        notes,
+      };
+      printEvidence(p, evidence, meta);
+      return;
+    }
+
+    case "symbol": {
+      const name = p.values.name;
+      if (!name) fail("missing --name <symbol> (e.g. --name retryRequest)");
+      // The question is the symbol: this drill resolves declarations and call
+      // sites from the index, it does not run a lexical query.
+      const opts = buildAskOptions({ ...p, values: { ...p.values, q: name } });
+      const ctx = buildContext(opts);
+      const { items, notes } = symbolEvidence(ctx, name);
+      const evidence = assignIds([{ source: "code", items, notes }]);
+      const meta: DossierMeta = {
+        question: `symbol: ${name}`,
+        repo: ctx.repoRef.raw,
+        host: ctx.repoRef.host,
+        ref: opts.ref,
+        commit: ctx.index.commit,
+        pkg: ctx.scopePkg?.name,
+        sources: ["code"],
+        semantic: false,
         evidenceCount: evidence.length,
         builtAt: new Date().toISOString(),
         notes,

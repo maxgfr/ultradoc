@@ -32,15 +32,23 @@ export const DRILL_COMMAND: Record<SourceKind, string> = {
 /** Hard cap so a wordy question can't explode the fan-out. */
 export const MAX_DRILL_CELLS = 24;
 
-export type DrillVariant = "prose" | "identifier" | "literal";
+/** What a cell drills with. The first three are query wordings; `symbol` is a
+ * different kind of lookup — a declaration to resolve, not a query to search. */
+export type DrillVariant = "prose" | "identifier" | "literal" | "symbol";
 
-/** One drill cell: run `<DRILL_COMMAND[source]> --repo <plan.repo> --q "<query>"`. */
+/** One drill cell: `<DRILL_COMMAND[source]> --repo <plan.repo> --q "<query>"`,
+ * except a `symbol` cell, which runs `symbol --repo <plan.repo> --name <query>`. */
 export interface DrillCell {
   id: string; // "D1", "D2", …
   variant: DrillVariant;
   query: string;
   source: SourceKind;
 }
+
+/** How many identifiers from the question get a `symbol` cell. The question
+ * rarely names more than a couple of real declarations, and each cell costs a
+ * scan of the tree. */
+export const MAX_SYMBOL_CELLS = 3;
 
 export interface DrillPlan {
   question: string;
@@ -62,11 +70,11 @@ const CODE_SPAN_RE = /`([^`\n]+)`/g;
 // that burn drill cells at the cap.
 const QUOTED_RE = /"([^"\n]{3,})"|(?<![A-Za-z])'([^'\n]{3,})'(?![A-Za-z])/g;
 
-/** The 1–3 query variants of a question, playbook-style: the prose as asked,
- * the identifier forms the codebase probably uses, any quoted literal. */
-export function deriveVariants(question: string): { variant: DrillVariant; query: string }[] {
-  const out: { variant: DrillVariant; query: string }[] = [{ variant: "prose", query: question }];
-
+/** The identifier-shaped tokens a question names, in order: the contents of code
+ * spans first (identifiers by declaration), then camelCase/snake_case/SCREAMING
+ * tokens found in the remaining prose. `rest` is the question with code spans
+ * removed, so the literal pass doesn't re-match them. */
+export function deriveIdentifiers(question: string): { idents: string[]; rest: string } {
   const idents: string[] = [];
   const seen = new Set<string>();
   const push = (tok: string) => {
@@ -85,6 +93,14 @@ export function deriveVariants(question: string): { variant: DrillVariant; query
   }
   const noQuotes = rest.replace(QUOTED_RE, " ");
   for (const m of noQuotes.matchAll(IDENT_RE)) push(m[0]!);
+  return { idents, rest };
+}
+
+/** The 1–3 query variants of a question, playbook-style: the prose as asked,
+ * the identifier forms the codebase probably uses, any quoted literal. */
+export function deriveVariants(question: string): { variant: DrillVariant; query: string }[] {
+  const out: { variant: DrillVariant; query: string }[] = [{ variant: "prose", query: question }];
+  const { idents, rest } = deriveIdentifiers(question);
   if (idents.length) out.push({ variant: "identifier", query: idents.join(" ") });
 
   const literals: string[] = [];
@@ -102,10 +118,21 @@ export function deriveVariants(question: string): { variant: DrillVariant; query
 export function buildDrillPlan(opts: { question: string; repo: string; ref?: string; pkg?: string; askedSources: SourceKind[] }): DrillPlan {
   const cells: DrillCell[] = [];
   let n = 0;
+  // One symbol cell per identifier the question names, FIRST: resolving a
+  // declaration and its callers settles "where is X used" outright, where the
+  // lexical cells can only rank files that mention the word. They carry their
+  // own bound (MAX_SYMBOL_CELLS) and do NOT spend the query-cell budget —
+  // otherwise adding them would silently drop drills off the tail of the
+  // matrix, trading coverage the cap was never meant to trade.
+  for (const ident of deriveIdentifiers(opts.question).idents.slice(0, MAX_SYMBOL_CELLS)) {
+    cells.push({ id: `D${++n}`, variant: "symbol", query: ident, source: "code" });
+  }
+  let queryCells = 0;
   for (const v of deriveVariants(opts.question)) {
     for (const source of DRILL_SOURCES) {
       if (v.variant === "prose" && opts.askedSources.includes(source)) continue;
-      if (cells.length >= MAX_DRILL_CELLS) break;
+      if (queryCells >= MAX_DRILL_CELLS) break;
+      queryCells++;
       cells.push({ id: `D${++n}`, variant: v.variant, query: v.query, source });
     }
   }

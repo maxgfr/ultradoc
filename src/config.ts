@@ -38,6 +38,10 @@ export const LIMITS = {
   embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4), // parallel embed requests
 } as const;
 
+// Everything ultradoc writes into a working tree lives under this directory,
+// and everything that scans a tree must exclude it.
+export const CACHE_DIR_NAME = ".ultradoc";
+
 // Root of the on-disk clone/index cache. Persistent per-user by default (so a
 // reboot or a /tmp clean doesn't force a re-clone), overridable with
 // ULTRADOC_CACHE_DIR (set it to a /tmp path to restore the old ephemeral

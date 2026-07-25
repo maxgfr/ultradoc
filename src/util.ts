@@ -66,6 +66,18 @@ export function clip(s: string, max: number): string {
 }
 
 // Escape a string for safe inclusion as a literal inside a RegExp.
+// Test, spec, example, fixture and benchmark files — their code is not what a
+// question about the project is usually asking about. Catches both the
+// directory conventions and the per-language BASENAME ones (foo_test.go,
+// test_foo.py, foo.test.ts, foo.spec.js, index.test-d.ts), which a
+// directory-only rule misses (hono's `src/compose.test.ts` sits in `src/`).
+// Used to rank such files down, never to hide them.
+export function looksLikeTestFile(rel: string): boolean {
+  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel)) return true;
+  const base = (rel.split("/").pop() ?? "").toLowerCase();
+  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
+}
+
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
