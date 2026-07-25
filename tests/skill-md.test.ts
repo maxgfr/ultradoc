@@ -72,14 +72,28 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     const body = match?.[2] ?? "";
     const words = body.split(/\s+/).filter(Boolean).length;
     // A soft structural guard against re-inflating what belongs in references/.
-    // Raised from 2100 when the family-standard "Orchestration — route by
-    // harness" section (the `orchestrate` routing table) landed. Raised again
-    // from 2500 when the `symbol` drill and the keyless semantic tiers landed:
-    // two new pieces of engine surface the agent cannot route to without being
-    // told they exist. Their DETAIL went to references/ (semantic-setup for the
-    // tier trade-off, retrieval-playbook for when to reach for `symbol`), and
-    // step 6's duplicate of the cross-check rule was folded back into
-    // orchestration.md, which documents it more fully.
-    expect(words).toBeLessThanOrEqual(2620);
+    // Raised from 2100, then 2500, as new engine surface landed — and LOWERED
+    // to 2400 (from 2620) the first time the file got smaller: the "The script"
+    // section was a prose mirror of `ultradoc --help`, so it paid tokens on
+    // every load to say what one `--help` says better and drifted on every CLI
+    // change. It became the "Route the ask" decision table, and the freed budget
+    // bought guidance `--help` cannot give: budget tiers, the answer contract,
+    // and the rationalization table. Flag detail belongs in `--help`, cost and
+    // caps in references/tuning.md. Ratchet this DOWN, not up.
+    expect(words).toBeLessThanOrEqual(2400);
+  });
+
+  it("keeps the load-bearing sections an agent routes with", () => {
+    const body = match?.[2] ?? "";
+    // Each of these answers a question the engine cannot: which command fits
+    // this ask, how much effort it deserves, what the deliverable looks like,
+    // and how to catch yourself answering from memory. Losing one silently
+    // would regress the skill without failing any other gate.
+    for (const heading of ["## Route the ask", "## Budget the run", "## The answer contract", "## Red flags"]) {
+      expect(body).toContain(heading);
+    }
+    // The grounding gates are the whole point — they must stay spelled out.
+    expect(body).toContain("check --strict");
+    expect(body).toContain("check --semantic");
   });
 });

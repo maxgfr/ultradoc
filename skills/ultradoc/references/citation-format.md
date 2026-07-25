@@ -52,6 +52,12 @@ doubt, cite the evidence id.
 - A citation that appears **only inside a code fence** or inline code does not
   ground a claim (warned; an error under `--strict`).
 - Markdown links `[text](url)` are **not** citations and are ignored.
+- **Declared unknowns are exempt from coverage.** Prose under a heading matching
+  `Unknowns` / `Not settled` / `Open questions` / `Gaps` (until the next heading)
+  is not counted — it asserts the *absence* of evidence, which nothing can cite.
+  Without the exemption, `--strict` and "always state your unknowns" would be
+  mutually exclusive. HTML comments are ignored entirely, which is where the
+  commit pin belongs (a bare "Verified against `abc1234`." is an uncited claim).
 - Uncited evidence is fine (informational warning only) — you needn't use it all.
 - **Excerpt re-validation:** when `meta.json` records a clone whose HEAD still
   matches the dossier's commit, every code/docs item's `path:start-end` must
@@ -94,19 +100,7 @@ declaration — `src/retry.ts — function computeBackoff` — over a bare
 `src/retry.ts — match`: the excerpt is the declaration's real body, so the
 citation stands on its own for a reader who never opens the file.
 
-Two labels carry information worth using in the prose:
-
-- **`in <symbol>`** — the excerpt is a region *inside* that declaration, not the
-  declaration itself. Say what it is part of.
-- **`call site in <caller>` / `calls X — from <caller>`** — the excerpt is an
-  invocation. It grounds "X is called by <caller>", not "X does Y".
-
-Check `meta.symbolSpan` before claiming completeness. It appears when the
-declaration was longer than the excerpt cap (`"2-43"` while the excerpt shows
-lines 2-31), which means you are reading the **head of a longer body** — a claim
-about what the function does at the end of it is not grounded by that excerpt.
-Open the file, or retrieve it with `symbol --name X`.
-
-An item whose `meta.confidence` is `unique-name` matched on the name alone, with
-no import tying the caller to the declaration. Treat it as a lead: confirm it in
-the source before citing it, or don't cite it.
+Three item properties decide **whether** an item can carry the claim at all —
+the `in <symbol>` / `call site in <caller>` labels, `meta.symbolSpan` (you are
+reading the head of a longer body) and `meta.confidence: unique-name` (a lead,
+not evidence). `reading-evidence.md` decodes them; this file is the grammar.

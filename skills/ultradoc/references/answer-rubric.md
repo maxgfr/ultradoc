@@ -33,11 +33,16 @@ real; this proves the answer is actually *good*.
 - Unknowns are stated plainly, not glossed or guessed.
 - If sources disagree (e.g. docs vs. code, an issue vs. current code), the
   discrepancy is surfaced rather than silently resolved.
+- **Did you read the retrieval notes?** If one bounded this run — a capped
+  index, a regex-tier symbol scan, a sliced call-site list, a provider that
+  never answered — the answer says so instead of implying full coverage
+  (`reading-evidence.md`).
 
 ## 6. Usefulness
 - Concise. No filler, no restating the question, no hedging.
 - Leads with the answer; supporting detail and citations follow.
 - Links the user can click (the evidence URLs) are included.
+- Written in the conversation's language; identifiers, flags and paths verbatim.
 
 A good answer reads like a knowledgeable maintainer replying with receipts —
 direct, specific, and every claim backed by a pointer to the source.

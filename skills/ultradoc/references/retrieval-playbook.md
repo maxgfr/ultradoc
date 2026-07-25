@@ -71,21 +71,18 @@ that only *mention* the name without calling it. Lexical search cannot separate
 those three: the name appears in its own import lines, in prose, and inside
 unrelated identifiers, all of which rank as "hits".
 
-Read the notes it prints — they carry the parts an item list cannot:
+Read the notes it prints — they carry the parts an item list cannot, and each
+names your next move (`reading-evidence.md` decodes every note the engine emits):
 
-- **"No declaration named X. Similar names: …"** — you have the wrong spelling,
-  or it is not a declared symbol at all (a config key, an error string, a
-  callback property). Take the suggested name, or fall back to `code --q`.
-- **"No call site for X in this repo"** — X is public API called from outside,
-  invoked dynamically, or dead. That is an *answer*, not an empty result; say
-  which, and say how you know.
-- **"matched on name alone (no import ties the caller to this declaration)"** —
-  those call sites are leads to confirm, not evidence. Two same-named functions
-  in different modules land here. Open the file before citing one.
-- **"Showing N of M call site(s)"** — you are seeing a slice. Raise
-  `--per-source` before concluding anything about how widely X is used.
-  Implementation callers are listed before test callers, so the slice you get is
-  the load-bearing one.
+- **"No declaration named X. Similar names: …"** → take the suggested name, or
+  fall back to `code --q` (it is a config key, an error string, a callback prop).
+- **"No call site for X in this repo"** → that is an *answer*, not an empty
+  result: public API called from outside, invoked dynamically, or dead. Say
+  which, and how you know.
+- **"matched on name alone"** → leads, not evidence. Open the file before citing.
+- **"Showing N of M call site(s)"** → raise `--per-source` before concluding
+  anything about how widely X is used (implementation callers come first, so the
+  slice you have is the load-bearing one).
 
 `ask` also plans one `symbol` cell per identifier your question names, so in a
 fan-out these run alongside the query drills (`orchestration.md`).
@@ -151,9 +148,10 @@ answer-rubric review will ask you exactly that.
   dossier evidence only.
 - **Local repos work too.** `--repo <path>` indexes a checkout you already have;
   its `origin` remote is used for issues/PRs.
-- **Refresh** with `--refresh` if the cached clone is stale.
 - **Semantic** (`--semantic`) helps conceptual questions where the wording won't
   match the code's; it's optional and falls back to lexical if the stack is down.
+- **Knobs** — `--per-source`, `--refresh`, the `ULTRADOC_*` caps and what each
+  command actually costs live in `tuning.md`.
 
 ## When evidence is missing
 
