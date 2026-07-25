@@ -46,6 +46,13 @@ export interface CodeSymbol {
   kind: string; // function | class | method | const | type | interface | enum | struct | trait | def
   file: string; // relative to repo root
   line: number; // 1-based
+  // Last line of the declaration's BODY. Only the AST tier knows it, so it is
+  // absent whenever the grammars aren't loaded (stats.astTier says which tier
+  // built the index). When present, a code excerpt is anchored on the real span
+  // instead of a fixed window — the difference between citing a function and
+  // citing 20 arbitrary lines that start at it.
+  endLine?: number;
+  parent?: string; // enclosing symbol (a method's class), AST tier only
   signature?: string;
   exported: boolean;
   lang: string;
@@ -76,6 +83,12 @@ export interface StructuralIndex {
   docsUrl?: string; // official external docs URL discovered from README/manifests
   packages: WorkspacePackage[]; // workspace packages ([] for a single-package repo)
   topDirs?: Record<string, number>; // top-level dir -> file count (for the overview layout)
+  // Where each DECLARED symbol name is invoked: name -> [file, line][]. Built
+  // from the engine's extracted call expressions, restricted to names the repo
+  // actually declares (the only ones code search ever probes) and capped per
+  // name, so "where is retryRequest called?" ranks real invocations instead of
+  // lines that merely mention the word.
+  callSites?: Record<string, [string, number][]>;
   stats?: IndexStats; // coverage honesty: whether caps truncated the index
   schemaVersion: number;
 }
@@ -86,6 +99,12 @@ export interface StructuralIndex {
 export interface IndexStats {
   truncated: boolean; // the maxFiles cap was hit
   symbolCapHits: number; // files whose symbols were capped
+  // Whether the AST tier was live when this index was built. False means the
+  // tree-sitter grammars weren't loaded: no `endLine`, no nested methods, and
+  // excerpts fall back to fixed windows. Never inferred — recorded at build
+  // time so a degraded index announces itself instead of looking complete.
+  astTier?: boolean;
+  callSiteCapHits?: number; // symbol names whose call-site list was capped
 }
 
 // Which web-discovery engine to use; "auto" tries searxng → ddg → claude.

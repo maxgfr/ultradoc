@@ -30,6 +30,11 @@ import { extToLang, extractCode as engineExtractCode, languageOf as engineLangua
 // Citation precision is ultradoc's whole product: a symbol the regex tier never
 // emits is a symbol `check` cannot resolve and an answer that has to fall back
 // to a file-level citation.
+//
+// Since the scanRepo migration (index schema v5) indexing no longer calls this:
+// `buildIndex` gets its symbols from the engine's own scan, which applies the
+// same `extractCode` per file. This stays as the single-file entry point — the
+// per-language extraction contract the lang tests pin.
 
 // Extract declared symbols from one file. Returns [] for languages without a
 // dedicated extractor (their content is still fully searchable via ripgrep).

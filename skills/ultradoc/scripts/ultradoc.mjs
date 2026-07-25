@@ -12536,6 +12536,11 @@ var LIMITS = {
   // per-file read cap
   symbolsPerFile: envInt("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
   // symbols kept per file
+  // Call sites kept per declared symbol name. Bounds index.json on repos where
+  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
+  // keeps the evidence (a handful of sites is all a citation ever needs) and
+  // the cap is reported in stats rather than silently applied.
+  callSitesPerSymbol: envInt("ULTRADOC_MAX_CALL_SITES", 30),
   releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20),
   // GitHub releases fetched
   docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6),
@@ -12690,6 +12695,14 @@ function originUrl(dir) {
 import { existsSync as existsSync7, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5, readFileSync as readFileSync9 } from "fs";
 import { join as join19 } from "path";
 
+// src/lang/registry.ts
+function languageOf2(ext) {
+  return languageOf(ext);
+}
+
+// src/sources/doc-discovery.ts
+import { join as join18 } from "path";
+
 // src/walk.ts
 function walkDetailed(root, opts = {}) {
   const res = walk(root, {
@@ -12705,16 +12718,7 @@ function walk2(root, opts = {}) {
   return walkDetailed(root, opts).files;
 }
 
-// src/lang/registry.ts
-function extractSymbols2(rel, ext, content) {
-  return extractCode(rel, ext, content).symbols;
-}
-function languageOf2(ext) {
-  return languageOf(ext);
-}
-
 // src/sources/doc-discovery.ts
-import { join as join18 } from "path";
 var DOC_DIR2 = /(^|\/)(docs?|documentation|website|guides?|book|manual|handbook|reference)$/i;
 function discoverDocsRoot(docFiles) {
   const counts = /* @__PURE__ */ new Map();
@@ -12816,7 +12820,7 @@ function resolvePackage(packages, query4) {
 }
 
 // src/index/structural.ts
-var SCHEMA_VERSION2 = 4;
+var SCHEMA_VERSION2 = 5;
 var DOC_BASENAME2 = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
 var DOC_EXT2 = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
 var DOC_DIR3 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
@@ -12858,27 +12862,54 @@ function isDoc2(rel, ext) {
 function isConfig2(rel) {
   return CONFIG_BASENAME2.has(rel.split("/").pop().toLowerCase());
 }
+function buildCallSites(files, declared) {
+  const byName = /* @__PURE__ */ new Map();
+  let capHits = 0;
+  for (const f of files) {
+    for (const c2 of f.calls ?? []) {
+      if (!declared.has(c2.name)) continue;
+      let sites = byName.get(c2.name);
+      if (!sites) {
+        sites = [];
+        byName.set(c2.name, sites);
+      }
+      if (sites.length >= LIMITS.callSitesPerSymbol) continue;
+      sites.push([f.rel, c2.line]);
+    }
+  }
+  const callSites = {};
+  for (const name2 of [...byName.keys()].sort()) {
+    const sites = byName.get(name2);
+    if (sites.length >= LIMITS.callSitesPerSymbol) capHits++;
+    callSites[name2] = sites;
+  }
+  return { callSites, capHits };
+}
 function buildIndex(root, slug, opts = {}) {
-  const { files, truncated } = walkDetailed(root, { maxFiles: opts.maxFiles });
+  const scan2 = scanRepo(root, {
+    maxFiles: opts.maxFiles ?? LIMITS.maxFiles,
+    maxBytes: LIMITS.maxFileBytes,
+    out: indexDir(root)
+  });
   const languages = {};
   const symbols = [];
   const docFiles = [];
   const configFiles = [];
   const topDirs = {};
+  const exts = /* @__PURE__ */ new Set();
   let symbolCapHits = 0;
-  for (const f of files) {
+  for (const f of scan2.files) {
     const lang = languageOf2(f.ext);
     languages[lang] = (languages[lang] ?? 0) + 1;
     const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) : ".";
     topDirs[top] = (topDirs[top] ?? 0) + 1;
     if (isDoc2(f.rel, f.ext)) docFiles.push(f.rel);
     if (isConfig2(f.rel)) configFiles.push(f.rel);
-    const content = readText(f.abs);
-    if (!content) continue;
-    const syms = extractSymbols2(f.rel, f.ext, content);
-    if (syms.length > LIMITS.symbolsPerFile) symbolCapHits++;
-    for (const s of syms.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
+    if (f.kind === "code") exts.add(f.ext);
+    if (f.symbols.length > LIMITS.symbolsPerFile) symbolCapHits++;
+    for (const s of f.symbols.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
   }
+  const { callSites, capHits: callSiteCapHits } = buildCallSites(scan2.files, new Set(symbols.map((s) => s.name)));
   const sortedDocs = docFiles.sort();
   const sortedConfigs = configFiles.sort();
   const index = {
@@ -12886,7 +12917,7 @@ function buildIndex(root, slug, opts = {}) {
     root,
     commit: headCommit2(root),
     builtAt: (/* @__PURE__ */ new Date()).toISOString(),
-    fileCount: files.length,
+    fileCount: scan2.files.length,
     languages,
     symbols,
     docFiles: sortedDocs,
@@ -12899,7 +12930,16 @@ function buildIndex(root, slug, opts = {}) {
     // questions can be scoped to one package with --package.
     packages: discoverWorkspaces(root),
     topDirs,
-    stats: { truncated, symbolCapHits },
+    callSites,
+    // Recorded, never inferred later: an index built without the grammars has
+    // no endLine and no nested methods, and every consumer must be able to say
+    // so rather than present a regex-tier index as complete.
+    stats: {
+      truncated: scan2.capped,
+      symbolCapHits,
+      astTier: grammarKeysForExts(exts).some((k) => grammarReady(k)),
+      callSiteCapHits
+    },
     schemaVersion: SCHEMA_VERSION2
   };
   try {

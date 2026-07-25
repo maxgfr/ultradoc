@@ -36,6 +36,23 @@ describe("structural index", () => {
     expect(idx.topDirs).toBeDefined();
     expect(idx.topDirs!.src).toBeGreaterThan(0);
   });
+
+  it("indexes call sites of declared symbols, and only those", () => {
+    // client.ts invokes retryRequest, which retry.ts declares.
+    const sites = idx.callSites?.retryRequest ?? [];
+    expect(sites.some(([file]) => file === "src/client.ts")).toBe(true);
+    // Every indexed callee must be a symbol the repo actually declares —
+    // a library call the repo doesn't own can't ground an answer about it.
+    const declared = new Set(idx.symbols.map((s) => s.name));
+    for (const name of Object.keys(idx.callSites ?? {})) expect(declared.has(name)).toBe(true);
+  });
+
+  it("records which extraction tier built it", () => {
+    // The suite never warms the grammars, so this index is regex-tier: no
+    // endLine, and it must SAY so rather than look complete.
+    expect(idx.stats!.astTier).toBe(false);
+    expect(idx.symbols.every((s) => s.endLine === undefined)).toBe(true);
+  });
 });
 
 describe("index caching", () => {

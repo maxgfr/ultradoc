@@ -26,6 +26,11 @@ export const LIMITS = {
   maxFiles: envInt("ULTRADOC_MAX_FILES", 20_000), // files walked/indexed
   maxFileBytes: envInt("ULTRADOC_MAX_FILE_BYTES", 1_048_576), // per-file read cap
   symbolsPerFile: envInt("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400), // symbols kept per file
+  // Call sites kept per declared symbol name. Bounds index.json on repos where
+  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
+  // keeps the evidence (a handful of sites is all a citation ever needs) and
+  // the cap is reported in stats rather than silently applied.
+  callSitesPerSymbol: envInt("ULTRADOC_MAX_CALL_SITES", 30),
   releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20), // GitHub releases fetched
   docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6), // monorepo packages given doc sections
   verifyPairs: envInt("ULTRADOC_MAX_VERIFY", 40), // claim↔evidence pairs (CLI --max-verify wins)

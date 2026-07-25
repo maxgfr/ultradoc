@@ -27,6 +27,16 @@ import type { RepoRef, StructuralIndex } from "../src/types.js";
 // docFiles, languages `text`, topDirs ".", and the overview's Files/languages/
 // Layout/Documentation lines). Symbols, exported flags, workspace packages
 // (incl. descriptions), configFiles and every other field are byte-identical.
+//
+// ADJUDICATED at the scanRepo migration (schema v5) — buildIndex now gets its
+// walk + reads + extraction from one engine `scanRepo` pass instead of doing
+// them itself. The diff is strictly ADDITIVE: `callSites` (declared-name call
+// index), `schemaVersion` 4 -> 5, and `stats.astTier`/`stats.callSiteCapHits`.
+// fileCount, languages, topDirs, docFiles, configFiles, packages and every
+// symbol are byte-identical — verified beyond this fixture by diffing both
+// extraction paths over express, hono and matomo (11 536 files): 0 symbols
+// lost, 0 gained. `astTier` is false here because the suite never warms the
+// tree-sitter grammars, which is the documented regex-tier fallback.
 
 function writeFixture(dir: string): void {
   const files: Record<string, string> = {

@@ -2,6 +2,14 @@
 
 exports[`golden: structural index and overview > snapshots index.json on the golden fixture 1`] = `
 {
+  "callSites": {
+    "route": [
+      [
+        "packages/alpha/src/server.ts",
+        4,
+      ],
+    ],
+  },
   "commit": undefined,
   "configFiles": [
     "package.json",
@@ -34,9 +42,11 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "name": "@golden/beta",
     },
   ],
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "slug": "golden-fixture",
   "stats": {
+    "astTier": false,
+    "callSiteCapHits": 0,
     "symbolCapHits": 0,
     "truncated": false,
   },
