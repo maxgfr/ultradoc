@@ -1,11 +1,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import type { RunContext, EvidenceItem } from "../types.js";
-import { readText } from "../walk.js";
-import { httpGet, httpJson } from "../sources/fetch.js";
-import { sh, have, mapLimit } from "../util.js";
-import { LIMITS } from "../config.js";
-import { ensureComposeMaterialized } from "./compose.js";
+import type { RunContext, EvidenceItem } from "../../types.js";
+import { readText } from "../../walk.js";
+import { httpGet, httpJson } from "../../sources/fetch.js";
+import { mapLimit } from "../../util.js";
+import { LIMITS } from "../../config.js";
 
 export interface SemanticResult {
   available: boolean;
@@ -18,7 +17,7 @@ export interface SemanticResult {
 // to localhost.
 const QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
 const OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
-const EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
+export const EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
 const MAX_CHUNKS = LIMITS.embedChunks;
 
 interface Chunk {
@@ -218,7 +217,7 @@ async function buildIfNeeded(ctx: RunContext): Promise<{ name: string; notes: st
 // Tier-2 semantic retrieval. Returns available:false (so the code source falls
 // back to lexical) whenever the local stack is unreachable, the model isn't
 // pulled, or indexing fails — never throws, never blocks the answer.
-export async function semanticSearch(ctx: RunContext): Promise<SemanticResult> {
+export async function qdrantSearch(ctx: RunContext): Promise<SemanticResult> {
   const fallbackNote = (why: string): SemanticResult => ({
     available: false,
     items: [],
@@ -258,77 +257,4 @@ export async function semanticSearch(ctx: RunContext): Promise<SemanticResult> {
   });
 
   return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`, ...buildNotes] };
-}
-
-// Materialize the compose stack from the bundle into the cache dir and return
-// its path. Always uses the embedded copy so `semantic up|down|status` works
-// from any install location (skills add, npm, curled bundle) — not just a dev
-// checkout where docker-compose.yml happens to sit beside the source.
-function composeFile(): string {
-  return ensureComposeMaterialized();
-}
-
-// Generous default budget for pulling the stack images. The Ollama image alone
-// is >1.6GB, so on a first run `up` would routinely blow past a short timeout
-// while Docker is still downloading. Overridable per invocation via
-// ULTRADOC_DOCKER_PULL_TIMEOUT_MS (read at call time, not module load).
-const DEFAULT_DOCKER_PULL_TIMEOUT_MS = 1_200_000; // 20 min
-function dockerPullTimeoutMs(): number {
-  const raw = Number(process.env.ULTRADOC_DOCKER_PULL_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DOCKER_PULL_TIMEOUT_MS;
-}
-
-// Injectable dependencies so `semantic up|down|status` orchestration is unit
-// testable without a real Docker daemon; both default to the real helpers.
-export interface SemanticControlDeps {
-  run?: typeof sh;
-  has?: typeof have;
-}
-
-// Control the optional local Docker stack (Qdrant + embeddings + SearXNG).
-export function semanticControl(action: string, deps: SemanticControlDeps = {}): { message: string; code: number } {
-  const run = deps.run ?? sh;
-  const has = deps.has ?? have;
-  if (!["up", "down", "status"].includes(action)) {
-    return { message: `ultradoc semantic: unknown action "${action}" (use: up | down | status)`, code: 1 };
-  }
-  if (!has("docker")) {
-    return { message: "ultradoc semantic: docker not found. Install Docker, then retry. See references/semantic-setup.md.", code: 1 };
-  }
-  const file = composeFile();
-
-  if (action === "down") {
-    const r = run("docker", ["compose", "-f", file, "--profile", "all", "down"], { timeoutMs: 120_000 });
-    return { message: r.ok ? "ultradoc semantic: stack stopped." : `ultradoc semantic: down failed.\n${r.stderr}`, code: r.ok ? 0 : 1 };
-  }
-
-  if (action === "status") {
-    const r = run("docker", ["compose", "-f", file, "ps"], { timeoutMs: 30_000 });
-    return { message: r.ok ? r.stdout || "ultradoc semantic: no services running." : `ultradoc semantic: status failed.\n${r.stderr}`, code: 0 };
-  }
-
-  // up
-  // Pull the images FIRST, on a generous env-configurable budget: the Ollama
-  // image alone is >1.6GB and routinely exceeds `up`'s short timeout on a cold
-  // machine. Once cached, `up -d` finds them locally and stays fast. A genuine
-  // pull failure exits non-zero with a clear, actionable message — no crash,
-  // no unbounded hang (the timeout is always finite).
-  const imagePull = run("docker", ["compose", "-f", file, "--profile", "all", "pull"], { timeoutMs: dockerPullTimeoutMs() });
-  if (!imagePull.ok) {
-    return {
-      message: `ultradoc semantic: pulling the stack images failed (large images can be slow — raise ULTRADOC_DOCKER_PULL_TIMEOUT_MS, currently ${dockerPullTimeoutMs()}ms).\n${imagePull.stderr}`,
-      code: 1,
-    };
-  }
-
-  const up = run("docker", ["compose", "-f", file, "--profile", "all", "up", "-d"], { timeoutMs: 300_000 });
-  if (!up.ok) return { message: `ultradoc semantic: up failed.\n${up.stderr}`, code: 1 };
-  // Pull the embedding model (idempotent; needed before embeddings work).
-  const pull = run("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 600_000 });
-  const lines = [
-    "ultradoc semantic: stack is up (Qdrant :6333 · Ollama :11434 · SearXNG :8888).",
-    pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
-    '  use:    ultradoc ask --repo <url> --q "..." --semantic',
-  ];
-  return { message: lines.join("\n"), code: 0 };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chunkText, chunkFile } from "../src/index/semantic.js";
+import { chunkText, chunkFile } from "../src/index/semantic/index.js";
 
 describe("chunkText", () => {
   it("splits content into overlapping line windows", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { semanticControl } from "../src/index/semantic.js";
+import { semanticControl } from "../src/index/semantic/index.js";
 import type { ShResult } from "../src/util.js";
 
 // A fake `sh` runner matching the real signature: records every invocation and

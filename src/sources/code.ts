@@ -1,7 +1,7 @@
 import type { RunContext, SourceResult, StructuralIndex } from "../types.js";
 import { LIMITS } from "../config.js";
 import { searchCode } from "../index/search.js";
-import { semanticSearch } from "../index/semantic.js";
+import { semanticSearch } from "../index/semantic/index.js";
 import { rrf } from "../util.js";
 
 // Honest coverage notes when the index was capped, so a partial answer on a huge

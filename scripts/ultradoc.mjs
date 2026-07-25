@@ -13575,9 +13575,9 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
   return [primary, { start: cw.start, end: cw.end, label: caller ? `call site in ${symbolLabel(caller)}` : "call site", callSite: true }];
 }
 
-// src/index/semantic.ts
-import { existsSync as existsSync9, readFileSync as readFileSync11, writeFileSync as writeFileSync8, mkdirSync as mkdirSync8 } from "fs";
-import { join as join24, dirname as dirname5 } from "path";
+// src/index/semantic/qdrant.ts
+import { existsSync as existsSync8, readFileSync as readFileSync10, writeFileSync as writeFileSync7, mkdirSync as mkdirSync7 } from "fs";
+import { join as join23, dirname as dirname4 } from "path";
 
 // src/sources/fetch.ts
 var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
@@ -13781,9 +13781,187 @@ function excerptsFromText(text, url, title, source, question, perSource) {
   return items;
 }
 
+// src/index/semantic/qdrant.ts
+var QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
+var OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
+var EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
+var MAX_CHUNKS = LIMITS.embedChunks;
+function chunkText(rel, content, isDoc3, opts = {}) {
+  const win = opts.windowLines ?? 60;
+  const overlap = opts.overlap ?? 12;
+  const maxPerFile = opts.maxPerFile ?? 40;
+  const lines = content.split(/\r?\n/);
+  const chunks = [];
+  const step = Math.max(1, win - overlap);
+  for (let i2 = 0; i2 < lines.length && chunks.length < maxPerFile; i2 += step) {
+    const slice = lines.slice(i2, i2 + win);
+    const text = slice.join("\n").trim();
+    if (text.length < 16) continue;
+    chunks.push({ rel, start: i2 + 1, end: Math.min(lines.length, i2 + win), text, isDoc: isDoc3 });
+  }
+  return chunks;
+}
+function chunkFile(rel, content, isDoc3, symbolLines, opts = {}) {
+  const win = opts.windowLines ?? 60;
+  const maxPerFile = opts.maxPerFile ?? 40;
+  const MIN_LEADING = 5;
+  const lines = content.split(/\r?\n/);
+  const n = lines.length;
+  const starts = [...new Set((symbolLines ?? []).filter((l) => l >= 1 && l <= n))].sort((a, b) => a - b);
+  if (isDoc3 || starts.length === 0) return chunkText(rel, content, isDoc3, opts);
+  const chunks = [];
+  const add = (from, to) => {
+    if (chunks.length >= maxPerFile) return;
+    const s = Math.max(1, from);
+    const e = Math.min(n, to);
+    if (e < s) return;
+    const text = lines.slice(s - 1, e).join("\n").trim();
+    if (text.length < 16) return;
+    chunks.push({ rel, start: s, end: e, text, isDoc: isDoc3 });
+  };
+  if (starts[0] - 1 >= MIN_LEADING) add(1, starts[0] - 1);
+  for (let i2 = 0; i2 < starts.length && chunks.length < maxPerFile; i2++) {
+    const start2 = starts[i2];
+    const nextStart = i2 + 1 < starts.length ? starts[i2 + 1] : n + 1;
+    add(start2, Math.min(start2 + win - 1, nextStart - 1));
+  }
+  return chunks;
+}
+async function reachable(base, path = "/") {
+  const r = await httpGet(base + path, { timeoutMs: 2500 });
+  return r.ok;
+}
+async function embed(text) {
+  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 3e4 });
+  const v = r.ok ? r.data?.embedding : void 0;
+  return Array.isArray(v) && v.length ? v : null;
+}
+function collectionName(slug) {
+  return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
+}
+function markerPath(repoDir) {
+  return join23(repoDir, ".ultradoc", "semantic.json");
+}
+async function collectionExists(name2) {
+  const r = await httpJson("GET", `${QDRANT}/collections/${name2}`);
+  return r.ok && r.data?.result?.status !== void 0;
+}
+async function buildIfNeeded(ctx) {
+  const name2 = collectionName(ctx.repoRef.slug);
+  const marker = markerPath(ctx.repoDir);
+  const commit = ctx.index.commit ?? "HEAD";
+  if (existsSync8(marker)) {
+    try {
+      const m = JSON.parse(readFileSync10(marker, "utf8"));
+      if (m.collection === name2 && m.commit === commit && await collectionExists(name2)) {
+        return { name: name2, notes: [] };
+      }
+    } catch {
+    }
+  }
+  const symbolLines = /* @__PURE__ */ new Map();
+  for (const s of ctx.index.symbols) {
+    const arr = symbolLines.get(s.file) ?? [];
+    arr.push(s.line);
+    symbolLines.set(s.file, arr);
+  }
+  const codeFiles = symbolLines.size ? [...symbolLines.keys()] : [];
+  const files = [.../* @__PURE__ */ new Set([...codeFiles, ...ctx.index.docFiles])];
+  const chunks = [];
+  let capped = false;
+  for (const rel of files) {
+    if (chunks.length >= MAX_CHUNKS) {
+      capped = true;
+      break;
+    }
+    const content = readText(join23(ctx.repoDir, rel));
+    if (!content) continue;
+    const isDoc3 = ctx.index.docFiles.includes(rel);
+    for (const c2 of chunkFile(rel, content, isDoc3, symbolLines.get(rel) ?? [])) {
+      chunks.push(c2);
+      if (chunks.length >= MAX_CHUNKS) {
+        capped = true;
+        break;
+      }
+    }
+  }
+  if (chunks.length === 0) return { error: "no chunkable content to embed" };
+  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c2) => embed(c2.text));
+  const dim = vectors.find((v) => Array.isArray(v) && v.length > 0)?.length;
+  if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
+  const failed2 = vectors.filter((v) => !v).length;
+  await httpJson("DELETE", `${QDRANT}/collections/${name2}`);
+  const create = await httpJson("PUT", `${QDRANT}/collections/${name2}`, {
+    vectors: { size: dim, distance: "Cosine" }
+  });
+  if (!create.ok) return { error: `could not create Qdrant collection (${create.status})` };
+  let points = [];
+  const flush = async () => {
+    if (!points.length) return true;
+    const up = await httpJson("PUT", `${QDRANT}/collections/${name2}/points?wait=true`, { points });
+    points = [];
+    return up.ok;
+  };
+  for (let i2 = 0; i2 < chunks.length; i2++) {
+    const vector = vectors[i2];
+    if (!vector) continue;
+    const c2 = chunks[i2];
+    points.push({ id: i2 + 1, vector, payload: { rel: c2.rel, start: c2.start, end: c2.end, isDoc: c2.isDoc, snippet: c2.text.slice(0, 1500) } });
+    if (points.length >= 64 && !await flush()) return { error: "failed to upsert vectors to Qdrant" };
+  }
+  if (!await flush()) return { error: "failed to upsert vectors to Qdrant" };
+  const notes = [];
+  if (capped) notes.push(`Embedded ${chunks.length} chunks (repo has more) \u2014 raise ULTRADOC_MAX_CHUNKS for fuller semantic coverage.`);
+  if (failed2) notes.push(`${failed2} chunk(s) failed to embed \u2014 the semantic index is partial.`);
+  const tooHollow = failed2 / chunks.length > 0.2;
+  if (!tooHollow) {
+    try {
+      mkdirSync7(dirname4(marker), { recursive: true });
+      writeFileSync7(marker, JSON.stringify({ collection: name2, commit, chunks: chunks.length, dim }));
+    } catch {
+    }
+  }
+  return { name: name2, notes };
+}
+async function qdrantSearch(ctx) {
+  const fallbackNote = (why) => ({
+    available: false,
+    items: [],
+    notes: [`Semantic mode unavailable (${why}); used Tier-1 lexical + structural search.`]
+  });
+  if (!await reachable(QDRANT)) return fallbackNote(`Qdrant not reachable at ${QDRANT} \u2014 run \`ultradoc semantic up\``);
+  if (!await reachable(OLLAMA, "/api/tags")) return fallbackNote(`Ollama not reachable at ${OLLAMA}`);
+  const built = await buildIfNeeded(ctx);
+  if ("error" in built) return fallbackNote(built.error);
+  const buildNotes = built.notes;
+  const qv = await embed(ctx.options.question);
+  if (!qv) return fallbackNote("could not embed the question");
+  const res = await httpJson("POST", `${QDRANT}/collections/${built.name}/points/search`, {
+    vector: qv,
+    limit: ctx.options.perSource,
+    with_payload: true
+  });
+  if (!res.ok) return fallbackNote(`Qdrant search failed (${res.status})`);
+  const items = (res.data?.result ?? []).map((hit) => {
+    const p = hit.payload ?? {};
+    const loc = `${p.rel}:${p.start}-${p.end}`;
+    return {
+      source: "code",
+      title: `${p.rel} \u2014 semantic match`,
+      ref: p.rel,
+      location: loc,
+      score: Number((hit.score ?? 0).toFixed(4)),
+      snippet: p.snippet ?? "",
+      url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${p.rel}#L${p.start}-L${p.end}`,
+      meta: { semantic: true }
+    };
+  });
+  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`, ...buildNotes] };
+}
+
 // src/index/compose.ts
-import { existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync10, writeFileSync as writeFileSync7 } from "fs";
-import { dirname as dirname4, join as join23 } from "path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync8, readFileSync as readFileSync11, writeFileSync as writeFileSync8 } from "fs";
+import { dirname as dirname5, join as join24 } from "path";
 var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode and web
 # search. Start it with \`ultradoc semantic up\` (or \`docker compose --profile all
 # up -d\`). The published bundle stays dependency-free \u2014 it only speaks HTTP to
@@ -13857,199 +14035,23 @@ search:
     - json
 `;
 function ensureComposeMaterialized() {
-  const base = join23(cacheRoot(), "compose");
-  const composePath = join23(base, "docker-compose.yml");
-  const settingsPath = join23(base, "docker", "searxng", "settings.yml");
+  const base = join24(cacheRoot(), "compose");
+  const composePath = join24(base, "docker-compose.yml");
+  const settingsPath = join24(base, "docker", "searxng", "settings.yml");
   writeIfChanged(composePath, COMPOSE_YAML);
   writeIfChanged(settingsPath, SEARXNG_SETTINGS_YAML);
   return composePath;
 }
 function writeIfChanged(path, content) {
   try {
-    if (existsSync8(path) && readFileSync10(path, "utf8") === content) return;
-    mkdirSync7(dirname4(path), { recursive: true });
-    writeFileSync7(path, content);
+    if (existsSync9(path) && readFileSync11(path, "utf8") === content) return;
+    mkdirSync8(dirname5(path), { recursive: true });
+    writeFileSync8(path, content);
   } catch {
   }
 }
 
-// src/index/semantic.ts
-var QDRANT = (process.env.ULTRADOC_QDRANT || "http://localhost:6333").replace(/\/$/, "");
-var OLLAMA = (process.env.ULTRADOC_OLLAMA || "http://localhost:11434").replace(/\/$/, "");
-var EMBED_MODEL = process.env.ULTRADOC_EMBED_MODEL || "nomic-embed-text";
-var MAX_CHUNKS = LIMITS.embedChunks;
-function chunkText(rel, content, isDoc3, opts = {}) {
-  const win = opts.windowLines ?? 60;
-  const overlap = opts.overlap ?? 12;
-  const maxPerFile = opts.maxPerFile ?? 40;
-  const lines = content.split(/\r?\n/);
-  const chunks = [];
-  const step = Math.max(1, win - overlap);
-  for (let i2 = 0; i2 < lines.length && chunks.length < maxPerFile; i2 += step) {
-    const slice = lines.slice(i2, i2 + win);
-    const text = slice.join("\n").trim();
-    if (text.length < 16) continue;
-    chunks.push({ rel, start: i2 + 1, end: Math.min(lines.length, i2 + win), text, isDoc: isDoc3 });
-  }
-  return chunks;
-}
-function chunkFile(rel, content, isDoc3, symbolLines, opts = {}) {
-  const win = opts.windowLines ?? 60;
-  const maxPerFile = opts.maxPerFile ?? 40;
-  const MIN_LEADING = 5;
-  const lines = content.split(/\r?\n/);
-  const n = lines.length;
-  const starts = [...new Set((symbolLines ?? []).filter((l) => l >= 1 && l <= n))].sort((a, b) => a - b);
-  if (isDoc3 || starts.length === 0) return chunkText(rel, content, isDoc3, opts);
-  const chunks = [];
-  const add = (from, to) => {
-    if (chunks.length >= maxPerFile) return;
-    const s = Math.max(1, from);
-    const e = Math.min(n, to);
-    if (e < s) return;
-    const text = lines.slice(s - 1, e).join("\n").trim();
-    if (text.length < 16) return;
-    chunks.push({ rel, start: s, end: e, text, isDoc: isDoc3 });
-  };
-  if (starts[0] - 1 >= MIN_LEADING) add(1, starts[0] - 1);
-  for (let i2 = 0; i2 < starts.length && chunks.length < maxPerFile; i2++) {
-    const start2 = starts[i2];
-    const nextStart = i2 + 1 < starts.length ? starts[i2 + 1] : n + 1;
-    add(start2, Math.min(start2 + win - 1, nextStart - 1));
-  }
-  return chunks;
-}
-async function reachable(base, path = "/") {
-  const r = await httpGet(base + path, { timeoutMs: 2500 });
-  return r.ok;
-}
-async function embed(text) {
-  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 3e4 });
-  const v = r.ok ? r.data?.embedding : void 0;
-  return Array.isArray(v) && v.length ? v : null;
-}
-function collectionName(slug) {
-  return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
-}
-function markerPath(repoDir) {
-  return join24(repoDir, ".ultradoc", "semantic.json");
-}
-async function collectionExists(name2) {
-  const r = await httpJson("GET", `${QDRANT}/collections/${name2}`);
-  return r.ok && r.data?.result?.status !== void 0;
-}
-async function buildIfNeeded(ctx) {
-  const name2 = collectionName(ctx.repoRef.slug);
-  const marker = markerPath(ctx.repoDir);
-  const commit = ctx.index.commit ?? "HEAD";
-  if (existsSync9(marker)) {
-    try {
-      const m = JSON.parse(readFileSync11(marker, "utf8"));
-      if (m.collection === name2 && m.commit === commit && await collectionExists(name2)) {
-        return { name: name2, notes: [] };
-      }
-    } catch {
-    }
-  }
-  const symbolLines = /* @__PURE__ */ new Map();
-  for (const s of ctx.index.symbols) {
-    const arr = symbolLines.get(s.file) ?? [];
-    arr.push(s.line);
-    symbolLines.set(s.file, arr);
-  }
-  const codeFiles = symbolLines.size ? [...symbolLines.keys()] : [];
-  const files = [.../* @__PURE__ */ new Set([...codeFiles, ...ctx.index.docFiles])];
-  const chunks = [];
-  let capped = false;
-  for (const rel of files) {
-    if (chunks.length >= MAX_CHUNKS) {
-      capped = true;
-      break;
-    }
-    const content = readText(join24(ctx.repoDir, rel));
-    if (!content) continue;
-    const isDoc3 = ctx.index.docFiles.includes(rel);
-    for (const c2 of chunkFile(rel, content, isDoc3, symbolLines.get(rel) ?? [])) {
-      chunks.push(c2);
-      if (chunks.length >= MAX_CHUNKS) {
-        capped = true;
-        break;
-      }
-    }
-  }
-  if (chunks.length === 0) return { error: "no chunkable content to embed" };
-  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c2) => embed(c2.text));
-  const dim = vectors.find((v) => Array.isArray(v) && v.length > 0)?.length;
-  if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
-  const failed2 = vectors.filter((v) => !v).length;
-  await httpJson("DELETE", `${QDRANT}/collections/${name2}`);
-  const create = await httpJson("PUT", `${QDRANT}/collections/${name2}`, {
-    vectors: { size: dim, distance: "Cosine" }
-  });
-  if (!create.ok) return { error: `could not create Qdrant collection (${create.status})` };
-  let points = [];
-  const flush = async () => {
-    if (!points.length) return true;
-    const up = await httpJson("PUT", `${QDRANT}/collections/${name2}/points?wait=true`, { points });
-    points = [];
-    return up.ok;
-  };
-  for (let i2 = 0; i2 < chunks.length; i2++) {
-    const vector = vectors[i2];
-    if (!vector) continue;
-    const c2 = chunks[i2];
-    points.push({ id: i2 + 1, vector, payload: { rel: c2.rel, start: c2.start, end: c2.end, isDoc: c2.isDoc, snippet: c2.text.slice(0, 1500) } });
-    if (points.length >= 64 && !await flush()) return { error: "failed to upsert vectors to Qdrant" };
-  }
-  if (!await flush()) return { error: "failed to upsert vectors to Qdrant" };
-  const notes = [];
-  if (capped) notes.push(`Embedded ${chunks.length} chunks (repo has more) \u2014 raise ULTRADOC_MAX_CHUNKS for fuller semantic coverage.`);
-  if (failed2) notes.push(`${failed2} chunk(s) failed to embed \u2014 the semantic index is partial.`);
-  const tooHollow = failed2 / chunks.length > 0.2;
-  if (!tooHollow) {
-    try {
-      mkdirSync8(dirname5(marker), { recursive: true });
-      writeFileSync8(marker, JSON.stringify({ collection: name2, commit, chunks: chunks.length, dim }));
-    } catch {
-    }
-  }
-  return { name: name2, notes };
-}
-async function semanticSearch(ctx) {
-  const fallbackNote = (why) => ({
-    available: false,
-    items: [],
-    notes: [`Semantic mode unavailable (${why}); used Tier-1 lexical + structural search.`]
-  });
-  if (!await reachable(QDRANT)) return fallbackNote(`Qdrant not reachable at ${QDRANT} \u2014 run \`ultradoc semantic up\``);
-  if (!await reachable(OLLAMA, "/api/tags")) return fallbackNote(`Ollama not reachable at ${OLLAMA}`);
-  const built = await buildIfNeeded(ctx);
-  if ("error" in built) return fallbackNote(built.error);
-  const buildNotes = built.notes;
-  const qv = await embed(ctx.options.question);
-  if (!qv) return fallbackNote("could not embed the question");
-  const res = await httpJson("POST", `${QDRANT}/collections/${built.name}/points/search`, {
-    vector: qv,
-    limit: ctx.options.perSource,
-    with_payload: true
-  });
-  if (!res.ok) return fallbackNote(`Qdrant search failed (${res.status})`);
-  const items = (res.data?.result ?? []).map((hit) => {
-    const p = hit.payload ?? {};
-    const loc = `${p.rel}:${p.start}-${p.end}`;
-    return {
-      source: "code",
-      title: `${p.rel} \u2014 semantic match`,
-      ref: p.rel,
-      location: loc,
-      score: Number((hit.score ?? 0).toFixed(4)),
-      snippet: p.snippet ?? "",
-      url: ctx.repoRef.isLocal ? void 0 : `${ctx.repoRef.webUrl}/blob/${ctx.index.commit ?? "HEAD"}/${p.rel}#L${p.start}-L${p.end}`,
-      meta: { semantic: true }
-    };
-  });
-  return { available: true, items, notes: [`Semantic search via Qdrant + ${EMBED_MODEL} (local).`, ...buildNotes] };
-}
+// src/index/semantic/control.ts
 function composeFile() {
   return ensureComposeMaterialized();
 }
@@ -14096,6 +14098,11 @@ ${up.stderr}`, code: 1 };
     '  use:    ultradoc ask --repo <url> --q "..." --semantic'
   ];
   return { message: lines.join("\n"), code: 0 };
+}
+
+// src/index/semantic/index.ts
+async function semanticSearch(ctx) {
+  return qdrantSearch(ctx);
 }
 
 // src/sources/code.ts

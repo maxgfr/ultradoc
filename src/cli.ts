@@ -11,7 +11,7 @@ import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
-import { semanticControl } from "./index/semantic.js";
+import { semanticControl } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
