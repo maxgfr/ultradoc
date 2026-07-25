@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.9.0](https://github.com/maxgfr/ultradoc/compare/v2.8.0...v2.9.0) (2026-07-25)
+
+
+### Features
+
+* **check,dossier:** surface what a run could not reach, stop punishing unknowns ([f9d4f14](https://github.com/maxgfr/ultradoc/commit/f9d4f14fad8a9d4dad4c84b7a6088cb505e5653a))
+
 # [2.8.0](https://github.com/maxgfr/ultradoc/compare/v2.7.1...v2.8.0) (2026-07-25)
 
 
