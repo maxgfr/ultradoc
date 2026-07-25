@@ -13242,6 +13242,22 @@ function callableNames(matcher, index) {
   }
   return out2;
 }
+function astCallHits(index, names, inScope) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const name2 of names) {
+    for (const [rel, line] of index.callSites?.[name2] ?? []) {
+      if (!inScope(rel)) continue;
+      let entry = byFile.get(rel);
+      if (!entry) {
+        entry = { lines: /* @__PURE__ */ new Set(), counts: /* @__PURE__ */ new Map() };
+        byFile.set(rel, entry);
+      }
+      entry.lines.add(line);
+      entry.counts.set(name2, (entry.counts.get(name2) ?? 0) + 1);
+    }
+  }
+  return byFile;
+}
 function callSiteHits(fh, compiled, declLines) {
   const lines = /* @__PURE__ */ new Set();
   const counts = /* @__PURE__ */ new Map();
@@ -13255,8 +13271,7 @@ function callSiteHits(fh, compiled, declLines) {
       }
     }
   }
-  const name2 = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-  return { lines: [...lines].sort((a, b) => a - b), name: name2 };
+  return { lines, counts };
 }
 function mergeLines(sorted, gap) {
   const regions = [];
@@ -13288,19 +13303,35 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const callHits = /* @__PURE__ */ new Map();
   let callRank = [];
   if (names.length) {
-    const compiled = names.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp2(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
-    const nameSet = new Set(names.map(foldTerm));
-    const declByFile = /* @__PURE__ */ new Map();
-    for (const s of index.symbols) {
-      if (!nameSet.has(foldTerm(s.name))) continue;
-      const set = declByFile.get(s.file) ?? /* @__PURE__ */ new Set();
-      set.add(s.line);
-      declByFile.set(s.file, set);
+    const indexed = names.filter((n) => (index.callSites?.[n]?.length ?? 0) > 0);
+    const textual = names.filter((n) => !indexed.includes(n));
+    const merged = astCallHits(index, indexed, inScope);
+    if (textual.length) {
+      const compiled = textual.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp2(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
+      const nameSet = new Set(textual.map(foldTerm));
+      const declByFile = /* @__PURE__ */ new Map();
+      for (const s of index.symbols) {
+        if (!nameSet.has(foldTerm(s.name))) continue;
+        const set = declByFile.get(s.file) ?? /* @__PURE__ */ new Set();
+        set.add(s.line);
+        declByFile.set(s.file, set);
+      }
+      for (const [rel, fh] of lexical) {
+        if (!inScope(rel)) continue;
+        const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? /* @__PURE__ */ new Set());
+        if (!hit.lines.size) continue;
+        const entry = merged.get(rel);
+        if (!entry) {
+          merged.set(rel, hit);
+          continue;
+        }
+        for (const l of hit.lines) entry.lines.add(l);
+        for (const [n, c2] of hit.counts) entry.counts.set(n, (entry.counts.get(n) ?? 0) + c2);
+      }
     }
-    for (const [rel, fh] of lexical) {
-      if (!inScope(rel)) continue;
-      const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? /* @__PURE__ */ new Set());
-      if (hit.lines.length) callHits.set(rel, hit);
+    for (const [rel, entry] of merged) {
+      const name2 = [...entry.counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+      callHits.set(rel, { lines: [...entry.lines].sort((a, b) => a - b), name: name2 });
     }
     callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel]) => rel);
   }

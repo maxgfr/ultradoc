@@ -226,12 +226,47 @@ export function callableNames(matcher: KeywordMatcher, index: StructuralIndex): 
   return out;
 }
 
+// Where a probed name is invoked, per file, as the index recorded it from the
+// engine's extracted call expressions.
+//
+// Two gains over testing a regex against grep output. Always: the lookup is not
+// bounded by MAX_LINES_PER_FILE, so in a big file the invocations past the 40th
+// grep hit — invisible to the lexical pass — still surface. On the AST tier
+// only: calls come from the parse tree, so a mention inside a block comment or
+// a string literal is not a call site (measured on a decoy file: the regex tier
+// reports both, the AST tier reports neither). The regex tier already drops
+// line comments but not those two, so it is no worse than the text pass it
+// replaces, and the AST tier is strictly better.
+function astCallHits(
+  index: StructuralIndex,
+  names: string[],
+  inScope: (rel: string) => boolean,
+): Map<string, { lines: Set<number>; counts: Map<string, number> }> {
+  const byFile = new Map<string, { lines: Set<number>; counts: Map<string, number> }>();
+  for (const name of names) {
+    for (const [rel, line] of index.callSites?.[name] ?? []) {
+      if (!inScope(rel)) continue;
+      let entry = byFile.get(rel);
+      if (!entry) {
+        entry = { lines: new Set(), counts: new Map() };
+        byFile.set(rel, entry);
+      }
+      entry.lines.add(line);
+      entry.counts.set(name, (entry.counts.get(name) ?? 0) + 1);
+    }
+  }
+  return byFile;
+}
+
 // Lines in a file that INVOKE one of the probed names — `name(`, `name?.(` or
-// `obj.name(`. Declaration lines (from the symbol index) are excluded so a
-// function's own definition isn't mistaken for a call site. A type annotation
-// like `onRetry?: (…) => void` never matches (there is no `(` right after the
-// name), so an option-callback property surfaces only at its invocation.
-function callSiteHits(fh: FileHits, compiled: { name: string; re: RegExp }[], declLines: Set<number>): { lines: number[]; name?: string } {
+// `obj.name(`. The text fallback for names the call index does not cover: a
+// callback PROPERTY (`opts.onRetry?.(…)`) is invoked but never declared as a
+// symbol, so it has no entry to look up. Declaration lines (from the symbol
+// index) are excluded so a function's own definition isn't mistaken for a call
+// site. A type annotation like `onRetry?: (…) => void` never matches (there is
+// no `(` right after the name), so such a property surfaces only at its
+// invocation.
+function callSiteHits(fh: FileHits, compiled: { name: string; re: RegExp }[], declLines: Set<number>): { lines: Set<number>; counts: Map<string, number> } {
   const lines = new Set<number>();
   const counts = new Map<string, number>();
   for (const h of fh.lines) {
@@ -244,8 +279,7 @@ function callSiteHits(fh: FileHits, compiled: { name: string; re: RegExp }[], de
       }
     }
   }
-  const name = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-  return { lines: [...lines].sort((a, b) => a - b), name };
+  return { lines, counts };
 }
 
 // Merge sorted line numbers into contiguous regions (gap-tolerant).
@@ -296,19 +330,41 @@ export function searchCode(
   const callHits = new Map<string, { lines: number[]; name?: string }>();
   let callRank: string[] = [];
   if (names.length) {
-    const compiled = names.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
-    const nameSet = new Set(names.map(foldTerm));
-    const declByFile = new Map<string, Set<number>>();
-    for (const s of index.symbols) {
-      if (!nameSet.has(foldTerm(s.name))) continue;
-      const set = declByFile.get(s.file) ?? new Set<number>();
-      set.add(s.line);
-      declByFile.set(s.file, set);
+    // Each probed name is resolved by the index when it declares one — real
+    // call expressions — and by the text pass otherwise. A name that IS a
+    // declared symbol never falls back: the index is strictly better evidence
+    // than a regex over grep output.
+    const indexed = names.filter((n) => (index.callSites?.[n]?.length ?? 0) > 0);
+    const textual = names.filter((n) => !indexed.includes(n));
+    const merged = astCallHits(index, indexed, inScope);
+
+    if (textual.length) {
+      const compiled = textual.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
+      const nameSet = new Set(textual.map(foldTerm));
+      const declByFile = new Map<string, Set<number>>();
+      for (const s of index.symbols) {
+        if (!nameSet.has(foldTerm(s.name))) continue;
+        const set = declByFile.get(s.file) ?? new Set<number>();
+        set.add(s.line);
+        declByFile.set(s.file, set);
+      }
+      for (const [rel, fh] of lexical) {
+        if (!inScope(rel)) continue;
+        const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? new Set());
+        if (!hit.lines.size) continue;
+        const entry = merged.get(rel);
+        if (!entry) {
+          merged.set(rel, hit);
+          continue;
+        }
+        for (const l of hit.lines) entry.lines.add(l);
+        for (const [n, c] of hit.counts) entry.counts.set(n, (entry.counts.get(n) ?? 0) + c);
+      }
     }
-    for (const [rel, fh] of lexical) {
-      if (!inScope(rel)) continue;
-      const hit = callSiteHits(fh, compiled, declByFile.get(rel) ?? new Set());
-      if (hit.lines.length) callHits.set(rel, hit);
+
+    for (const [rel, entry] of merged) {
+      const name = [...entry.counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+      callHits.set(rel, { lines: [...entry.lines].sort((a, b) => a - b), name });
     }
     callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel]) => rel);
   }

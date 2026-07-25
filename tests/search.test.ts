@@ -183,6 +183,27 @@ describe("call-site aware retrieval", () => {
     cleanup();
   });
 
+  it("finds an invocation past the per-file grep cap, which the text pass cannot see", () => {
+    // The lexical pass stores at most MAX_LINES_PER_FILE (40) matching lines per
+    // file. Fill that budget with mentions, then invoke the symbol below it: the
+    // real call line never reaches the text pass, but the index recorded it.
+    const noise = Array.from({ length: 45 }, () => "// mentions ping").join("\n");
+    const { dir, cleanup } = repoWith({
+      "src/def.ts": "export function ping(): void {}\n",
+      "src/late.ts": `${noise}\nexport const after = 1;\nping();\n`,
+    });
+    const ref = resolveRepo(dir);
+    const idx = buildIndex(dir, ref.slug);
+    expect(idx.callSites?.ping?.some(([file]) => file === "src/late.ts")).toBe(true);
+
+    const covers = (items: { ref: string; snippet: string }[]) => items.some((i) => i.ref === "src/late.ts" && i.snippet.includes("ping();"));
+    expect(covers(searchCode(dir, ref, idx, "where is ping called?", 6).items)).toBe(true);
+    // Drop the call index and the same query falls back to the text pass, whose
+    // view of the file stops at the cap — the two paths genuinely differ here.
+    expect(covers(searchCode(dir, ref, { ...idx, callSites: {} }, "where is ping called?", 6).items)).toBe(false);
+    cleanup();
+  });
+
   it("merges a nearby call site into the definition excerpt", () => {
     const body = ["export function make(): void {}", "", "// use it right below", "make();", ""].join("\n");
     const { dir, cleanup } = repoWith({ "src/near.ts": body });

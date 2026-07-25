@@ -61,3 +61,48 @@ describe("symbol extraction is AST-preferred", () => {
     expect(out.warm).toContain("class:Controller");
   });
 });
+
+// The call index (StructuralIndex.callSites) is only as precise as the tier
+// that produced it. searchCode's call-site pass reads that index, so pin what
+// each tier actually reports rather than assuming the AST behaviour holds
+// everywhere.
+describe("call extraction is AST-preferred", () => {
+  const DECOY = [
+    "// remember to call fireCallback(1) somewhere", // line comment
+    "/** @see fireCallback(1) */", // block comment
+    "export const hint = 'call fireCallback(1) to retry';", // string literal
+    "export function run(): void {",
+    "  fireCallback(1);", // the only real invocation
+    "}",
+  ].join("\n");
+
+  it("reports only the real invocation once the grammars are warm", async () => {
+    const engine = fileURLToPath(new URL("../src/vendor/codeindex-engine.mjs", import.meta.url));
+    const cmp = `
+      const { extractCode, warmGrammars } = await import(${JSON.stringify(engine)});
+      const S = ${JSON.stringify(DECOY)};
+      const lines = (r) => r.calls.filter((c) => c.name === "fireCallback").map((c) => c.line);
+      const cold = lines(extractCode("a.ts", ".ts", S));
+      const r = await warmGrammars({ keys: ["typescript"], pull: false, onNote: () => {} });
+      const warm = lines(extractCode("a.ts", ".ts", S));
+      console.log(JSON.stringify({ cold, warm, ready: r.ready, tier: r.tier }));
+    `;
+    const env = { ...process.env, CODEINDEX_GRAMMARS_DIR: process.env.CODEINDEX_GRAMMARS_DIR ?? "" };
+    const { stdout, status } = await runNode(cmp, env);
+    expect(status).toBe(0);
+    const out = JSON.parse(stdout.trim()) as { cold: number[]; warm: number[]; ready: boolean; tier: string };
+
+    // The regex tier drops the line comment but keeps the block comment and the
+    // string literal — the documented fallback, no worse than the text pass the
+    // call index replaced.
+    expect(out.cold).toContain(5);
+    expect(out.cold).not.toContain(1);
+    if (!out.ready) {
+      expect(out.tier).toBe("none");
+      return;
+    }
+    // The AST tier keeps only the invocation that is actually in the parse tree.
+    expect(out.warm).toEqual([5]);
+    expect(out.cold.length).toBeGreaterThan(out.warm.length);
+  });
+});
