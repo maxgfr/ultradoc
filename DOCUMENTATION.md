@@ -15,8 +15,10 @@ writes a **citation-checked** answer.
    metasearch) live in local Docker containers reached over HTTP, so the bundle
    stays pure.
 3. **Honest degradation.** A host with no issues API, an unreachable semantic
-   stack, a failed fetch — each is noted in the dossier rather than silently
-   pretended away.
+   stack, a failed fetch, a capped index — each is noted in the dossier rather
+   than silently pretended away. Those notes head `EVIDENCE.md` and are echoed
+   by `ask`, because they bound what the evidence below them can support: at the
+   bottom they were read after the claims they should have constrained.
 
 ## Module map (`src/`)
 
@@ -43,7 +45,7 @@ index/
 lang/             per-language symbol extractors (registry by extension)
 providers/        issue/PR APIs per host (github, gitlab, gitea, generic) + shared helpers + registry
 sources/          one module per evidence source (code, docs, issues, …) + fetch (bounded retries)
-dossier.ts        assign ids, render EVIDENCE.md, persist the run (<repoDir>/.ultradoc/runs/)
+dossier.ts        assign ids, render EVIDENCE.md (retrieval notes FIRST), persist the run
 doc.ts            `doc`: project-type-adaptive outline → a dossier per section → DOC.todo worklist
 citations.ts      citation tokenization, strict alias resolution, claim coverage (shared by check/verify)
 check.ts          validate ANSWER.md/DOC.md citations + claim coverage (the grounding guarantee)
@@ -179,9 +181,21 @@ like `OVERVIEW.md`, never citable. Persisted under `<repoDir>/.ultradoc/doc/`.
 `[code:path]`, …) are parsed (markdown links are ignored) and resolved against
 `evidence.json`. The structural check **fails** on:
 - any dangling citation (e.g. a fabricated `[E99]`), or
-- an answer with no citations at all.
+- an answer with no citations at all, or
+- claim coverage below `--coverage-min` (default 0.7; `--strict` = every claim).
 
 Non-zero exit ⇒ ungrounded ⇒ the model must retrieve more and rewrite.
+
+**The unknowns exemption.** A grounded answer must state what the evidence does
+*not* settle, and such a sentence can never carry a citation — so counting it as
+uncited prose made `--strict` and "state your unknowns" mutually exclusive, and
+the unknowns were what an agent dropped to get a green gate. Prose under a
+heading matching `Unknowns`/`Not settled`/`Open questions`/`Gaps` (until the next
+heading) is therefore exempt from claim coverage, and `verify` does not list it
+as an uncited claim. The exemption is guarded rather than silent: `check` prints
+`unknowns: N declared`, an "unknown" that *cites* evidence is reported as a claim
+in the wrong section (an error under `--strict`), and an answer whose declared
+unknowns outnumber its graded claims is warned about.
 
 A second, **semantic** layer (`verify.ts`) closes the gap where a citation
 *resolves* but does not actually *support* the claim: `verify --run <dir>` emits

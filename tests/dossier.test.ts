@@ -48,4 +48,23 @@ describe("renderEvidenceMarkdown", () => {
     expect(md).toContain("[E1]");
     expect(md).toContain("Retrieval notes");
   });
+
+  it("puts the retrieval notes BEFORE the evidence they qualify", () => {
+    const ev = assignIds(results);
+    const meta: DossierMeta = {
+      question: "what?",
+      repo: "r",
+      host: "h",
+      sources: ["code", "docs"],
+      semantic: false,
+      evidenceCount: ev.length,
+      builtAt: "now",
+      notes: ["Index capped at 20000 files"],
+    };
+    const md = renderEvidenceMarkdown(ev, meta);
+    // A note bounds what the evidence can support, so it has to be read first —
+    // at the bottom it lands after the claims it should have constrained.
+    expect(md.indexOf("## Retrieval notes")).toBeLessThan(md.indexOf("## Code"));
+    expect(md).toContain("Index capped at 20000 files");
+  });
 });

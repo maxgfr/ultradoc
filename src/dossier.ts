@@ -68,6 +68,20 @@ export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMe
   );
   out.push("");
 
+  // Notes come BEFORE the evidence, not after it: they say what this retrieval
+  // could not reach (a capped index, a regex-tier symbol scan, a rate-limited
+  // provider, a sliced call-site list), and that qualifies every item below. At
+  // the bottom they were read last, or not at all — after the claims they
+  // should have constrained were already written.
+  if (meta.notes.length) {
+    out.push(`## Retrieval notes`);
+    out.push("");
+    out.push(`_What this run could not reach — read these before the evidence; they bound what you may claim._`);
+    out.push("");
+    for (const n of meta.notes) out.push(`- ${n}`);
+    out.push("");
+  }
+
   if (evidence.length === 0) {
     out.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
   }
@@ -90,12 +104,6 @@ export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMe
     }
   }
 
-  if (meta.notes.length) {
-    out.push(`## Retrieval notes`);
-    out.push("");
-    for (const n of meta.notes) out.push(`- ${n}`);
-    out.push("");
-  }
   return out.join("\n");
 }
 

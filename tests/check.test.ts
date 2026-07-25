@@ -41,6 +41,43 @@ describe("checkRun", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  // The unknowns exemption keeps `--strict` from punishing honesty. These two
+  // guards keep it from becoming a place to park uncited prose instead.
+  it("passes --strict with a declared-unknowns section, and reports the exemption", () => {
+    answer(["Backoff doubles each attempt [E1].", "", "## Unknowns", "", "Whether `Retry-After` is honoured — nothing in the repo mentions it."].join("\n"));
+    const r = checkRun(dir, { strict: true });
+    expect(r.ok).toBe(true);
+    expect(r.coverage?.declaredUnknowns).toBe(1);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails --strict when an 'unknown' cites evidence (a claim in the wrong section)", () => {
+    answer(
+      ["Backoff doubles each attempt [E1].", "", "## Unknowns", "", "A pull request is rewriting the retry predicate [E2], which nothing confirms."].join("\n"),
+    );
+    const r = checkRun(dir, { strict: true });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/under an "Unknowns" heading cite evidence/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("warns when the unknowns outweigh the graded claims", () => {
+    answer(
+      [
+        "Backoff doubles each attempt [E1].",
+        "",
+        "## Unknowns",
+        "",
+        "- Whether `Retry-After` is honoured is not settled by the retrieved evidence.",
+        "- Whether the cap applies per-request or per-client is not settled either.",
+      ].join("\n"),
+    );
+    const r = checkRun(dir);
+    expect(r.ok).toBe(true);
+    expect(r.warnings.join(" ")).toMatch(/more of this answer is exempt from the coverage gate/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("fails when there are no citations", () => {
     answer("It just works.");
     const r = checkRun(dir);

@@ -213,6 +213,11 @@ export interface CoverageStats {
   cited: number; // units carrying ≥1 citation token
   ratio: number; // cited/claims; 1 when claims === 0
   uncited: string[]; // first 8 uncited claim texts, clipped
+  // Units exempted because they sit under an "Unknowns" heading. Reported, never
+  // silent: the exemption exists so honesty isn't punished by the gate, and the
+  // counters are what stop it becoming a place to park uncited claims.
+  declaredUnknowns: number;
+  unknownsWithCitations: string[]; // "unknowns" that cite evidence — i.e. real claims in the wrong section
 }
 
 // One evidence item whose stored excerpt no longer matches the pinned clone —

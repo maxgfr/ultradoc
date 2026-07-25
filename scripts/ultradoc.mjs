@@ -13045,6 +13045,14 @@ function renderEvidenceMarkdown(evidence, meta) {
     `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
   );
   out2.push("");
+  if (meta.notes.length) {
+    out2.push(`## Retrieval notes`);
+    out2.push("");
+    out2.push(`_What this run could not reach \u2014 read these before the evidence; they bound what you may claim._`);
+    out2.push("");
+    for (const n of meta.notes) out2.push(`- ${n}`);
+    out2.push("");
+  }
   if (evidence.length === 0) {
     out2.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
   }
@@ -13064,12 +13072,6 @@ function renderEvidenceMarkdown(evidence, meta) {
       out2.push("```");
       out2.push("");
     }
-  }
-  if (meta.notes.length) {
-    out2.push(`## Retrieval notes`);
-    out2.push("");
-    for (const n of meta.notes) out2.push(`- ${n}`);
-    out2.push("");
   }
   return out2.join("\n");
 }
@@ -15891,6 +15893,7 @@ function codeMask(lines) {
 function isHeadingOrRule(t) {
   return /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
 }
+var UNKNOWNS_HEADING_RE = /^#{1,6}\s+(unknowns?|not settled|open questions?|gaps?)\b/i;
 function isTableSeparator(line) {
   return /\|/.test(line) && /^[\s:|-]+$/.test(line.trim()) && /-/.test(line);
 }
@@ -15908,8 +15911,10 @@ function extractClaimUnits(text) {
   const code = codeMask(lines);
   const units = [];
   let prose = [];
+  let declaredUnknown = false;
+  const tag = (u) => declaredUnknown ? { ...u, declaredUnknown: true } : u;
   const flush = () => {
-    if (prose.length) units.push({ kind: "text", text: prose.join(" ") });
+    if (prose.length) units.push(tag({ kind: "text", text: prose.join(" ") }));
     prose = [];
   };
   let i2 = 0;
@@ -15924,12 +15929,13 @@ function extractClaimUnits(text) {
     const t = line.trim();
     if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
       flush();
+      if (/^#{1,6}\s/.test(t)) declaredUnknown = UNKNOWNS_HEADING_RE.test(t);
       i2++;
       continue;
     }
     if (isTableRow(line)) {
       flush();
-      units.push({ kind: "text", text: tableCells(raw) });
+      units.push(tag({ kind: "text", text: tableCells(raw) }));
       i2++;
       continue;
     }
@@ -15952,7 +15958,7 @@ function extractClaimUnits(text) {
         else items.push(rawL.trim());
         i2++;
       }
-      units.push({ kind: "list", items });
+      units.push(tag({ kind: "list", items }));
       continue;
     }
     prose.push(raw);
@@ -16006,9 +16012,11 @@ function collectCitations(text) {
 var MIN_CLAIM_LEN = 25;
 function claimCoverage(text, _evidence) {
   const claims = [];
+  const unknowns = [];
   for (const u of extractClaimUnits(text)) {
-    if (u.kind === "text") claims.push(u.text);
-    else for (const it of u.items) claims.push(it);
+    const sink = u.declaredUnknown ? unknowns : claims;
+    if (u.kind === "text") sink.push(u.text);
+    else for (const it of u.items) sink.push(it);
   }
   let counted = 0;
   let cited = 0;
@@ -16020,7 +16028,15 @@ function claimCoverage(text, _evidence) {
     if (citationTokensIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
   }
-  return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited };
+  let declaredUnknowns = 0;
+  const unknownsWithCitations = [];
+  for (const u of unknowns) {
+    const trimmed = u.trim();
+    if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
+    declaredUnknowns++;
+    if (citationTokensIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
+  }
+  return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited, declaredUnknowns, unknownsWithCitations };
 }
 
 // src/verify.ts
@@ -16032,6 +16048,7 @@ var MIN_UNCITED_LEN = 25;
 function claimStrings(text) {
   const out2 = [];
   for (const u of extractClaimUnits(text)) {
+    if (u.declaredUnknown) continue;
     if (u.kind === "text") out2.push(u.text);
     else for (const it of u.items) out2.push(it);
   }
@@ -16579,6 +16596,17 @@ function checkRun(dir, opts = {}) {
     const shown = coverage2.uncited.slice(0, 5).map((u) => `"${u}"`).join("; ");
     warnings.push(`${coverage2.claims - coverage2.cited} claim(s) cite no evidence (coverage ${Math.round(coverage2.ratio * 100)}%): ${shown}`);
   }
+  if (coverage2.unknownsWithCitations.length) {
+    const shown = coverage2.unknownsWithCitations.map((u) => `"${u}"`).join("; ");
+    const msg = `${coverage2.unknownsWithCitations.length} claim(s) under an "Unknowns" heading cite evidence \u2014 an unknown states what the evidence does NOT settle. Move these into the answer body where the coverage gate grades them: ${shown}`;
+    if (opts.strict) errors.push(msg);
+    else warnings.push(msg);
+  }
+  if (coverage2.declaredUnknowns > coverage2.claims) {
+    warnings.push(
+      `${coverage2.declaredUnknowns} declared unknown(s) vs ${coverage2.claims} graded claim(s) \u2014 more of this answer is exempt from the coverage gate than is graded by it. Retrieve more, or say plainly that the evidence does not answer the question.`
+    );
+  }
   if (fencedOnly.length) {
     const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
     if (opts.strict) errors.push(msg);
@@ -16632,6 +16660,7 @@ function formatCheckReport(r, dir) {
   lines.push(`  citations: ${r.citations.length} \xB7 resolved: ${r.resolved.length} \xB7 dangling: ${r.dangling.length}`);
   if (r.coverage) {
     lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
+    if (r.coverage.declaredUnknowns) lines.push(`  unknowns:  ${r.coverage.declaredUnknowns} declared (exempt from coverage)`);
   }
   if (r.revalidation) {
     const v = r.revalidation;
@@ -17481,6 +17510,7 @@ function buildAskOptions(p, opts = {}) {
     refresh: p.bools.has("refresh")
   };
 }
+var NOTES_SHOWN = 5;
 function printEvidence(p, evidence, meta) {
   if (p.bools.has("json")) {
     process.stdout.write(JSON.stringify(evidence, null, 2) + "\n");
@@ -17516,11 +17546,13 @@ async function run2(argv = process.argv.slice(2)) {
         return;
       }
       const bySource = r.meta.sources.map((s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`);
+      const shown = r.meta.notes.slice(0, NOTES_SHOWN);
       const lines = [
         `ultradoc: ${r.evidence.length} evidence item(s) for "${opts.question}"`,
         `  repo:     ${r.meta.repo}${r.meta.commit ? ` @ ${r.meta.commit}` : ""} (${r.meta.host})`,
         `  sources:  ${bySource.join(" \xB7 ")}`,
-        ...r.meta.notes.length ? [`  notes:    ${r.meta.notes.length} (see EVIDENCE.md)`] : [],
+        ...shown.length ? [`  notes:    ${shown.join("\n            ")}`] : [],
+        ...r.meta.notes.length > shown.length ? [`            +${r.meta.notes.length - shown.length} more (see EVIDENCE.md)`] : [],
         `  dossier:  ${r.dir}`,
         `  next:     read ${r.paths.evidenceMd}, write ANSWER.md (cite [E#]), then:`,
         `            ultradoc check --run ${r.dir}`

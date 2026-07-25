@@ -112,7 +112,10 @@ export function resolveAlias(tok: string, evidence: EvidenceItem[]): EvidenceIte
 // claim in ANSWER.md with the evidence it cites, so an agent can judge support,
 // and by `check` to gate on citation resolution.
 // ---------------------------------------------------------------------------
-export type ClaimUnit = { kind: "text"; text: string } | { kind: "list"; items: string[] };
+// `declared` marks a unit sitting under an "Unknowns" heading: a declared
+// absence of evidence. It asserts nothing ABOUT the project, so no citation
+// could ever ground it — see UNKNOWNS_HEADING_RE.
+export type ClaimUnit = ({ kind: "text"; text: string } | { kind: "list"; items: string[] }) & { declaredUnknown?: boolean };
 
 export function stripHtmlComments(text: string): string {
   return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
@@ -136,6 +139,12 @@ export function codeMask(lines: string[]): boolean[] {
 function isHeadingOrRule(t: string): boolean {
   return /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
 }
+// A heading that opens a declared-unknowns section. Everything under it, until
+// the next heading, states what the evidence does NOT settle — the one kind of
+// sentence a grounded answer must contain and can never cite. Without this,
+// `check --strict` and "always state the unknowns" contradict each other, and
+// the agent resolves the contradiction by dropping the unknowns.
+const UNKNOWNS_HEADING_RE = /^#{1,6}\s+(unknowns?|not settled|open questions?|gaps?)\b/i;
 function isTableSeparator(line: string): boolean {
   return /\|/.test(line) && /^[\s:|-]+$/.test(line.trim()) && /-/.test(line);
 }
@@ -168,8 +177,11 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
   const code = codeMask(lines);
   const units: ClaimUnit[] = [];
   let prose: string[] = [];
+  // Sticky from an "Unknowns" heading until the next heading of any level.
+  let declaredUnknown = false;
+  const tag = <U extends ClaimUnit>(u: U): U => (declaredUnknown ? { ...u, declaredUnknown: true } : u);
   const flush = () => {
-    if (prose.length) units.push({ kind: "text", text: prose.join(" ") });
+    if (prose.length) units.push(tag({ kind: "text", text: prose.join(" ") }));
     prose = [];
   };
   let i = 0;
@@ -184,12 +196,13 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
     const t = line.trim();
     if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
       flush();
+      if (/^#{1,6}\s/.test(t)) declaredUnknown = UNKNOWNS_HEADING_RE.test(t);
       i++;
       continue;
     }
     if (isTableRow(line)) {
       flush();
-      units.push({ kind: "text", text: tableCells(raw) });
+      units.push(tag({ kind: "text", text: tableCells(raw) }));
       i++;
       continue;
     }
@@ -212,7 +225,7 @@ export function extractClaimUnits(text: string): ClaimUnit[] {
         else items.push(rawL.trim());
         i++;
       }
-      units.push({ kind: "list", items });
+      units.push(tag({ kind: "list", items }));
       continue;
     }
     prose.push(raw);
@@ -300,9 +313,15 @@ const MIN_CLAIM_LEN = 25;
 // UNCITED prose — sentences asserting facts with no evidence at all.
 export function claimCoverage(text: string, _evidence: EvidenceItem[]): CoverageStats {
   const claims: string[] = [];
+  const unknowns: string[] = [];
   for (const u of extractClaimUnits(text)) {
-    if (u.kind === "text") claims.push(u.text);
-    else for (const it of u.items) claims.push(it);
+    // A declared unknown asserts the ABSENCE of evidence; requiring it to cite
+    // evidence would make "state your unknowns" and `--strict` mutually
+    // exclusive, and the unknowns would be what gets dropped. Exempted, but
+    // counted and reported — an exemption nobody can see is a loophole.
+    const sink = u.declaredUnknown ? unknowns : claims;
+    if (u.kind === "text") sink.push(u.text);
+    else for (const it of u.items) sink.push(it);
   }
   let counted = 0;
   let cited = 0;
@@ -317,5 +336,16 @@ export function claimCoverage(text: string, _evidence: EvidenceItem[]): Coverage
     if (citationTokensIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
   }
-  return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited };
+  let declaredUnknowns = 0;
+  const unknownsWithCitations: string[] = [];
+  for (const u of unknowns) {
+    const trimmed = u.trim();
+    if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
+    declaredUnknowns++;
+    // An "unknown" that cites evidence is not an unknown — it is a claim parked
+    // where the coverage gate cannot see it. Surface it rather than exempt it
+    // silently.
+    if (citationTokensIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
+  }
+  return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited, declaredUnknowns, unknownsWithCitations };
 }

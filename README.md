@@ -65,7 +65,10 @@ node scripts/ultradoc.mjs check --run <dossier-dir>   # add --strict for ask ans
 
 `check` fails on a fabricated citation **and** when too much prose is uncited
 (the coverage gate) — so an answer can't be mostly memory around one real
-reference. `--strict` requires every claim to be cited.
+reference. `--strict` requires every claim to be cited. What the evidence does
+*not* settle goes under an `## Unknowns` heading, which is exempt from coverage
+(an unknown cites nothing by construction) but reported, so honesty never costs
+a green gate and the section can't become a parking lot for uncited prose.
 
 A fabricated `[E99]` or an answer with no citations → **non-zero exit**.
 

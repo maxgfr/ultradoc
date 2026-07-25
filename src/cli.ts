@@ -321,6 +321,10 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
 }
 
 // Render single-source drill-down evidence (no dossier written).
+// How many retrieval notes `ask` echoes in its summary before deferring the
+// rest to EVIDENCE.md, which always lists them all.
+const NOTES_SHOWN = 5;
+
 function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMarkdown>[0], meta: DossierMeta): void {
   if (p.bools.has("json")) {
     process.stdout.write(JSON.stringify(evidence, null, 2) + "\n");
@@ -369,11 +373,16 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         return;
       }
       const bySource = r.meta.sources.map((s) => `${s}: ${r.evidence.filter((e) => e.source === s).length}`);
+      // Print the notes themselves, not just how many there are: they report
+      // what the run could not reach, and a bare count is a footnote nobody
+      // follows. Capped so a noisy run can't bury the dossier path.
+      const shown = r.meta.notes.slice(0, NOTES_SHOWN);
       const lines = [
         `ultradoc: ${r.evidence.length} evidence item(s) for "${opts.question}"`,
         `  repo:     ${r.meta.repo}${r.meta.commit ? ` @ ${r.meta.commit}` : ""} (${r.meta.host})`,
         `  sources:  ${bySource.join(" · ")}`,
-        ...(r.meta.notes.length ? [`  notes:    ${r.meta.notes.length} (see EVIDENCE.md)`] : []),
+        ...(shown.length ? [`  notes:    ${shown.join("\n            ")}`] : []),
+        ...(r.meta.notes.length > shown.length ? [`            +${r.meta.notes.length - shown.length} more (see EVIDENCE.md)`] : []),
         `  dossier:  ${r.dir}`,
         `  next:     read ${r.paths.evidenceMd}, write ANSWER.md (cite [E#]), then:`,
         `            ultradoc check --run ${r.dir}`,

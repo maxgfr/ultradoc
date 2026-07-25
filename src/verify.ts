@@ -30,6 +30,10 @@ const MIN_UNCITED_LEN = 25;
 function claimStrings(text: string): string[] {
   const out: string[] = [];
   for (const u of extractClaimUnits(text)) {
+    // Declared unknowns cite nothing by construction — listing them as
+    // "uncited claims to cite or delete" would tell the agent to delete exactly
+    // the honesty the skill demands.
+    if (u.declaredUnknown) continue;
     if (u.kind === "text") out.push(u.text);
     else for (const it of u.items) out.push(it);
   }

@@ -155,6 +155,17 @@ describe("ask (multi-source dossier)", () => {
     expect(r.exitCode).toBe(0);
     expect(r.error).toBeUndefined();
   });
+
+  it("prints the retrieval notes themselves, not just how many there are", async () => {
+    const dir = outDir("ask-notes");
+    // An all-stopword question makes the engine emit a note deterministically.
+    // A bare count ("notes: 1") is a footnote nobody follows; the note says what
+    // the run could not reach, so it has to be legible without opening a file.
+    const r = await runCli(["ask", "--repo", LIB, "--q", "the and of", "--sources", "code", "--out", dir]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stderr).toContain("No distinctive keywords in the question");
+    expect(r.stderr).not.toMatch(/notes:\s+\d+ \(see EVIDENCE\.md\)/);
+  });
 });
 
 describe("drill commands (print evidence, write nothing)", () => {

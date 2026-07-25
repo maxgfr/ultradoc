@@ -143,4 +143,53 @@ describe("claimCoverage", () => {
     expect(c.cited).toBe(0);
     expect(c.uncited[0]).toContain("`[E1]`");
   });
+
+  // A grounded answer MUST state what the evidence did not settle, and such a
+  // sentence can never carry a citation. Counting it as uncited prose made
+  // `--strict` and "state your unknowns" mutually exclusive — and the unknowns
+  // are what an agent drops to get a green gate.
+  it("exempts an Unknowns section from the coverage count", () => {
+    const answer = [
+      "The retry doubles the delay each attempt [E1].",
+      "",
+      "## Unknowns",
+      "",
+      "Whether `Retry-After` is honoured — no code or doc in the repo mentions it.",
+      "",
+      "- Whether the cap applies per-request or per-client is not settled by the evidence.",
+    ].join("\n");
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.claims).toBe(1);
+    expect(c.cited).toBe(1);
+    expect(c.ratio).toBe(1);
+    expect(c.uncited).toHaveLength(0);
+    // Exempted, but counted: an exemption nobody can see is a loophole.
+    expect(c.declaredUnknowns).toBe(2);
+    expect(c.unknownsWithCitations).toHaveLength(0);
+  });
+
+  it("flags an 'unknown' that cites evidence as a claim in the wrong section", () => {
+    const answer = ["## Unknowns", "", "The retry doubles the delay each attempt [E1], which we could not confirm anywhere."].join("\n");
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.claims).toBe(0);
+    expect(c.declaredUnknowns).toBe(1);
+    expect(c.unknownsWithCitations).toHaveLength(1);
+    expect(c.unknownsWithCitations[0]).toContain("[E1]");
+  });
+
+  it("resumes counting after the Unknowns section ends", () => {
+    const answer = [
+      "## Unknowns",
+      "",
+      "Whether `Retry-After` is honoured — no code or doc in the repo mentions it.",
+      "",
+      "## Notes",
+      "",
+      "The default backoff cap is thirty seconds in production.",
+    ].join("\n");
+    const c = claimCoverage(answer, EVIDENCE);
+    expect(c.claims).toBe(1);
+    expect(c.cited).toBe(0);
+    expect(c.uncited[0]).toContain("thirty seconds");
+  });
 });

@@ -504,6 +504,23 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
       .join("; ");
     warnings.push(`${coverage.claims - coverage.cited} claim(s) cite no evidence (coverage ${Math.round(coverage.ratio * 100)}%): ${shown}`);
   }
+  // Guard the unknowns exemption, which is otherwise a place to park uncited
+  // prose. Both signals are loud, and the first is an error under --strict: an
+  // "unknown" that cites evidence is a claim in the wrong section, and an
+  // answer whose unknowns outweigh its graded claims is not an answer.
+  if (coverage.unknownsWithCitations.length) {
+    const shown = coverage.unknownsWithCitations.map((u) => `"${u}"`).join("; ");
+    const msg =
+      `${coverage.unknownsWithCitations.length} claim(s) under an "Unknowns" heading cite evidence — an unknown states what the evidence does NOT settle. ` +
+      `Move these into the answer body where the coverage gate grades them: ${shown}`;
+    if (opts.strict) errors.push(msg);
+    else warnings.push(msg);
+  }
+  if (coverage.declaredUnknowns > coverage.claims) {
+    warnings.push(
+      `${coverage.declaredUnknowns} declared unknown(s) vs ${coverage.claims} graded claim(s) — more of this answer is exempt from the coverage gate than is graded by it. Retrieve more, or say plainly that the evidence does not answer the question.`,
+    );
+  }
   if (fencedOnly.length) {
     const msg = `${fencedOnly.length} citation-like token(s) appear only inside code fences and do not ground any claim: ${fencedOnly.join(", ")}`;
     if (opts.strict) errors.push(msg);
@@ -565,6 +582,8 @@ export function formatCheckReport(r: CheckResult, dir: string): string {
   lines.push(`  citations: ${r.citations.length} · resolved: ${r.resolved.length} · dangling: ${r.dangling.length}`);
   if (r.coverage) {
     lines.push(`  coverage:  ${r.coverage.cited}/${r.coverage.claims} claim(s) cited (${Math.round(r.coverage.ratio * 100)}%)`);
+    // Print the exemption whenever it is used: a silent exemption is a loophole.
+    if (r.coverage.declaredUnknowns) lines.push(`  unknowns:  ${r.coverage.declaredUnknowns} declared (exempt from coverage)`);
   }
   if (r.revalidation) {
     const v = r.revalidation;
