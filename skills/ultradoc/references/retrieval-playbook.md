@@ -12,6 +12,7 @@ behavior, error, or change). Then choose sources:
 | The question is about… | Start with |
 |------------------------|------------|
 | how code behaves, where something is defined | `code` (+ `docs`) |
+| where X is used, who calls X, is X still used / dead | `symbol --name X` — **not** `code --q X` |
 | whether behavior is intended / documented | `docs`, `code` |
 | a bug, a known limitation, a discussion | `issues` |
 | an in-progress or proposed change | `prs` |
@@ -53,6 +54,41 @@ An identifier-shaped keyword also ranks **call sites**, not just declarations �
 "where is `retryRequest` called?" surfaces the callers, and an options-callback
 property (`onFailedAttempt`) surfaces its invocation line even though it is never
 declared as a symbol. So phrase a usage question with the identifier itself.
+
+## Resolve a declaration instead of searching for its name
+
+When the question is about ONE named declaration, `symbol --name <sym>` beats any
+wording of `code --q`:
+
+```
+node scripts/ultradoc.mjs symbol --repo <url|path> --name compose
+```
+
+It returns the declaration with its **real body** (not a fixed window around the
+first line), every call site labelled with the caller it sits in
+(`src/hono-base.ts — calls compose — from method Hono.#dispatch`), and the files
+that only *mention* the name without calling it. Lexical search cannot separate
+those three: the name appears in its own import lines, in prose, and inside
+unrelated identifiers, all of which rank as "hits".
+
+Read the notes it prints — they carry the parts an item list cannot:
+
+- **"No declaration named X. Similar names: …"** — you have the wrong spelling,
+  or it is not a declared symbol at all (a config key, an error string, a
+  callback property). Take the suggested name, or fall back to `code --q`.
+- **"No call site for X in this repo"** — X is public API called from outside,
+  invoked dynamically, or dead. That is an *answer*, not an empty result; say
+  which, and say how you know.
+- **"matched on name alone (no import ties the caller to this declaration)"** —
+  those call sites are leads to confirm, not evidence. Two same-named functions
+  in different modules land here. Open the file before citing one.
+- **"Showing N of M call site(s)"** — you are seeing a slice. Raise
+  `--per-source` before concluding anything about how widely X is used.
+  Implementation callers are listed before test callers, so the slice you get is
+  the load-bearing one.
+
+`ask` also plans one `symbol` cell per identifier your question names, so in a
+fan-out these run alongside the query drills (`orchestration.md`).
 
 ## Iterate
 

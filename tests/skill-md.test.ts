@@ -73,7 +73,13 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
     const words = body.split(/\s+/).filter(Boolean).length;
     // A soft structural guard against re-inflating what belongs in references/.
     // Raised from 2100 when the family-standard "Orchestration — route by
-    // harness" section (the `orchestrate` routing table) landed.
-    expect(words).toBeLessThanOrEqual(2500);
+    // harness" section (the `orchestrate` routing table) landed. Raised again
+    // from 2500 when the `symbol` drill and the keyless semantic tiers landed:
+    // two new pieces of engine surface the agent cannot route to without being
+    // told they exist. Their DETAIL went to references/ (semantic-setup for the
+    // tier trade-off, retrieval-playbook for when to reach for `symbol`), and
+    // step 6's duplicate of the cross-check rule was folded back into
+    // orchestration.md, which documents it more fully.
+    expect(words).toBeLessThanOrEqual(2620);
   });
 });

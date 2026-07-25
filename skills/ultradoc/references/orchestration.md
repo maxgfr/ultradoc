@@ -44,6 +44,13 @@ Each cell is **one stateless CLI call** against the cached clone+index. Pick the
 that fit the question (see `retrieval-playbook.md` for which sources match which kind
 of question) and run them as a fan-out.
 
+`drill-plan.json` also carries cells with `variant: "symbol"`, one per identifier the
+question names (capped, and budgeted separately so they never push query cells off the
+matrix). Those run `symbol --repo <plan.repo> --name <cell.query>` instead of a search:
+they resolve a declaration, its body and its real call sites. A symbol cell that reports
+no such declaration is `dry` — don't retry it as a lexical drill, another cell already
+covers that wording.
+
 **Don't fan out multiple `ask`s.** `ask` already runs its sources concurrently and
 reuses the cache, so parallel `ask`s just duplicate the source fan-out and flood your
 context with overlapping dossiers. Issue **one** broad `ask` as the seed, then fan out

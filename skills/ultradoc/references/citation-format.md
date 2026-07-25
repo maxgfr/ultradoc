@@ -86,3 +86,27 @@ item *supports* the claim. `verify` closes that gap:
 - Pin version-sensitive claims to the commit in `meta.json`.
 - If the evidence doesn't support a claim, don't make it — retrieve more or state
   the unknown explicitly.
+
+## Prefer the symbol-anchored item
+
+Several items often cover the same file. Cite the one whose title names a
+declaration — `src/retry.ts — function computeBackoff` — over a bare
+`src/retry.ts — match`: the excerpt is the declaration's real body, so the
+citation stands on its own for a reader who never opens the file.
+
+Two labels carry information worth using in the prose:
+
+- **`in <symbol>`** — the excerpt is a region *inside* that declaration, not the
+  declaration itself. Say what it is part of.
+- **`call site in <caller>` / `calls X — from <caller>`** — the excerpt is an
+  invocation. It grounds "X is called by <caller>", not "X does Y".
+
+Check `meta.symbolSpan` before claiming completeness. It appears when the
+declaration was longer than the excerpt cap (`"2-43"` while the excerpt shows
+lines 2-31), which means you are reading the **head of a longer body** — a claim
+about what the function does at the end of it is not grounded by that excerpt.
+Open the file, or retrieve it with `symbol --name X`.
+
+An item whose `meta.confidence` is `unique-name` matched on the name alone, with
+no import tying the caller to the declaration. Treat it as a lead: confirm it in
+the source before citing it, or don't cite it.

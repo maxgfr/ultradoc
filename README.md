@@ -120,10 +120,14 @@ Two retrieval tiers:
   **15 languages** — JS/TS, Python, Go, Ruby, Java, Rust, C#, PHP, Swift,
   Kotlin, C/C++, Lua, Shell, Elixir, Scala. Zero dependencies, no keys,
   offline, reproducible.
-- **Tier 2 — semantic (optional).** Fully-local vector search — Qdrant + a local
-  embedding model (`nomic-embed-text`) — started with `ultradoc semantic up`. No
-  key, nothing leaves your machine. Fuses with Tier 1 via Reciprocal Rank Fusion,
-  and falls back to Tier 1 automatically if the stack isn't running.
+- **Tier 2 — semantic (optional).** Fully-local vector search, in two flavours.
+  A **static** model (`ultradoc semantic pull`, ~21 MB, **no container**) embeds
+  symbol names and signatures, so "which helper works out how long to wait
+  before trying again" finds `computeBackoff`. A **Docker** stack (Qdrant +
+  `nomic-embed-text`, `ultradoc semantic up`) embeds the real *content* of code
+  and docs, which is what answers "why is it designed this way". No key, nothing
+  leaves your machine; both fuse with Tier 1 via Reciprocal Rank Fusion and fall
+  back to Tier 1 automatically when neither is available.
 
 ## No API keys, anywhere
 
@@ -134,7 +138,7 @@ Two retrieval tiers:
 | Docs | in-repo README/docs/** + an optional `--docs-url` fetch |
 | StackOverflow | the keyless StackExchange API |
 | Web | local SearXNG → DuckDuckGo scrape → your built-in WebSearch (whatever's available) |
-| Semantic | local Docker (Qdrant + Ollama) — no key, no data leaves the machine |
+| Semantic | a local static model (no container) or local Docker (Qdrant + Ollama) — no key, no data leaves the machine |
 
 ## Commands
 
@@ -143,11 +147,13 @@ Two retrieval tiers:
 | `ask` | Retrieve from all selected sources → write an evidence dossier |
 | `code` / `issues` / `prs` / `docs` / `releases` / `history` / `discussions` / `so` | Drill into one source (prints evidence) |
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
-| `overview` | Generate a cached markdown digest of the repo (packages, layout, public API, docs map) |
+| `symbol --name <sym>` | Resolve one declaration: its real body, every call site with the caller it sits in, and where else it is only mentioned — for "where is X used / who calls X / is X dead" |
+| `overview` | Generate a cached markdown digest of the repo (packages, layout, core modules, public API, docs map) |
 | `doc` | Generate a grounded **reference doc**: a section outline + a dossier per section + a `DOC.todo` worklist you fill into a cited `DOC.md` |
 | `check --run <dir>` | Validate `ANSWER.md`/`DOC.md` citations **and** claim coverage against the dossier (`--strict` requires every claim cited; `--semantic` folds in `verify`'s verdicts) |
 | `verify --run <dir>` | Emit a claim↔evidence worklist for adversarial support-checking, then gate on refuted/unsupported claims |
 | `index` | Build/print the structural index for a repo |
+| `semantic pull` | Fetch the local static embedding model (no container needed) |
 | `semantic up\|down\|status` | Manage the optional local Docker stack |
 | `cache status\|clean` | Inspect or clear the persistent clone/index cache |
 

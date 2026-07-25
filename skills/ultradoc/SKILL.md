@@ -1,6 +1,6 @@
 ---
 name: ultradoc
-description: "Use when the user asks an ultra-precise question about an open-source project (library, framework, CLI, or tool) and wants an answer grounded in its REAL source code — not the model's training memory. Clones any git repo, indexes it (ripgrep + symbols, optional vectors), retrieves evidence from code/issues/PRs/docs/releases/git-history/StackOverflow/web, and you write a cited answer `ultradoc check` verifies is grounded. Handles monorepos (scope to one package with --package), caches an overview for fast follow-ups, and generates a cited REFERENCE DOC (`ultradoc doc` → `DOC.md`). Triggers: 'how does X work in <library>', 'generate/write documentation for <library>', 'document this project/package', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
+description: "Use when the user asks an ultra-precise question about an open-source project (library, framework, CLI, or tool) and wants an answer grounded in its REAL source code — not the model's training memory. Clones any git repo, indexes it (ripgrep + symbols + call graph, optional vectors), retrieves evidence from code/issues/PRs/docs/releases/git-history/StackOverflow/web, and you write a cited answer `ultradoc check` verifies is grounded. Handles monorepos (scope with --package) and generates a cited REFERENCE DOC (`ultradoc doc` → `DOC.md`). Triggers: 'how does X work in <library>', 'write documentation for <library>/this package', 'where is X used / who calls X', 'is there an open PR for <behavior>', 'why does <lib> do <thing>', 'what changed in <repo>', 'when was X added/changed/removed', 'which version introduced X', questions about a specific function/flag/option in a named open-source project or one package of a monorepo."
 license: MIT
 metadata:
   version: 2.7.1
@@ -41,14 +41,19 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   drill into ONE source, print evidence to stdout (no dossier). Use these to
   expand a thin area. `history` runs git pickaxe (`log -S/-G`) on the clone —
   the first call on a remote repo fetches full history once.
+- `symbol --repo <...> --name <sym>` — resolve ONE declaration: its definition
+  (the real body), every call site labelled with the caller it sits in, and where
+  else the name is only mentioned. Use it for *"where is X used / who calls X /
+  is X still used"*, which `code --q X` answers badly. `--name Class/method`
+  works. Prints evidence, writes nothing.
 - `web --repo <...> [--q "..."] [--url <u,...>]` — keyless web discovery
   (SearXNG → DuckDuckGo → your WebSearch) + fetch/extract. Pass `--url` to ground
   a specific page you found with your own WebSearch.
 - `overview --repo <...> [--refresh]` — generate (once) a cached markdown digest
-  of the repo: what it is, its workspace packages, layout, public API and docs
-  map. Cached beside the clone and reused while the commit is unchanged — read
-  it to orient yourself across several questions without re-indexing. It is a
-  navigation map, NOT citable evidence.
+  of the repo: what it is, its workspace packages, layout, **core modules**,
+  public API and docs map. Cached beside the clone and reused while the commit
+  is unchanged — read it to orient yourself across several questions without
+  re-indexing. It is a navigation map, NOT citable evidence.
 - `doc --repo <...> [--package <p>] [--sources ...]` — scaffold a **grounded
   reference doc**: a deterministic section outline (overview, install, public
   API/per-package, configuration, architecture), one retrieved dossier per
@@ -70,7 +75,8 @@ No `npm install`, no API keys. Run `--help` for the full surface. Key commands:
   See **Orchestration — route by harness** below.
 - `index --repo <...>` — build/print the structural index (debugging/inspection);
   lists discovered workspace packages for a monorepo.
-- `semantic up|down|status` — optional local vector backend (see below).
+- `semantic pull | up|down|status` — set up the optional vector tiers (see
+  **Optional semantic mode** below).
 - `cache status | clean --all|--repo <url|path>` — inspect or clear the
   persistent clone/index cache.
 
@@ -100,7 +106,10 @@ complete; don't return until it is. See `references/orchestration.md`.
 
    *Multiple questions about the same repo?* Run `overview --repo <url>` once and
    read the cached `OVERVIEW.md` it prints — a navigation map (packages, layout,
-   public API, docs) that lets follow-ups reuse the clone+index. Never cite it.
+   core modules, public API, docs) that lets follow-ups reuse the clone+index.
+   Never cite it. Its **Core modules** table ranks by how much the rest of the
+   repo depends on a module, not by size — drill those subtrees first when you
+   don't know where a behavior lives.
 
    *Monorepo?* When workspace packages are reported, add `--package <name|dir>`
    for the subsystem in question so retrieval doesn't drown in the other
@@ -146,7 +155,9 @@ complete; don't return until it is. See `references/orchestration.md`.
    sources: `code --q "<symbol/behavior>"` for more code, `issues`/`prs` for
    discussion and in-progress changes, `releases`/`history` for *when/why/which
    version*, `discussions` for community Q&A (needs `gh`), `web` for external
-   refs. See `references/retrieval-playbook.md` (how to iterate + triage) and
+   refs, `symbol --name <sym>` when the gap is about ONE named declaration
+   (what it does, who calls it, whether anything still does). See
+   `references/retrieval-playbook.md` (how to iterate + triage) and
    `references/orchestration.md` (how to parallelize).
 
    Two key rules from the playbook: **triage before writing** — cite an item only
@@ -176,14 +187,13 @@ complete; don't return until it is. See `references/orchestration.md`.
      `VERIFY.md`). Judge each pair as a **skeptic**: default to
      `unsupported`/`refuted` unless the cited snippet literally backs the claim,
      setting `verdict` to supported · partial · refuted · unsupported (+ a short
-     note). A pair flagged **⚠ cross-check** is grounded in an issue/PR — judge it
-     against CURRENT code, since a closed thread can describe behavior a later
-     release reversed (refuted, or partial with a temporal qualifier citing the
-     fixing release). Run one skeptic per pair — fan out to subagents when
-     available (each *returns* its verdict), else adjudicate each pair inline — and
-     collect every verdict into a **single** `verdicts.json` (see
-     `references/orchestration.md`; `orchestrate --run <dir> --phase verify`
-     emits this fan-out — see **Orchestration — route by harness**), then:
+     note). A pair flagged **⚠ cross-check** is grounded in an issue/PR and must
+     be judged against CURRENT code. Run one skeptic per pair — fan out to
+     subagents when available (each *returns* its verdict), else adjudicate
+     inline — and collect every verdict into a **single** `verdicts.json`
+     (`references/orchestration.md` has the verdict table, the cross-check rule
+     and the return contract; `orchestrate --run <dir> --phase verify` emits the
+     fan-out), then:
      ```
      node scripts/ultradoc.mjs verify --apply verdicts.json --run <dossier-dir>
      node scripts/ultradoc.mjs check  --semantic --run <dossier-dir>
@@ -209,11 +219,13 @@ outline:
 
 1. **Scaffold.** `node scripts/ultradoc.mjs doc --repo <url> [--package <p>]`.
    The engine builds a deterministic outline (overview, install/usage, public
-   API or one section per workspace package, configuration, architecture),
-   retrieves a dossier **per section**, merges them into one `evidence.json` with
-   global `[E#]` ids, and writes `DOC.todo.md` (the per-section worklist) +
-   `DOC.plan.json`. Add `--sources code,docs,issues,prs` to ground sections on
-   more than code+docs. It persists under `<clone>/.ultradoc/doc/`.
+   API or one section per workspace package, configuration, architecture, then
+   one section per **central subsystem** of this repo), retrieves a dossier **per
+   section**, merges them into one `evidence.json` with global `[E#]` ids, and
+   writes `DOC.todo.md` (the per-section worklist) + `DOC.plan.json`. Add
+   `--sources code,docs,issues,prs` to ground sections on more than code+docs.
+   It persists under `<clone>/.ultradoc/doc/`, with an `ARCHITECTURE.mmd` module
+   diagram — navigation like `OVERVIEW.md`, never cited.
 2. **Write each section.** Read `DOC.todo.md` and `EVIDENCE.md`, then write
    `DOC.md` in the run folder: one section per outline entry, **every claim cited
    `[E#]`**. A section whose evidence is thin is a fan-out unit — drill it
@@ -229,9 +241,9 @@ outline:
 ## Orchestration — route by harness
 
 The per-item work fans out: `drill-plan.json` (one cell per {query-variant ×
-source} drill, written by `ask`), `VERIFY.todo.json` (one claim↔evidence pair)
-and `DOC.plan.json` (one section per outline entry) are independent per-item
-worklists. The engine manages the fan-out — `orchestrate` emits the
+source} drill plus one `symbol` cell per identifier the question names, written
+by `ask`), `VERIFY.todo.json` (one claim↔evidence pair) and `DOC.plan.json` (one
+section per outline entry) are independent per-item worklists. The engine manages the fan-out — `orchestrate` emits the
 orchestration from the CURRENT worklists, with absolute paths and the real
 item ids baked in:
 
@@ -255,17 +267,20 @@ exists fails and names the command that produces it.
 
 ## Optional semantic mode (fully local, no API key)
 
-Deterministic Tier-1 search (ripgrep + symbol index) is the default and needs
-nothing. For fuzzier, conceptual questions you can enable local semantic search:
+Tier-1 search (ripgrep + symbol index) is the default and needs nothing. Add
+`--semantic` when the question **describes** what the codebase names
+differently — "which helper works out how long to wait before trying again"
+finds `computeBackoff`, which no lexical wording reaches. Two keyless backends:
 
-```
-node scripts/ultradoc.mjs semantic up      # docker compose: Qdrant + Ollama (+ SearXNG)
-node scripts/ultradoc.mjs ask --repo <url> --q "..." --semantic
-```
+- **static** — `semantic pull` (~21 MB, once, no container). Embeds symbol
+  names and signatures: answers *which declaration*.
+- **docker** — `semantic up`, then `--semantic-tier docker`. Embeds the real
+  **content** of code and docs, so it is the one that answers *why it is
+  designed this way*. Reach for it when the question needs prose.
 
-Everything runs in local Docker containers — no key, no data leaves the machine.
-If the stack isn't up, `--semantic` logs a notice and falls back to Tier 1. See
-`references/semantic-setup.md`.
+`--semantic-tier auto` (default) tries endpoint → static → docker; with no
+backend `--semantic` names the command that would enable one and falls back to
+Tier 1. See `references/semantic-setup.md`.
 
 ## References
 

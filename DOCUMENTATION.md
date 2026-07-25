@@ -31,10 +31,14 @@ walk.ts           ignore-aware file walk + safe text reader (walkDetailed report
 util.ts           sh/have, keywords + rankedKeywords, slugify, RRF, mapLimit
 overview.ts       cached markdown digest of a repo (packages, layout, API, docs)
 index/
-  structural.ts   build/load the commit-validated index (languages, symbols, docs, stats)
+  scan.ts         the engine's full repo scan, memoised per tree (symbols, calls, imports)
+  structural.ts   build/load the commit-validated index (languages, symbols, callSites, stats)
   workspaces.ts   monorepo package discovery (yarn/npm/pnpm/lerna/Cargo/go.work/uv/Composer/Maven/Gradle)
   search.ts       ripgrep (+ JS fallback) fused with symbol ranking → excerpts (RANKING consts)
-  semantic.ts     optional Qdrant + local-embeddings client; symbol-boundary chunks; Docker control
+  excerpt.ts      how a line window becomes a citable item (shared by search + symbol)
+  symbols.ts      `symbol`: one declaration, its body, its call sites, its mentions
+  modules.ts      the module graph ranked by centrality (overview + doc outline)
+  semantic/       the vector tiers: static model · HTTP endpoint · Qdrant/Docker + control
   compose.ts      embedded docker-compose stack, materialized into the cache dir
 lang/             per-language symbol extractors (registry by extension)
 providers/        issue/PR APIs per host (github, gitlab, gitea, generic) + shared helpers + registry
@@ -74,10 +78,20 @@ AskOptions
   answer in a code corpus often lives in the biggest file.
 - **Structural:** the symbol index (`index/structural.ts` + `lang/*`) is ranked
   by name similarity to the keywords; exported symbols weigh more.
-- **Fusion:** the BM25 and symbol rankings fuse via RRF (same fusion as the
-  semantic tier), with a penalty for test/fixture/doc paths; each excerpt is
-  anchored at the matching symbol's definition when there is one, else the
-  densest region. Output: `file:line-range` snippets with GitHub blob URLs.
+- **Call sites:** a query naming an identifier also ranks the files that INVOKE
+  it, resolved from the index's `callSites` (extracted call expressions, so on
+  the AST tier a mention inside a comment or a string is not a call). Names the
+  index cannot cover — a callback property like `opts.onRetry?.()` is invoked but
+  never declared — fall back to a regex over the lexical hits.
+- **Fusion:** the BM25, symbol and call-site rankings fuse via RRF (same fusion
+  as the semantic tier), with a penalty for test/fixture/doc paths.
+- **Excerpts (`index/excerpt.ts`):** anchored on the matching symbol and spanning
+  its **real body** when the AST tier resolved an `endLine`, else the densest
+  matching region; clipped at 30 lines, recording the declaration's true extent
+  as `meta.symbolSpan` when it had to. Each is labelled with the declaration it
+  belongs to (`in function retryRequest`, `call site in Hono.#dispatch`). Output:
+  `file:line-range` snippets with GitHub blob URLs — the same construction
+  `symbol` uses, because `check` re-validates both against the pinned clone.
 
 ### Keyword selection (`util.ts`)
 `keywords()` strips stopwords; `rankedKeywords()` orders by distinctiveness
@@ -100,12 +114,21 @@ zero — see `providers/github.ts`.
 - `web` — layered keyless discovery (SearXNG → DuckDuckGo → WebSearch hint) then
   fetch + HTML→text extraction.
 
-### Tier 2 — semantic (`index/semantic.ts`, optional)
-Chunks code+docs, embeds each chunk via a local Ollama model, upserts into a
-per-repo Qdrant collection (cached by commit), and vector-searches the question.
-Results fuse with lexical via RRF in `sources/code.ts`. Unreachable stack →
-`available: false` → transparent Tier-1 fallback. See
-`skills/ultradoc/references/semantic-setup.md`.
+### Tier 2 — semantic (`index/semantic/`, optional)
+Three keyless backends behind one cascade (`--semantic-tier auto` = endpoint →
+static → docker). The **static** and **endpoint** tiers embed symbol names,
+signatures and file summaries via the vendored engine's model, persisting the
+index at `.ultradoc/embeddings.bin` per commit and tier — no container. The
+**docker** tier chunks code+docs at symbol boundaries, embeds each chunk via a
+local Ollama model and upserts into a per-repo Qdrant collection; it is the only
+one that embeds real content, so it is the one that answers "why is it designed
+this way". Results fuse with lexical via RRF in `sources/code.ts`. No backend →
+`available: false` + a note naming what would enable one → transparent Tier-1
+fallback. See `skills/ultradoc/references/semantic-setup.md`.
+
+Ranking deliberately bypasses the engine's `searchSemantic`, which fuses in its
+own lexical ranking: `sources/code.ts` already fuses with ultradoc's lexical
+search, and going through it would count that signal twice.
 
 ## Monorepos (`index/workspaces.ts`)
 
@@ -124,7 +147,9 @@ an unresolvable name throws, listing the packages that exist.
 ## The repo overview (`overview.ts`)
 
 `ultradoc overview` renders a deterministic markdown digest of the repo —
-About (README prose), workspace packages, layout, exported API surface grouped
+About (README prose), workspace packages, layout, **core modules** (ranked by
+PageRank over the import graph, so the map leads with what the rest of the repo
+depends on rather than with the biggest directory), exported API surface grouped
 per package, documentation map — and caches it at
 `<repoDir>/.ultradoc/OVERVIEW.md`, keyed by commit (a marker comment in the
 file). Repeated questions about the same repo reuse the clone, the index *and*
@@ -136,15 +161,17 @@ resolve to a dossier.
 
 `ultradoc doc` turns the retrieve → cite → verify loop into a whole-repo
 reference document. A deterministic outline (overview, install/usage, public API
-— or one section per workspace package — configuration, architecture) is grounded
+— or one section per workspace package — configuration, architecture, then one
+section per central subsystem from the module graph) is grounded
 one section at a time: each runs the same `runSources` retrieval on a
 section-specific query, and the results merge into a single `evidence.json` with
 global `[E#]` ids (deduped across sections). The engine writes `DOC.plan.json` +
 a `DOC.todo.md` worklist (per section: its evidence ids and snippets); the model
 writes the cited `DOC.md`, which `check`/`verify` validate exactly like an
 `ANSWER.md`. The API section's query is seeded from the repo's real exported
-symbols (test/example and private/dunder symbols excluded). Persisted under
-`<repoDir>/.ultradoc/doc/`.
+symbols (test/example and private/dunder symbols excluded). A deterministic
+Mermaid module diagram is written beside it as `ARCHITECTURE.mmd` — navigation,
+like `OVERVIEW.md`, never citable. Persisted under `<repoDir>/.ultradoc/doc/`.
 
 ## The grounding guarantee (`check.ts`, `verify.ts`)
 
