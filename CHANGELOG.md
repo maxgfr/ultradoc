@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.11.0](https://github.com/maxgfr/ultradoc/compare/v2.10.0...v2.11.0) (2026-07-28)
+
+
+### Bug Fixes
+
+* **tests:** pin the extractor in tests so a running Firecrawl can't change results ([daa43b2](https://github.com/maxgfr/ultradoc/commit/daa43b2b47eb28d685d99657c670ec3ceb172289))
+
+
+### Features
+
+* **firecrawl:** add self-hosted Firecrawl extraction and search ([d8e9b09](https://github.com/maxgfr/ultradoc/commit/d8e9b0915750b0d3747489b867742f3922c332df))
+
 # [2.10.0](https://github.com/maxgfr/ultradoc/compare/v2.9.0...v2.10.0) (2026-07-26)
 
 
