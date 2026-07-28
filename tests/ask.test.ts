@@ -7,6 +7,7 @@ import { checkRun } from "../src/check.js";
 import { resolveRepo } from "../src/clone.js";
 import { buildIndex } from "../src/index/structural.js";
 import { docsSource } from "../src/sources/docs.js";
+import { pageCacheFile } from "../src/sources/page-cache.js";
 import type { AskOptions, RunContext } from "../src/types.js";
 
 // End-to-end, fully offline: clone (local path), index, retrieve from code+docs,
@@ -86,11 +87,15 @@ describe("runAsk (offline integration)", () => {
     writeFileSync(join(repo, "packages", "api", "package.json"), JSON.stringify({ name: "@t/api" }));
     writeFileSync(join(repo, "packages", "api", "README.md"), "# API\nrenderPage renders a page.");
 
-    // Pre-seed the extdocs cache so no network fetch happens.
+    // Pre-seed the extdocs cache so no network fetch happens. The name must come
+    // from pageCacheFile — it encodes the extraction generation AND the extractor
+    // identity, so a hand-written literal silently misses and turns this offline
+    // test into a live fetch. `firecrawl: "off"` below pins the extractor to
+    // native so the seeded key matches whether or not a container is running.
     const url = "https://example.com/docs";
     const cacheDir = join(repo, ".ultradoc", "extdocs");
     mkdirSync(cacheDir, { recursive: true });
-    writeFileSync(join(cacheDir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt"), "External docs: renderPage takes a layout option.");
+    writeFileSync(pageCacheFile(cacheDir, url, "native"), "External docs: renderPage takes a layout option.");
 
     const repoRef = resolveRepo(repo);
     const ctx: RunContext = {
@@ -102,6 +107,7 @@ describe("runAsk (offline integration)", () => {
         question: "how does renderPage work?",
         sources: ["docs"],
         docsUrl: url,
+        firecrawl: "off",
         semantic: false,
         webEngine: "auto",
         perSource: 6,
