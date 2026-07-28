@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.11.1](https://github.com/maxgfr/ultradoc/compare/v2.11.0...v2.11.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **cache:** clear the URL-keyed page cache on `cache clean --all` ([8b2b7be](https://github.com/maxgfr/ultradoc/commit/8b2b7bef894909cd86e40ed16c58c7d1f3599911))
+
 # [2.11.0](https://github.com/maxgfr/ultradoc/compare/v2.10.0...v2.11.0) (2026-07-28)
 
 

@@ -3,7 +3,7 @@ name: ultradoc
 description: "Use when the user asks a precise question about a NAMED open-source project (library, framework, CLI, tool) and the answer must come from its real source rather than the model's memory. Triggers: 'how does X work in <lib>', 'why does <lib> do <thing>', 'does <lib> support X', 'what is the default for <option>', 'where is X used / who calls X', 'is there an open issue or PR about <behavior>', 'when was X added / which version introduced it', 'what changed in <repo>', 'is this a bug in <lib> or in my code', 'explain this error from <lib>', 'which package of <monorepo> implements X', 'v1 vs v2 of <lib>'. Also when the user wants cited REFERENCE DOCUMENTATION written for a library or one package: 'document this project', 'generate docs for <lib>'. Not for the user's own working repo, and not for general web research."
 license: MIT
 metadata:
-  version: 2.11.0
+  version: 2.11.1
 ---
 
 # ultradoc — answer questions from the source, not from memory
