@@ -55,11 +55,21 @@ Every page ultradoc fetches (a `--docs-url`, an auto-discovered docs page, a web
 result) goes through the same two-layer extractor:
 
 1. **Self-hosted Firecrawl** (`ultradoc firecrawl up`, keyless, `localhost:3002`).
-   Renders the page in a real browser and returns **main-content markdown**. This
-   is what strips nav/sidebar/cookie chrome out of the excerpts, and it is the
-   only way a JS-rendered docs page yields any text at all.
+   Renders the page in a real browser and returns **main-content markdown**.
 2. **The built-in HTML stripper** (zero-dep regex). Always available, always the
    fallback.
+
+**What layer 1 actually buys, measured** — 14 varied documentation pages against
+layer 2: median **235 ms → 693 ms** per page (**≈3× slower**) for **~30 % fewer**
+navigation-chrome markers overall. That average hides the shape: 3 of 13 pages
+improved clearly, 9 were unchanged, 1 got slightly worse. Where it wins it wins
+big — nav preambles of 10, 13 and 29 lines collapsing to 0 — and it wins outright
+on pages layer 2 cannot read: genuinely client-rendered SPAs, consent walls,
+anti-bot interstitials. Many framework docs sites are server-rendered, and layer
+2 handles those perfectly well.
+
+So the honest guidance is: bring the stack up when a repo's docs site is fighting
+you, not as a permanent tax on every `ask`. `--firecrawl off` opts out per run.
 
 The stack is probed once per run (2 s). Down, or not installed ⇒ layer 2, no
 note (a machine without the container is not a degraded run). Up but failing on
