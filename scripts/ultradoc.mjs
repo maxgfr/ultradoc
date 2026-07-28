@@ -15496,8 +15496,9 @@ async function qdrantSearch(ctx) {
 import { createHash as createHash4 } from "crypto";
 import { existsSync as existsSync11, mkdirSync as mkdirSync8, writeFileSync as writeFileSync8 } from "fs";
 import { join as join28 } from "path";
+var MODELS_DIR = "models";
 function modelDir() {
-  return join28(cacheRoot(), "models");
+  return join28(cacheRoot(), MODELS_DIR);
 }
 function modelPath() {
   return join28(modelDir(), "model.json");
@@ -18567,12 +18568,18 @@ function cacheStatus() {
   } catch {
   }
   for (const slug of slugs) {
-    if (slug === "compose" || slug === PAGES_DIR) continue;
+    if (slug === "compose" || slug === PAGES_DIR || slug === MODELS_DIR) continue;
     const dir = join40(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit2(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
-  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0), pagesBytes: dirSize(join40(root, PAGES_DIR)) };
+  return {
+    root,
+    repos,
+    totalBytes: repos.reduce((s, r) => s + r.bytes, 0),
+    pagesBytes: dirSize(join40(root, PAGES_DIR)),
+    modelsBytes: dirSize(join40(root, MODELS_DIR))
+  };
 }
 function cacheClean(opts) {
   const root = cacheRoot();
@@ -18585,11 +18592,12 @@ function cacheClean(opts) {
       } catch {
       }
     }
-    const pages = join40(root, PAGES_DIR);
-    if (existsSync18(pages)) {
+    for (const extra of [PAGES_DIR, MODELS_DIR]) {
+      const dir = join40(root, extra);
+      if (!existsSync18(dir)) continue;
       try {
-        rmSync3(pages, { recursive: true, force: true });
-        removed.push(PAGES_DIR);
+        rmSync3(dir, { recursive: true, force: true });
+        removed.push(extra);
       } catch {
       }
     }
@@ -18613,6 +18621,9 @@ function formatCacheStatus(s) {
   }
   if (s.repos.length > 20) lines.push(`  \u2026 +${s.repos.length - 20} more`);
   if (s.pagesBytes > 0) lines.push(`  ${PAGES_DIR}/  ${mb(s.pagesBytes)} (fetched web pages; cleared by \`cache clean --all\`)`);
+  if (s.modelsBytes > 0) {
+    lines.push(`  ${MODELS_DIR}/  ${mb(s.modelsBytes)} (static embedding model; \`cache clean --all\` drops it, \`semantic pull\` re-downloads)`);
+  }
   return lines.join("\n");
 }
 

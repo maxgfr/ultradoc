@@ -4,8 +4,9 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cacheRoot } from "../src/config.js";
-import { cacheStatus, cacheClean } from "../src/cache.js";
+import { cacheStatus, cacheClean, formatCacheStatus } from "../src/cache.js";
 import { PAGES_DIR } from "../src/sources/page-cache.js";
+import { MODELS_DIR } from "../src/index/semantic/model.js";
 
 let root: string;
 const prev = process.env.ULTRADOC_CACHE_DIR;
@@ -30,6 +31,12 @@ function fakePages(bytes = 100): void {
   const dir = join(root, PAGES_DIR);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "https_example_com.v3-firecrawl.txt"), "x".repeat(bytes));
+}
+
+function fakeModel(bytes = 100): void {
+  const dir = join(root, MODELS_DIR);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "model.json"), "x".repeat(bytes));
 }
 
 describe("cacheRoot env override", () => {
@@ -97,5 +104,32 @@ describe("cacheStatus / cacheClean", () => {
     fakePages();
     cacheClean({ repo: "sindresorhus/ky" });
     expect(existsSync(join(root, PAGES_DIR))).toBe(true);
+  });
+
+  // The static model used to be listed as a repo named "models", so `status`
+  // invented a phantom repo and `clean --all` swept a ~20 MB checksum-verified
+  // download without ever naming it.
+  it("does not mistake the model directory for a repo", () => {
+    fakeRepo("github.com-a-b");
+    fakeModel(500);
+    const s = cacheStatus();
+    expect(s.repos.map((r) => r.slug)).toEqual(["github.com-a-b"]);
+    expect(s.modelsBytes).toBeGreaterThan(0);
+    expect(s.totalBytes).toBe(100);
+    expect(formatCacheStatus(s)).toContain("semantic pull");
+  });
+
+  it("clean --all still drops the model, and names it", () => {
+    fakeModel();
+    const { removed } = cacheClean({ all: true });
+    expect(removed).toContain(MODELS_DIR);
+    expect(existsSync(join(root, MODELS_DIR))).toBe(false);
+  });
+
+  it("clean --repo leaves the model alone", () => {
+    fakeRepo("github.com-sindresorhus-ky");
+    fakeModel();
+    cacheClean({ repo: "sindresorhus/ky" });
+    expect(existsSync(join(root, MODELS_DIR))).toBe(true);
   });
 });

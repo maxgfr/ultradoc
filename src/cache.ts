@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { cacheRoot } from "./config.js";
 import { headCommit, resolveRepo } from "./clone.js";
 import { PAGES_DIR } from "./sources/page-cache.js";
+import { MODELS_DIR } from "./index/semantic/model.js";
 
 export interface CacheRepo {
   slug: string;
@@ -19,6 +20,11 @@ export interface CacheStatus {
   // so it is reported separately — but `clean --all` does clear it, otherwise
   // extracted pages would only ever expire on their 168 h TTL.
   pagesBytes: number;
+  // The downloaded static embedding model (index/semantic/model.ts). Also not a
+  // repo — it used to be listed as one, which made `status` claim a phantom
+  // repo named "models" and hid the fact that `clean --all` throws away a
+  // ~20 MB checksum-verified download that `semantic pull` must re-fetch.
+  modelsBytes: number;
 }
 
 // Recursive on-disk size of a directory (best-effort; unreadable entries skip).
@@ -64,12 +70,18 @@ export function cacheStatus(): CacheStatus {
   for (const slug of slugs) {
     // Shared cache dirs that are not repos: the materialized docker files and
     // the URL-keyed fetched-page cache (sources/page-cache.ts).
-    if (slug === "compose" || slug === PAGES_DIR) continue;
+    if (slug === "compose" || slug === PAGES_DIR || slug === MODELS_DIR) continue;
     const dir = join(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
-  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0), pagesBytes: dirSize(join(root, PAGES_DIR)) };
+  return {
+    root,
+    repos,
+    totalBytes: repos.reduce((s, r) => s + r.bytes, 0),
+    pagesBytes: dirSize(join(root, PAGES_DIR)),
+    modelsBytes: dirSize(join(root, MODELS_DIR)),
+  };
 }
 
 // Clear cached clones/indexes. `all` wipes every repo (keeps the root dir);
@@ -86,15 +98,18 @@ export function cacheClean(opts: { all?: boolean; repo?: string }): { removed: s
         /* skip */
       }
     }
-    // The page cache is keyed by URL, not by repo, so it survives every
-    // per-repo removal above. Without this, `clean --all` leaves extracted
-    // pages behind for their whole 168 h TTL — including entries produced by
-    // an extractor the user has since turned off.
-    const pages = join(root, PAGES_DIR);
-    if (existsSync(pages)) {
+    // Neither of these is a repo, so no per-repo removal above reaches them.
+    // The page cache would otherwise survive its whole 168 h TTL (including
+    // entries from an extractor since turned off); the model directory used to
+    // be swept only because `status` mistook it for a repo. `--all` means all,
+    // so both go — but they are named in `removed` so the caller can say that
+    // the ~20 MB model will be re-downloaded on the next `semantic pull`.
+    for (const extra of [PAGES_DIR, MODELS_DIR]) {
+      const dir = join(root, extra);
+      if (!existsSync(dir)) continue;
       try {
-        rmSync(pages, { recursive: true, force: true });
-        removed.push(PAGES_DIR);
+        rmSync(dir, { recursive: true, force: true });
+        removed.push(extra);
       } catch {
         /* skip */
       }
@@ -120,5 +135,8 @@ export function formatCacheStatus(s: CacheStatus): string {
   }
   if (s.repos.length > 20) lines.push(`  … +${s.repos.length - 20} more`);
   if (s.pagesBytes > 0) lines.push(`  ${PAGES_DIR}/  ${mb(s.pagesBytes)} (fetched web pages; cleared by \`cache clean --all\`)`);
+  if (s.modelsBytes > 0) {
+    lines.push(`  ${MODELS_DIR}/  ${mb(s.modelsBytes)} (static embedding model; \`cache clean --all\` drops it, \`semantic pull\` re-downloads)`);
+  }
   return lines.join("\n");
 }

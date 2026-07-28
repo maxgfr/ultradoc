@@ -17,10 +17,12 @@ too shallow, or too noisy. Flags in full: `ultradoc --help`.
 | every other drill (`code`/`issues`/`docs`/`symbol`/…) | — | ≈ free: cached clone + cached index |
 
 So: **one `ask` as the seed, then fan drills out** — the second call on a repo is
-cheap and the tenth is too. `cache status` shows what is resident and where —
-clones, plus a `pages/` entry for fetched web pages, which are keyed by URL and
-extractor rather than by repo. `cache clean --repo <url|path>` drops one repo,
-`--all` drops every repo **and** `pages/`.
+cheap and the tenth is too. `cache status` shows what is resident and where:
+clones, plus two entries that are **not** repos — `pages/` (fetched web pages,
+keyed by URL and extractor) and `models/` (the static embedding model).
+`cache clean --repo <url|path>` drops one repo and touches neither; `--all` drops
+every repo **and** both, so the ~20 MB model is re-downloaded by the next
+`semantic pull`.
 
 The corollary for context: drills **print and write nothing**. When one area is
 thin, drill it and read stdout instead of re-reading `EVIDENCE.md` — you get the

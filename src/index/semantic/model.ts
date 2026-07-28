@@ -13,8 +13,13 @@ import { httpGet } from "../../sources/fetch.js";
 // Stored under ultradoc's OWN cache root rather than the engine's per-repo
 // `.codeindex/models`, so it is pulled once per user instead of once per clone.
 
+// The shared-cache subdirectory holding the downloaded static model. Exported
+// because cache.ts must recognise it as NOT-a-repo when listing; a second
+// literal over there is how the two drift apart.
+export const MODELS_DIR = "models";
+
 export function modelDir(): string {
-  return join(cacheRoot(), "models");
+  return join(cacheRoot(), MODELS_DIR);
 }
 
 export function modelPath(): string {
