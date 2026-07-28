@@ -12,8 +12,9 @@ writes a **citation-checked** answer.
    `ultradoc check` (every citation must resolve to retrieved evidence).
 2. **Deterministic core, zero deps, no keys.** The shipped bundle has no runtime
    dependencies and needs no API keys. Heavy/optional pieces (vector search,
-   metasearch) live in local Docker containers reached over HTTP, so the bundle
-   stays pure.
+   metasearch, page extraction) live in local Docker containers reached over
+   HTTP, so the bundle stays pure — and each is a separate compose profile, so
+   starting one never drags in the others.
 3. **Honest degradation.** A host with no issues API, an unreachable semantic
    stack, a failed fetch, a capped index — each is noted in the dossier rather
    than silently pretended away. Those notes head `EVIDENCE.md` and are echoed
@@ -41,10 +42,15 @@ index/
   symbols.ts      `symbol`: one declaration, its body, its call sites, its mentions
   modules.ts      the module graph ranked by centrality (overview + doc outline)
   semantic/       the vector tiers: static model · HTTP endpoint · Qdrant/Docker + control
-  compose.ts      embedded docker-compose stack, materialized into the cache dir
+                  (control.ts drives one compose PROFILE per stack: semantic=all, firecrawl=extract)
+  compose.ts      embedded docker-compose stack + searxng settings + firecrawl env,
+                  materialized into the cache dir (byte-identical to the repo files)
 lang/             per-language symbol extractors (registry by extension)
 providers/        issue/PR APIs per host (github, gitlab, gitea, generic) + shared helpers + registry
 sources/          one module per evidence source (code, docs, issues, …) + fetch (bounded retries)
+  fetch.ts        httpGet/httpJson + htmlToText + the fetchAndExtract seam (Firecrawl → stripper)
+  firecrawl.ts    keyless self-hosted Firecrawl client: probe, /scrape, /search, pure mappers
+  page-cache.ts   the URL+extractor-keyed cache shared by the docs URL and web pages
 dossier.ts        assign ids, render EVIDENCE.md (retrieval notes FIRST), persist the run
 doc.ts            `doc`: project-type-adaptive outline → a dossier per section → DOC.todo worklist
 citations.ts      citation tokenization, strict alias resolution, claim coverage (shared by check/verify)
@@ -113,8 +119,44 @@ zero — see `providers/github.ts`.
 - `discussion` — GitHub Discussions via `gh api graphql` (skips honestly
   without the gh CLI).
 - `so` — keyless StackExchange API.
-- `web` — layered keyless discovery (SearXNG → DuckDuckGo → WebSearch hint) then
-  fetch + HTML→text extraction.
+- `web` — layered keyless discovery (SearXNG → DuckDuckGo → WebSearch hint, plus
+  the explicit-only `firecrawl` engine) then fetch + extraction.
+
+### Page extraction (`sources/fetch.ts`, `sources/firecrawl.ts`, `sources/page-cache.ts`)
+
+`fetchAndExtract(url)` is the single seam every fetched page goes through — the
+external docs URL, the auto-discovered docs URL, and each `web` result. Two
+layers, in order:
+
+1. **Firecrawl** (optional, self-hosted, keyless — compose profile `extract`,
+   `ultradoc firecrawl up`). One `POST /v2/scrape` per page with
+   `formats: ["markdown"]`, `onlyMainContent: true` and `maxAge` set to the
+   page-cache TTL, so Firecrawl can serve its own cached render. The page is
+   rendered in a real browser, which is why it beats the regex stripper on
+   nav/cookie chrome and is the only thing that extracts a JS-rendered docs page
+   at all. `/batch/scrape` is deliberately unused (async job + polling, no
+   payoff for a handful of pages).
+2. **`htmlToText`** — the zero-dep regex stripper. Always present, always the
+   fallback.
+
+The stack is probed once per process (`GET /`, 2 s; any HTTP status means up,
+only a refused connection or timeout means down), so a machine without it pays
+2 s per run at most and never a note — an uninstalled optional stack is not a
+degraded run. Firecrawl reachable **but failing on a page**, or a base pinned
+explicitly (`--firecrawl` / `ULTRADOC_FIRECRAWL`) and unreachable, both fall back
+to layer 2 *with* a dossier note naming what happened. Nothing here throws.
+
+Extracted text is cached by **URL + extractor id**, not URL alone
+(`<clone>/.ultradoc/extdocs/<slug>.v3-<extractor>.txt` for the docs URL,
+`<cache>/pages/` for web pages, TTL `ULTRADOC_EXTDOCS_TTL_HOURS`, default 168 h).
+The extractor is in the key because Firecrawl markdown and regex-stripped text
+are different documents: without it, a week-old native copy would shadow
+Firecrawl for the whole TTL after you start the stack. `webFetchUrls` shares the
+cache — a browser render is far too expensive to repeat on every run.
+
+Because the extractor decides the text, it decides the `"<url>#~<line>"` soft
+anchors in `web`/`docs` evidence: turning Firecrawl on or off invalidates the
+anchors of dossiers written under the other extractor.
 
 ### Tier 2 — semantic (`index/semantic/`, optional)
 Three keyless backends behind one cascade (`--semantic-tier auto` = endpoint →

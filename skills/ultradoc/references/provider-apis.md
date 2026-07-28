@@ -82,3 +82,21 @@ Not a git host, but retrieved the same keyless way via the StackExchange API —
 see `web-discovery.md` and `src/sources/stackoverflow.ts`. Anonymous access is
 rate-limited (page ≤ 25, ~1 req/min); an optional `STACK_PAT` env var raises the
 limit but is never required.
+
+## Firecrawl (self-hosted extraction + search)
+
+- **Not a provider** in the issues/PRs sense — a local service ultradoc speaks
+  HTTP to (`src/sources/firecrawl.ts`), started with `ultradoc firecrawl up`.
+- **Keyless.** `USE_DB_AUTHENTICATION=false` disables auth, so no
+  `Authorization` header is sent. `ULTRADOC_FIRECRAWL_KEY` exists only so the
+  same client can point at Firecrawl **Cloud**; it is never needed self-hosted.
+- **Endpoints used:** `GET /` (2 s liveness probe, memoised per run),
+  `POST {/v2|/v1}/scrape` (one page per call, `formats: ["markdown"]`,
+  `onlyMainContent: true`, `maxAge` = the page-cache TTL) and — only under
+  `--web-engine firecrawl` — `POST {/v2|/v1}/search`. `/v2` is tried first and a
+  404 pins `/v1` for the process. `/batch/scrape` is deliberately unused: it is
+  an async job that must be polled, which buys nothing for the handful of pages
+  a dossier grounds.
+- **Failure is a note, never an error.** Unreachable ⇒ the built-in HTML
+  extractor; a per-page failure ⇒ the built-in extractor plus a dossier note.
+  See `web-discovery.md`.

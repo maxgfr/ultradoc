@@ -39,6 +39,8 @@ new items without paying for the ones you already read.
 | `--refresh` | off | the cached clone is stale, or the index predates a change you know landed |
 | `--json` | off | you want `meta`/evidence as data (timings, fallbacks, notes) instead of prose |
 | `--semantic [--semantic-tier]` | off / `auto` | the question's wording will not appear in the code (`semantic-setup.md`) |
+| `--web-engine firecrawl` | `auto` | you want discovery through the self-hosted Firecrawl `/search` instead of SearXNG/DDG directly (`web-discovery.md`) |
+| `--firecrawl <url\|off>` | `$ULTRADOC_FIRECRAWL`, else `http://localhost:3002` | pointing at a non-default Firecrawl, or opting out of it for one run |
 
 ## Environment caps (`ULTRADOC_*`)
 
@@ -59,7 +61,13 @@ because a note said it bound the run — never to paper over a wording problem**
 | `ULTRADOC_MAX_CHUNKS` | 800 | chunks embedded per repo (docker tier) |
 | `ULTRADOC_EMBED_CONCURRENCY` | 4 | parallel embed requests |
 | `ULTRADOC_CACHE_DIR` | per-user cache | where clones, indexes and the static model live |
-| `ULTRADOC_EXTDOCS_TTL_HOURS` | 168 | external-docs cache freshness |
+| `ULTRADOC_EXTDOCS_TTL_HOURS` | 168 | fetched-page cache freshness (docs URLs **and** web pages); also Firecrawl's own `maxAge` |
+
+Not caps, but the two extraction knobs: `ULTRADOC_FIRECRAWL` (base URL, or `off`)
+and `ULTRADOC_FIRECRAWL_KEY` (bearer token — only for Firecrawl Cloud; the
+self-hosted stack is keyless). Pages are cached per **URL + extractor**, so
+starting `firecrawl up` takes effect on the next run instead of waiting out the
+TTL.
 
 Rate limits, not caps: `GITHUB_TOKEN` / `gh auth login` for issues, PRs and
 releases; `GITLAB_TOKEN` for GitLab; `gh` is **required** for `discussions`

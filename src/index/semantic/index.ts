@@ -28,7 +28,7 @@ import { vectorSearch, type SemanticResult } from "./vectors.js";
 
 export type { SemanticResult } from "./vectors.js";
 export { chunkText, chunkFile } from "./qdrant.js";
-export { semanticControl, type SemanticControlDeps } from "./control.js";
+export { semanticControl, firecrawlControl, type SemanticControlDeps } from "./control.js";
 export { pullStaticModel, hasStaticModel, modelPath } from "./model.js";
 
 const unavailable = (why: string): SemanticResult => ({

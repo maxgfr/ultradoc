@@ -108,6 +108,7 @@ question + repo URL
   → index deterministically: ripgrep + a per-language symbol index
       (optional Tier 2: local vector search — Qdrant + Ollama, in Docker, no key)
   → retrieve evidence: code · issues · PRs · docs · releases · git history · discussions · StackOverflow · web
+      (fetched pages extracted by the built-in stripper, or by a local Firecrawl when it's up)
   → write an evidence dossier (EVIDENCE.md + evidence.json), persisted under
       <clone>/.ultradoc/runs/ — a stable, commit-pinned knowledge base
   → the model writes a CITED answer (ANSWER.md)
@@ -141,6 +142,7 @@ Two retrieval tiers:
 | Docs | in-repo README/docs/** + an optional `--docs-url` fetch |
 | StackOverflow | the keyless StackExchange API |
 | Web | local SearXNG → DuckDuckGo scrape → your built-in WebSearch (whatever's available) |
+| Page extraction | a built-in zero-dep HTML stripper, optionally upgraded by a local self-hosted **Firecrawl** (`ultradoc firecrawl up`) — keyless, falls back automatically |
 | Semantic | a local static model (no container) or local Docker (Qdrant + Ollama) — no key, no data leaves the machine |
 
 ## Commands
@@ -157,13 +159,35 @@ Two retrieval tiers:
 | `verify --run <dir>` | Emit a claim↔evidence worklist for adversarial support-checking, then gate on refuted/unsupported claims |
 | `index` | Build/print the structural index for a repo |
 | `semantic pull` | Fetch the local static embedding model (no container needed) |
-| `semantic up\|down\|status` | Manage the optional local Docker stack |
+| `semantic up\|down\|status` | Manage the optional local Docker stack (Qdrant + Ollama + SearXNG) |
+| `firecrawl up\|down\|status` | Manage the optional self-hosted Firecrawl stack (page extraction, keyless) |
 | `cache status\|clean` | Inspect or clear the persistent clone/index cache |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
 code,issues,prs,docs,releases,history,discussions,web,so`, `--ref <branch>`
 (pin a version), `--package <name|dir>` (scope a monorepo), `--docs-url <url>`,
-`--semantic`.
+`--semantic`, `--firecrawl off`.
+
+## Cleaner text out of web & docs pages (optional)
+
+Fetched pages (a `--docs-url`, the auto-discovered official docs, a `web`
+result) are turned into text by a built-in zero-dependency HTML stripper. Start
+the optional **self-hosted Firecrawl** and they come back as main-content
+markdown rendered in a real browser instead — no nav/sidebar/cookie chrome in
+the excerpts, and JS-rendered docs pages yield text at all:
+
+```bash
+node scripts/ultradoc.mjs firecrawl up        # keyless; compose profile `extract`
+node scripts/ultradoc.mjs firecrawl down
+```
+
+Keyless by construction (`USE_DB_AUTHENTICATION=false`) and **never required**:
+with the stack down every page falls back to the built-in extractor, and a page
+Firecrawl failed on falls back with an honest dossier note. It is deliberately
+its own compose profile — ~3 GB of images that `semantic up` must not drag in.
+`--firecrawl off` (or `ULTRADOC_FIRECRAWL=off`) opts out; `--web-engine
+firecrawl` additionally routes discovery through its keyless `/search`. See
+[`docker/firecrawl/README.md`](./docker/firecrawl/README.md).
 
 ## Monorepos
 
@@ -234,7 +258,7 @@ from memory.
 
 ```bash
 pnpm install
-pnpm test            # vitest — unit + offline integration (238 tests)
+pnpm test            # vitest — unit + offline integration (454 tests)
 pnpm run typecheck
 pnpm run build       # bundles src/ → scripts/ultradoc.mjs (committed, zero-dep)
 pnpm run check:build # asserts the committed bundle is reproducible

@@ -59,6 +59,19 @@ describe("parseArgs", () => {
     expect(p.positional).toEqual(["up"]);
   });
 
+  it("collects the positional action for firecrawl", () => {
+    const p = parseArgs(["firecrawl", "up"]);
+    expect(p.command).toBe("firecrawl");
+    expect(p.positional).toEqual(["up"]);
+  });
+
+  // Unknown flags hard-fail, so --firecrawl has to be registered as a value
+  // flag or `ask --firecrawl off` would exit 1.
+  it("parses --firecrawl as a value flag", () => {
+    expect(parseArgs(["ask", "--repo", "x", "--q", "y", "--firecrawl", "off"]).values.firecrawl).toBe("off");
+    expect(parseArgs(["ask", "--repo=x", "--q=y", "--firecrawl=http://fc:3002"]).values.firecrawl).toBe("http://fc:3002");
+  });
+
   it("exits on an unknown command", () => {
     expect(trapExit(() => parseArgs(["frobnicate"])).code).toBe(1);
   });

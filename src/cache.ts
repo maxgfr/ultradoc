@@ -57,7 +57,9 @@ export function cacheStatus(): CacheStatus {
     /* no cache yet */
   }
   for (const slug of slugs) {
-    if (slug === "compose") continue; // materialized docker files, not a repo
+    // Shared cache dirs that are not repos: the materialized docker files and
+    // the URL-keyed fetched-page cache (sources/page-cache.ts).
+    if (slug === "compose" || slug === "pages") continue;
     const dir = join(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit(dir) });
   }

@@ -11,7 +11,7 @@ import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
 import { assignIds } from "./dossier.js";
-import { semanticControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
+import { semanticControl, firecrawlControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
@@ -33,6 +33,7 @@ Usage:
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc orchestrate --run <dossier-dir> [--phase drill|verify|doc] [--eco] [--list]
   ultradoc semantic up|down|status|pull
+  ultradoc firecrawl up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
 Commands:
@@ -74,6 +75,10 @@ Commands:
              NO container; 'up|down|status' drive the Docker stack (Qdrant +
              Ollama + SearXNG), which embeds real code/doc content and is the
              strongest tier — select it with --semantic-tier docker.
+  firecrawl  Manage the optional self-hosted Firecrawl stack (compose profile
+             'extract', keyless). When it is up, every fetched page (docs URL,
+             web result) is cleaned into main-content markdown instead of being
+             regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
 Options:
@@ -85,7 +90,11 @@ Options:
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
-  --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
+  --web-engine <e>     auto | searxng | ddg | claude | firecrawl    (default: auto)
+                       'firecrawl' is explicit-only; auto is unchanged
+  --firecrawl <url>    Firecrawl base URL for page extraction, or 'off'
+                                              (default: $ULTRADOC_FIRECRAWL or
+                                               http://localhost:3002)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
   --name <symbol>      For 'symbol': the declaration to resolve (Class/method
                        also works, e.g. --name HttpClient/request)
@@ -122,7 +131,9 @@ Environment (all optional, keyless by default):
   GITHUB_TOKEN               Raise the GitHub REST rate limit on the keyless fallback.
   GITLAB_TOKEN               Read private GitLab projects / lift limits (PRIVATE-TOKEN).
   ULTRADOC_CACHE_DIR         Override the clone/index cache root (persistent per-user).
-  ULTRADOC_EXTDOCS_TTL_HOURS External-docs cache freshness before refetch (default 168).
+  ULTRADOC_EXTDOCS_TTL_HOURS Fetched-page cache freshness before refetch (default 168).
+  ULTRADOC_FIRECRAWL         Firecrawl base URL, or 'off' (default http://localhost:3002).
+  ULTRADOC_FIRECRAWL_KEY     Bearer token — only for Firecrawl Cloud; self-hosted is keyless.
   ULTRADOC_MAX_FILES, …      Raise index/scan/retrieval caps (see references).
 `;
 
@@ -145,6 +156,7 @@ const COMMANDS = new Set([
   "verify",
   "orchestrate",
   "semantic",
+  "firecrawl",
   "cache",
 ]);
 const VALUE_FLAGS = new Set([
@@ -155,6 +167,7 @@ const VALUE_FLAGS = new Set([
   "ref",
   "docs-url",
   "web-engine",
+  "firecrawl",
   "url",
   "per-source",
   "out",
@@ -300,7 +313,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude"]);
+  const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude", "firecrawl"]);
   const semanticTier = oneOf<SemanticTier>("semantic-tier", p.values["semantic-tier"] ?? "auto", ["auto", "static", "endpoint", "docker", "off"]);
 
   return {
@@ -314,6 +327,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
+    firecrawl: p.values.firecrawl,
     perSource,
     json: p.bools.has("json"),
     refresh: p.bools.has("refresh"),
@@ -462,7 +476,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
           .map((u) => u.trim())
           .filter(Boolean);
         const q = opts.question || urls.join(" ");
-        const { items, notes } = await webFetchUrls(urls, q, opts.perSource);
+        const { items, notes } = await webFetchUrls(urls, q, opts.perSource, { firecrawl: opts.firecrawl });
         const evidence = assignIds([{ source: "web", items, notes }]);
         const meta: DossierMeta = {
           question: q,
@@ -715,6 +729,15 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
             : `\n  local static model: not pulled — \`ultradoc semantic pull\` enables \`--semantic\` with no container.\n`,
         );
       }
+      if (r.code !== 0) process.exit(r.code);
+      return;
+    }
+
+    case "firecrawl": {
+      // The extraction stack lives in its own compose profile ('extract'), so
+      // `semantic up` stays cheap and this one is opted into deliberately.
+      const r = firecrawlControl(p.positional[0] ?? "status");
+      process.stdout.write(r.message + "\n");
       if (r.code !== 0) process.exit(r.code);
       return;
     }

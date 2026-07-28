@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join42, resolve as resolve5 } from "path";
+import { join as join43, resolve as resolve5 } from "path";
 import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath3 } from "url";
 import { existsSync as existsSync20, realpathSync as realpathSync2 } from "fs";
 
@@ -2088,16 +2088,16 @@ async function Module2(moduleArg = {}) {
     if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
       return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
     }
-    var str2 = "";
+    var str22 = "";
     while (idx < endPtr) {
       var u0 = heapOrArray[idx++];
       if (!(u0 & 128)) {
-        str2 += String.fromCharCode(u0);
+        str22 += String.fromCharCode(u0);
         continue;
       }
       var u1 = heapOrArray[idx++] & 63;
       if ((u0 & 224) == 192) {
-        str2 += String.fromCharCode((u0 & 31) << 6 | u1);
+        str22 += String.fromCharCode((u0 & 31) << 6 | u1);
         continue;
       }
       var u2 = heapOrArray[idx++] & 63;
@@ -2107,13 +2107,13 @@ async function Module2(moduleArg = {}) {
         u0 = (u0 & 7) << 18 | u1 << 12 | u2 << 6 | heapOrArray[idx++] & 63;
       }
       if (u0 < 65536) {
-        str2 += String.fromCharCode(u0);
+        str22 += String.fromCharCode(u0);
       } else {
         var ch = u0 - 65536;
-        str2 += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
+        str22 += String.fromCharCode(55296 | ch >> 10, 56320 | ch & 1023);
       }
     }
-    return str2;
+    return str22;
   }, "UTF8ArrayToString");
   var getDylinkMetadata = /* @__PURE__ */ __name((binary2) => {
     var offset = 0;
@@ -2972,10 +2972,10 @@ async function Module2(moduleArg = {}) {
     }
     quit_(1, e);
   }, "handleException");
-  var lengthBytesUTF8 = /* @__PURE__ */ __name((str2) => {
+  var lengthBytesUTF8 = /* @__PURE__ */ __name((str22) => {
     var len = 0;
-    for (var i2 = 0; i2 < str2.length; ++i2) {
-      var c2 = str2.charCodeAt(i2);
+    for (var i2 = 0; i2 < str22.length; ++i2) {
+      var c2 = str22.charCodeAt(i2);
       if (c2 <= 127) {
         len++;
       } else if (c2 <= 2047) {
@@ -2989,12 +2989,12 @@ async function Module2(moduleArg = {}) {
     }
     return len;
   }, "lengthBytesUTF8");
-  var stringToUTF8Array = /* @__PURE__ */ __name((str2, heap, outIdx, maxBytesToWrite) => {
+  var stringToUTF8Array = /* @__PURE__ */ __name((str22, heap, outIdx, maxBytesToWrite) => {
     if (!(maxBytesToWrite > 0)) return 0;
     var startIdx = outIdx;
     var endIdx = outIdx + maxBytesToWrite - 1;
-    for (var i2 = 0; i2 < str2.length; ++i2) {
-      var u = str2.codePointAt(i2);
+    for (var i2 = 0; i2 < str22.length; ++i2) {
+      var u = str22.codePointAt(i2);
       if (u <= 127) {
         if (outIdx >= endIdx) break;
         heap[outIdx++] = u;
@@ -3019,30 +3019,30 @@ async function Module2(moduleArg = {}) {
     heap[outIdx] = 0;
     return outIdx - startIdx;
   }, "stringToUTF8Array");
-  var stringToUTF8 = /* @__PURE__ */ __name((str2, outPtr, maxBytesToWrite) => stringToUTF8Array(str2, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
+  var stringToUTF8 = /* @__PURE__ */ __name((str22, outPtr, maxBytesToWrite) => stringToUTF8Array(str22, HEAPU8, outPtr, maxBytesToWrite), "stringToUTF8");
   var stackAlloc = /* @__PURE__ */ __name((sz) => __emscripten_stack_alloc(sz), "stackAlloc");
-  var stringToUTF8OnStack = /* @__PURE__ */ __name((str2) => {
-    var size = lengthBytesUTF8(str2) + 1;
+  var stringToUTF8OnStack = /* @__PURE__ */ __name((str22) => {
+    var size = lengthBytesUTF8(str22) + 1;
     var ret = stackAlloc(size);
-    stringToUTF8(str2, ret, size);
+    stringToUTF8(str22, ret, size);
     return ret;
   }, "stringToUTF8OnStack");
   var AsciiToString = /* @__PURE__ */ __name((ptr) => {
-    var str2 = "";
+    var str22 = "";
     while (1) {
       var ch = HEAPU8[ptr++];
-      if (!ch) return str2;
-      str2 += String.fromCharCode(ch);
+      if (!ch) return str22;
+      str22 += String.fromCharCode(ch);
     }
   }, "AsciiToString");
-  var stringToUTF16 = /* @__PURE__ */ __name((str2, outPtr, maxBytesToWrite) => {
+  var stringToUTF16 = /* @__PURE__ */ __name((str22, outPtr, maxBytesToWrite) => {
     maxBytesToWrite ??= 2147483647;
     if (maxBytesToWrite < 2) return 0;
     maxBytesToWrite -= 2;
     var startPtr = outPtr;
-    var numCharsToWrite = maxBytesToWrite < str2.length * 2 ? maxBytesToWrite / 2 : str2.length;
+    var numCharsToWrite = maxBytesToWrite < str22.length * 2 ? maxBytesToWrite / 2 : str22.length;
     for (var i2 = 0; i2 < numCharsToWrite; ++i2) {
-      var codeUnit = str2.charCodeAt(i2);
+      var codeUnit = str22.charCodeAt(i2);
       LE_HEAP_STORE_I16((outPtr >> 1) * 2, codeUnit);
       outPtr += 2;
     }
@@ -5842,8 +5842,8 @@ function collectAll(root, spec, defNames, maxCalls, wantImports) {
     if (wantRefs) {
       const how = spec.imports[type];
       if (how === "string") {
-        const str2 = findFirst(node, (n) => /string/.test(n.type));
-        if (str2) addRef(str2.text.replace(/^['"]|['"]$/g, ""));
+        const str22 = findFirst(node, (n) => /string/.test(n.type));
+        if (str22) addRef(str22.text.replace(/^['"]|['"]$/g, ""));
       } else if (how === "path") {
         const name2 = node.childForFieldName("name") ?? node.childForFieldName("module_name");
         addRef((name2 ?? node).text.replace(/^(import|from)\s+/, "").split(/\s+/)[0]);
@@ -7263,9 +7263,9 @@ function resolveJs(fromRel, spec, ctx) {
       if (entry.star) {
         const starAt = entry.key.indexOf("*");
         const pre = entry.key.slice(0, starAt);
-        const post = entry.key.slice(starAt + 1);
-        if (!subKey.startsWith(pre) || !subKey.endsWith(post) || subKey.length < pre.length + post.length) continue;
-        fill = subKey.slice(pre.length, subKey.length - post.length);
+        const post2 = entry.key.slice(starAt + 1);
+        if (!subKey.startsWith(pre) || !subKey.endsWith(post2) || subKey.length < pre.length + post2.length) continue;
+        fill = subKey.slice(pre.length, subKey.length - post2.length);
       } else if (entry.key !== subKey) continue;
       for (const t of entry.targets) {
         const hit = probeEntry(fill === void 0 ? t : t.replace(/\*/g, fill));
@@ -8726,8 +8726,8 @@ function packageAt(root, dir, kind, warnings) {
   const composer = () => probeComposer(root, dir, warnings);
   const nx = () => probeNxProject(root, dir, warnings);
   const gradle = () => probeGradle(root, dir);
-  const probes = kind === "go" ? [gomod, node, cargo, maven, py, composer, nx] : kind === "uv" ? [py, node, cargo, gomod, maven, composer, nx] : kind === "composer" ? [composer, node, py, cargo, gomod, maven, nx] : kind === "gradle" ? [node, maven, cargo, gomod, py, composer, nx, gradle] : [node, cargo, gomod, maven, py, composer, nx];
-  for (const probe of probes) {
+  const probes2 = kind === "go" ? [gomod, node, cargo, maven, py, composer, nx] : kind === "uv" ? [py, node, cargo, gomod, maven, composer, nx] : kind === "composer" ? [composer, node, py, cargo, gomod, maven, nx] : kind === "gradle" ? [node, maven, cargo, gomod, py, composer, nx, gradle] : [node, cargo, gomod, maven, py, composer, nx];
+  for (const probe of probes2) {
     const pkg = probe();
     if (pkg) return pkg;
   }
@@ -11728,7 +11728,7 @@ function workerCount(requested) {
   }
   return Math.max(0, Math.min(cores - 1, 8));
 }
-async function runExtractWorker(input, post) {
+async function runExtractWorker(input, post2) {
   await ensureGrammars(input.grammarKeys);
   const ready = input.grammarKeys.filter((k) => grammarReady(k));
   const records = [];
@@ -11748,7 +11748,7 @@ async function runExtractWorker(input, post) {
     });
     records.push({ rel: job.rel, size, mtimeMs, record });
   }
-  post({ ready, records });
+  post2({ ready, records });
 }
 async function extractInParallel(jobs, grammarKeys, count, opts = {}) {
   if (count < 2 || jobs.length === 0) return void 0;
@@ -13931,6 +13931,10 @@ function envInt(name2, def, min = 1) {
   const n = Number(raw);
   return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
 }
+function envStr(name2, def) {
+  const raw = process.env[name2]?.trim();
+  return raw ? raw : def;
+}
 var LIMITS = {
   maxFiles: envInt("ULTRADOC_MAX_FILES", 2e4),
   // files walked/indexed
@@ -13956,6 +13960,9 @@ var LIMITS = {
   embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4)
   // parallel embed requests
 };
+function extdocsTtlMs() {
+  return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
+}
 var CACHE_DIR_NAME = ".ultradoc";
 function cacheRoot() {
   const override = process.env.ULTRADOC_CACHE_DIR?.trim();
@@ -14980,6 +14987,111 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 import { existsSync as existsSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync7, mkdirSync as mkdirSync7 } from "fs";
 import { join as join27, dirname as dirname5 } from "path";
 
+// src/sources/firecrawl.ts
+var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
+var EXTRACTOR_FIRECRAWL = "firecrawl";
+var EXTRACTOR_NATIVE = "native";
+var PROBE_TIMEOUT_MS = 2e3;
+var SCRAPE_TIMEOUT_MS = 3e4;
+var SCRAPE_HTTP_TIMEOUT_MS = 45e3;
+var SEARCH_TIMEOUT_MS = 2e4;
+function firecrawlBase(opts = {}) {
+  const raw = (opts.firecrawl?.trim() || envStr("ULTRADOC_FIRECRAWL", FIRECRAWL_DEFAULT_BASE)).trim();
+  if (!raw || raw.toLowerCase() === "off") return null;
+  return raw.replace(/\/+$/, "");
+}
+function firecrawlPinned(opts = {}) {
+  return Boolean(opts.firecrawl?.trim() || process.env.ULTRADOC_FIRECRAWL?.trim());
+}
+function authHeaders() {
+  const key = process.env.ULTRADOC_FIRECRAWL_KEY?.trim();
+  return key ? { authorization: `Bearer ${key}` } : {};
+}
+var probes = /* @__PURE__ */ new Map();
+var prefixes = /* @__PURE__ */ new Map();
+function probeFirecrawl(base) {
+  let p = probes.get(base);
+  if (!p) {
+    p = httpGet(`${base}/`, { timeoutMs: PROBE_TIMEOUT_MS }).then((r) => r.status > 0).catch(() => false);
+    probes.set(base, p);
+  }
+  return p;
+}
+function apiPrefix(base) {
+  return prefixes.get(base) ?? "/v2";
+}
+var str2 = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
+function mapScrapeResponse(json) {
+  if (!json || typeof json !== "object") return null;
+  const root = json;
+  if (root.success === false) return null;
+  const data = root.data;
+  if (!data || typeof data !== "object") return null;
+  const d = data;
+  const markdown = typeof d.markdown === "string" ? d.markdown.trim() : "";
+  if (!markdown) return null;
+  const meta = typeof d.metadata === "object" && d.metadata ? d.metadata : {};
+  const status = Number(meta.statusCode);
+  return {
+    markdown,
+    title: str2(meta.title),
+    sourceURL: str2(meta.sourceURL) ?? str2(meta.url),
+    statusCode: Number.isFinite(status) ? status : void 0
+  };
+}
+function mapSearchResponse(json, n) {
+  if (!json || typeof json !== "object") return [];
+  const root = json;
+  if (root.success === false) return [];
+  const data = root.data;
+  const web = Array.isArray(data) ? data : Array.isArray(data?.web) ? data.web : [];
+  const urls = [];
+  for (const row of web) {
+    const url = str2(row?.url);
+    if (url && /^https?:\/\//i.test(url) && !urls.includes(url)) urls.push(url);
+    if (urls.length >= n) break;
+  }
+  return urls;
+}
+async function post(base, path, body2, timeoutMs) {
+  const headers = authHeaders();
+  const prefix = apiPrefix(base);
+  let r = await httpJson("POST", `${base}${prefix}${path}`, body2, { timeoutMs, headers });
+  if (r.status === 404 && prefix === "/v2") {
+    prefixes.set(base, "/v1");
+    r = await httpJson("POST", `${base}/v1${path}`, body2, { timeoutMs, headers });
+  } else if (r.ok) {
+    prefixes.set(base, prefix);
+  }
+  return r;
+}
+async function scrapeViaFirecrawl(url, opts = {}) {
+  const base = firecrawlBase(opts);
+  if (!base) return { page: null, error: "firecrawl is off" };
+  const body2 = {
+    url,
+    formats: ["markdown"],
+    onlyMainContent: true,
+    blockAds: true,
+    removeBase64Images: true,
+    maxAge: extdocsTtlMs(),
+    timeout: SCRAPE_TIMEOUT_MS
+  };
+  const r = await post(base, "/scrape", body2, SCRAPE_HTTP_TIMEOUT_MS);
+  if (!r.ok) return { page: null, error: r.error ?? `HTTP ${r.status}` };
+  const page = mapScrapeResponse(r.data);
+  return page ? { page } : { page: null, error: "no markdown in the response" };
+}
+async function searchViaFirecrawl(query4, n, opts = {}) {
+  const base = firecrawlBase(opts);
+  if (!base) return null;
+  if (!await probeFirecrawl(base)) return null;
+  const r = await post(base, "/search", { query: query4, limit: n, sources: ["web"] }, SEARCH_TIMEOUT_MS);
+  if (!r.ok) return null;
+  const urls = mapSearchResponse(r.data, n);
+  return urls.length ? urls : null;
+}
+
 // src/sources/fetch.ts
 var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 var RETRY_MAX = 2;
@@ -15072,7 +15184,7 @@ async function httpJson(method, url, body2, opts = {}) {
     const res = await fetch(url, {
       method,
       signal: ctrl.signal,
-      headers: { "content-type": "application/json", accept: "application/json", "user-agent": UA },
+      headers: { "content-type": "application/json", accept: "application/json", "user-agent": UA, ...opts.headers ?? {} },
       body: body2 === void 0 ? void 0 : JSON.stringify(body2)
     });
     const text = await res.text();
@@ -15121,14 +15233,34 @@ function htmlToText(html) {
   s = s.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
   return s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
 }
-async function fetchAndExtract(url) {
+async function nativeExtract(url) {
   const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
-    return { text: "", note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
+    return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
   const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
   const text = isHtml ? htmlToText(res.body) : res.body;
-  return { text };
+  return { text, extractor: EXTRACTOR_NATIVE };
+}
+function withNote(res, note) {
+  return { ...res, note: res.note ? `${note} ${res.note}` : note };
+}
+async function fetchAndExtract(url, opts = {}) {
+  const base = firecrawlBase(opts);
+  if (base && /^https?:\/\//i.test(url)) {
+    if (await probeFirecrawl(base)) {
+      const { page, error } = await scrapeViaFirecrawl(url, opts);
+      if (page) return { text: page.markdown, extractor: EXTRACTOR_FIRECRAWL };
+      return withNote(await nativeExtract(url), `Firecrawl could not extract ${url} (${error}); used the built-in HTML extractor instead.`);
+    }
+    if (firecrawlPinned(opts)) {
+      return withNote(
+        await nativeExtract(url),
+        `Firecrawl unreachable at ${base} (start it with \`ultradoc firecrawl up\`); used the built-in HTML extractor.`
+      );
+    }
+  }
+  return nativeExtract(url);
 }
 function nearestHeading(lines, anchor) {
   let heading;
@@ -15517,21 +15649,23 @@ async function vectorSearch(ctx, enc) {
 // src/index/compose.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync10, readFileSync as readFileSync13, writeFileSync as writeFileSync10 } from "fs";
 import { dirname as dirname7, join as join30 } from "path";
-var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode and web
-# search. Start it with \`ultradoc semantic up\` (or \`docker compose --profile all
-# up -d\`). The published bundle stays dependency-free \u2014 it only speaks HTTP to
-# these containers on localhost; nothing here is required for Tier-1 retrieval.
+var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode, web
+# search and content extraction. Start it with \`ultradoc semantic up\` (or
+# \`docker compose --profile all up -d\`). The published bundle stays
+# dependency-free \u2014 it only speaks HTTP to these containers on localhost;
+# nothing here is required for Tier-1 retrieval.
 #
 # Profiles let you start subsets:
 #   --profile semantic  \u2192 qdrant + ollama (vector search)
 #   --profile search    \u2192 searxng (web discovery)
-#   --profile all       \u2192 everything
+#   --profile all       \u2192 everything above
+#   --profile extract   \u2192 firecrawl (content cleaning; \`ultradoc firecrawl up\`)
 name: ultradoc
 
 services:
   # Vector database \u2014 Apache-2.0, self-hosted, no key.
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     container_name: ultradoc-qdrant
     ports:
       - "6333:6333"
@@ -15539,12 +15673,19 @@ services:
       - ultradoc_qdrant:/qdrant/storage
     restart: unless-stopped
     profiles: ["semantic", "all"]
+    healthcheck:
+      # The image ships no curl/wget \u2014 probe the REST port over bash's /dev/tcp.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # Local embedding server \u2014 no key, no data leaves the machine. Pull the model
   # once: \`docker compose exec ollama ollama pull nomic-embed-text\`
   # (\`ultradoc semantic up\` does this for you).
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.30.7
     container_name: ultradoc-ollama
     ports:
       - "11434:11434"
@@ -15552,11 +15693,18 @@ services:
       - ultradoc_ollama:/root/.ollama
     restart: unless-stopped
     profiles: ["semantic", "all"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # Self-hosted metasearch for keyless web discovery. JSON output is enabled in
   # docker/searxng/settings.yml so the engine can be queried programmatically.
+  # Also backs Firecrawl's keyless /search through SEARXNG_ENDPOINT.
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2026.6.11-a1490676e
     container_name: ultradoc-searxng
     ports:
       - "8888:8080"
@@ -15566,19 +15714,136 @@ services:
       - ./docker/searxng:/etc/searxng:rw
     restart: unless-stopped
     profiles: ["search", "all"]
+    healthcheck:
+      # busybox wget is in the image; /healthz answers on the container port.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Self-hosted Firecrawl \u2014 keyless content cleaning. Fetches a page with a real
+  # browser and returns main-content markdown, which beats the built-in regex
+  # HTML stripper on nav/cookie chrome and is the only way JS-rendered pages
+  # yield any text at all. Keyless because USE_DB_AUTHENTICATION=false; see
+  # docker/firecrawl/firecrawl.env for the tunables.
+  #
+  # Deliberately NOT in the "all" profile: it is ~3 GB of images and 5
+  # containers, and \`ultradoc semantic up\` must stay cheap.
+  #
+  #   docker compose --profile search --profile extract up -d --wait
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:2.10.5@sha256:8ce1af201332e1de046d70d5d516fbfe7f0f6229820d271d880873eeca531ea6
+    container_name: ultradoc-firecrawl
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./docker/firecrawl/firecrawl.env
+    environment:
+      # Wiring lives here; tunables live in the env file above.
+      - HOST=0.0.0.0
+      - PORT=3002
+      - ENV=local
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000/scrape
+      - POSTGRES_HOST=firecrawl-postgres
+      - NUQ_RABBITMQ_URL=amqp://firecrawl-rabbitmq:5672
+      # Keeps /search keyless by delegating to the searxng service above.
+      # Unreachable when the \`search\` profile is down \u2014 Firecrawl then falls
+      # back to DuckDuckGo on its own.
+      - SEARXNG_ENDPOINT=http://searxng:8080
+    command: node dist/src/harness.js --start-docker
+    depends_on:
+      firecrawl-redis:
+        condition: service_started
+      firecrawl-playwright:
+        condition: service_started
+      firecrawl-postgres:
+        condition: service_started
+      firecrawl-rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: ["extract"]
+    # The image ships no curl/wget, but it is a Node image \u2014 probe with node.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    # Trimmed for a 16 GB laptop; upstream asks for 4 CPU / 8 GB. Measured at
+    # 2.3 GB steady under 5 concurrent scrapes, so 3 GB was too tight a cap \u2014
+    # MAX_RAM=0.8 in the env file makes Firecrawl self-throttle at ~3.2 GB.
+    cpus: 2.0
+    mem_limit: 4g
+    memswap_limit: 4g
+
+  # Headless-browser sidecar \u2014 this is what makes JS-rendered pages extractable.
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest@sha256:8c50add7293201e575110e6c7489fa383a9dfc46f168936526a458e06ffc5c28
+    container_name: ultradoc-firecrawl-playwright
+    environment:
+      - PORT=3000
+      - BLOCK_MEDIA=true
+      - MAX_CONCURRENT_PAGES=4
+    restart: unless-stopped
+    profiles: ["extract"]
+    cpus: 1.5
+    mem_limit: 2g
+    memswap_limit: 2g
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+
+  firecrawl-redis:
+    image: redis:alpine
+    container_name: ultradoc-firecrawl-redis
+    command: redis-server --bind 0.0.0.0
+    restart: unless-stopped
+    profiles: ["extract"]
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    container_name: ultradoc-firecrawl-rabbitmq
+    restart: unless-stopped
+    profiles: ["extract"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  firecrawl-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres:latest@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
+    container_name: ultradoc-firecrawl-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - ultradoc_firecrawl_pg:/var/lib/postgresql/data
+    restart: unless-stopped
+    profiles: ["extract"]
 
 volumes:
   ultradoc_qdrant:
   ultradoc_ollama:
+  ultradoc_firecrawl_pg:
 `;
-var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for ultradoc's keyless web discovery. The important
-# bit is enabling the JSON output format so \`ultradoc web\` can query it
-# programmatically (\`/search?format=json\`). Change the secret_key for anything
-# beyond local use.
+var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for keyless, self-hosted web discovery. The important
+# bit is enabling the JSON output format so the CLI can query it
+# programmatically (\`/search?format=json\`) \u2014 most PUBLIC instances disable it,
+# which is why a local one ships here.
+#
+# Kept byte-identical across maxgfr/ultradoc, maxgfr/ultrasearch and
+# maxgfr/construct so one container can serve all three.
 use_default_settings: true
 
 server:
-  secret_key: "ultradoc-dev-secret-change-me"
+  # Override with a real random secret if you expose this beyond localhost.
+  secret_key: "searxng-local-dev-change-me"
+  # The limiter/bot-detection middleware answers 403 to format=json requests.
   limiter: false
   image_proxy: false
 
@@ -15589,12 +15854,45 @@ search:
     - html
     - json
 `;
+var FIRECRAWL_ENV = `# Tunables for the self-hosted Firecrawl stack (docker compose --profile extract).
+# Wiring (hostnames, ports, SEARXNG_ENDPOINT) lives in docker-compose.yml and
+# overrides anything set here.
+
+# THIS is what makes the API keyless. Turning it on would require a Supabase
+# project; there is no reason to for a localhost stack.
+USE_DB_AUTHENTICATION=false
+
+# Postgres credentials for the bundled nuq-postgres container. It is not
+# published on a host port, so these never leave the compose network.
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=postgres
+POSTGRES_PORT=5432
+
+# Admin queue dashboard at http://localhost:3002/admin/CHANGEME/queues
+BULL_AUTH_KEY=CHANGEME
+
+# Concurrency, trimmed for a laptop. Upstream defaults are 8/5/5/10 and assume
+# a 4-CPU / 8-GB box; these keep the stack near ~4 GB total.
+NUM_WORKERS_PER_QUEUE=2
+MAX_CONCURRENT_JOBS=3
+BROWSER_POOL_SIZE=2
+CRAWL_CONCURRENT_REQUESTS=4
+
+# Back off before the host runs out of headroom.
+MAX_CPU=0.8
+MAX_RAM=0.8
+
+LOGGING_LEVEL=info
+`;
 function ensureComposeMaterialized() {
   const base = join30(cacheRoot(), "compose");
   const composePath = join30(base, "docker-compose.yml");
   const settingsPath = join30(base, "docker", "searxng", "settings.yml");
+  const firecrawlEnvPath = join30(base, "docker", "firecrawl", "firecrawl.env");
   writeIfChanged(composePath, COMPOSE_YAML);
   writeIfChanged(settingsPath, SEARXNG_SETTINGS_YAML);
+  writeIfChanged(firecrawlEnvPath, FIRECRAWL_ENV);
   return composePath;
 }
 function writeIfChanged(path, content) {
@@ -15615,44 +15913,67 @@ function dockerPullTimeoutMs() {
   const raw = Number(process.env.ULTRADOC_DOCKER_PULL_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DOCKER_PULL_TIMEOUT_MS;
 }
-function semanticControl(action, deps = {}) {
+var SEMANTIC_STACK = {
+  command: "semantic",
+  profile: "all",
+  summary: "stack is up (Qdrant :6333 \xB7 Ollama :11434 \xB7 SearXNG :8888).",
+  postUp: (file, run3) => {
+    const pull = run3("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 6e5 });
+    return [
+      pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
+      '  use:    ultradoc ask --repo <url> --q "..." --semantic'
+    ];
+  }
+};
+var FIRECRAWL_STACK = {
+  command: "firecrawl",
+  profile: "extract",
+  summary: "stack is up (Firecrawl :3002 \xB7 playwright \xB7 redis \xB7 rabbitmq \xB7 postgres).",
+  postUp: () => [
+    "  keyless: USE_DB_AUTHENTICATION=false \u2014 no API key is sent or needed.",
+    "  use:     fetched pages are now cleaned by Firecrawl; --firecrawl off opts out.",
+    '  search:  ultradoc web --repo <url> --q "..." --web-engine firecrawl'
+  ]
+};
+function composeControl(action, stack, deps = {}) {
   const run3 = deps.run ?? sh2;
   const has = deps.has ?? have2;
+  const tag = `ultradoc ${stack.command}`;
   if (!["up", "down", "status"].includes(action)) {
-    return { message: `ultradoc semantic: unknown action "${action}" (use: up | down | status)`, code: 1 };
+    return { message: `${tag}: unknown action "${action}" (use: up | down | status)`, code: 1 };
   }
   if (!has("docker")) {
-    return { message: "ultradoc semantic: docker not found. Install Docker, then retry. See references/semantic-setup.md.", code: 1 };
+    return { message: `${tag}: docker not found. Install Docker, then retry. See references/semantic-setup.md.`, code: 1 };
   }
   const file = composeFile();
   if (action === "down") {
-    const r = run3("docker", ["compose", "-f", file, "--profile", "all", "down"], { timeoutMs: 12e4 });
-    return { message: r.ok ? "ultradoc semantic: stack stopped." : `ultradoc semantic: down failed.
+    const r = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "down"], { timeoutMs: 12e4 });
+    return { message: r.ok ? `${tag}: stack stopped.` : `${tag}: down failed.
 ${r.stderr}`, code: r.ok ? 0 : 1 };
   }
   if (action === "status") {
-    const r = run3("docker", ["compose", "-f", file, "ps"], { timeoutMs: 3e4 });
-    return { message: r.ok ? r.stdout || "ultradoc semantic: no services running." : `ultradoc semantic: status failed.
+    const r = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "ps"], { timeoutMs: 3e4 });
+    return { message: r.ok ? r.stdout || `${tag}: no services running.` : `${tag}: status failed.
 ${r.stderr}`, code: 0 };
   }
-  const imagePull = run3("docker", ["compose", "-f", file, "--profile", "all", "pull"], { timeoutMs: dockerPullTimeoutMs() });
+  const imagePull = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "pull"], { timeoutMs: dockerPullTimeoutMs() });
   if (!imagePull.ok) {
     return {
-      message: `ultradoc semantic: pulling the stack images failed (large images can be slow \u2014 raise ULTRADOC_DOCKER_PULL_TIMEOUT_MS, currently ${dockerPullTimeoutMs()}ms).
+      message: `${tag}: pulling the stack images failed (large images can be slow \u2014 raise ULTRADOC_DOCKER_PULL_TIMEOUT_MS, currently ${dockerPullTimeoutMs()}ms).
 ${imagePull.stderr}`,
       code: 1
     };
   }
-  const up = run3("docker", ["compose", "-f", file, "--profile", "all", "up", "-d"], { timeoutMs: 3e5 });
-  if (!up.ok) return { message: `ultradoc semantic: up failed.
+  const up = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "up", "-d", "--wait"], { timeoutMs: 3e5 });
+  if (!up.ok) return { message: `${tag}: up failed.
 ${up.stderr}`, code: 1 };
-  const pull = run3("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 6e5 });
-  const lines = [
-    "ultradoc semantic: stack is up (Qdrant :6333 \xB7 Ollama :11434 \xB7 SearXNG :8888).",
-    pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
-    '  use:    ultradoc ask --repo <url> --q "..." --semantic'
-  ];
-  return { message: lines.join("\n"), code: 0 };
+  return { message: [`${tag}: ${stack.summary}`, ...stack.postUp?.(file, run3) ?? []].join("\n"), code: 0 };
+}
+function semanticControl(action, deps = {}) {
+  return composeControl(action, SEMANTIC_STACK, deps);
+}
+function firecrawlControl(action, deps = {}) {
+  return composeControl(action, FIRECRAWL_STACK, deps);
 }
 
 // src/index/semantic/index.ts
@@ -15731,16 +16052,26 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
+import { join as join32 } from "path";
+
+// src/sources/page-cache.ts
+import { existsSync as existsSync14, mkdirSync as mkdirSync11, readFileSync as readFileSync14, statSync as statSync8, writeFileSync as writeFileSync11 } from "fs";
 import { join as join31 } from "path";
-import { existsSync as existsSync14, readFileSync as readFileSync14, statSync as statSync8, writeFileSync as writeFileSync11, mkdirSync as mkdirSync11 } from "fs";
-var DOCS_ENTRY_BOOST = 1.2;
-var DOCS_ROOT_BOOST = 1.5;
-function extdocsTtlMs() {
-  return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
+var CACHE_GEN = "v3";
+function pageCacheFile(dir, url, extractor) {
+  return join31(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
 }
-async function getDocText(repoDir, url) {
-  const dir = join31(repoDir, ".ultradoc", "extdocs");
-  const file = join31(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
+function webPageCacheDir() {
+  return join31(cacheRoot(), "pages");
+}
+async function plannedExtractor(opts = {}) {
+  const base = firecrawlBase(opts);
+  if (!base) return EXTRACTOR_NATIVE;
+  return await probeFirecrawl(base) ? EXTRACTOR_FIRECRAWL : EXTRACTOR_NATIVE;
+}
+async function cachedPageText(dir, url, opts = {}) {
+  const planned = await plannedExtractor(opts);
+  const file = pageCacheFile(dir, url, planned);
   let cached;
   let fresh = false;
   try {
@@ -15750,18 +16081,26 @@ async function getDocText(repoDir, url) {
     }
   } catch {
   }
-  if (cached !== void 0 && fresh) return { text: cached };
-  const res = await fetchAndExtract(url);
+  if (cached !== void 0 && fresh) return { text: cached, extractor: planned };
+  const res = await fetchAndExtract(url, opts);
   if (res.text) {
+    const out2 = res.extractor === planned ? file : pageCacheFile(dir, url, res.extractor);
     try {
       mkdirSync11(dir, { recursive: true });
-      writeFileSync11(file, res.text);
+      writeFileSync11(out2, res.text);
     } catch {
     }
     return res;
   }
-  if (cached !== void 0) return { text: cached, note: `served a stale cached copy of ${url} (refetch failed)` };
+  if (cached !== void 0) return { text: cached, extractor: planned, note: `served a stale cached copy of ${url} (refetch failed)` };
   return res;
+}
+
+// src/sources/docs.ts
+var DOCS_ENTRY_BOOST = 1.2;
+var DOCS_ROOT_BOOST = 1.5;
+async function getDocText(repoDir, url, opts = {}) {
+  return cachedPageText(join32(repoDir, ".ultradoc", "extdocs"), url, opts);
 }
 async function docsSource(ctx) {
   const notes = [];
@@ -15771,7 +16110,7 @@ async function docsSource(ctx) {
   for (const rel of ctx.index.docFiles) {
     if (ctx.scopeDir && !rel.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel)) continue;
-    const content = readText(join31(ctx.repoDir, rel));
+    const content = readText(join32(ctx.repoDir, rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -15809,7 +16148,7 @@ async function docsSource(ctx) {
   const docsUrl = ctx.options.docsUrl ?? ctx.index.docsUrl;
   if (docsUrl) {
     const discovered = !ctx.options.docsUrl;
-    const { text, note } = await getDocText(ctx.repoDir, docsUrl);
+    const { text, note } = await getDocText(ctx.repoDir, docsUrl, { firecrawl: ctx.options.firecrawl });
     if (note) notes.push(note);
     if (text) {
       const label = discovered ? `Official docs (auto-discovered) \u2014 ${docsUrl}` : `Official docs \u2014 ${docsUrl}`;
@@ -15824,7 +16163,7 @@ async function docsSource(ctx) {
 }
 
 // src/sources/releases.ts
-import { join as join32 } from "path";
+import { join as join33 } from "path";
 
 // src/providers/shared.ts
 function ghAuthHeaders() {
@@ -15961,7 +16300,7 @@ async function releasesSource(ctx) {
     (rel) => CHANGELOG_RE.test(rel) && (!ctx.scopeDir || rel.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel)
   );
   for (const rel of changelogs) {
-    const content = readText(join32(ctx.repoDir, rel));
+    const content = readText(join33(ctx.repoDir, rel));
     if (!content) continue;
     const scored = changelogSections(rel, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
     for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
@@ -16474,8 +16813,13 @@ async function viaDuckDuckGo(query4, n) {
   const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
 }
-async function discover(query4, engine, n) {
+async function discover(query4, engine, n, opts = {}) {
   const notes = [];
+  if (engine === "firecrawl") {
+    const f = await searchViaFirecrawl(query4, n, opts);
+    if (f?.length) return { urls: f, via: "firecrawl", notes };
+    notes.push(`Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
+  }
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query4, n);
     if (s?.length) return { urls: s, via: "searxng", notes };
@@ -16493,11 +16837,11 @@ async function discover(query4, engine, n) {
   }
   return { urls: [], via: "none", notes };
 }
-async function webFetchUrls(urls, question, perSource) {
+async function webFetchUrls(urls, question, perSource, opts = {}) {
   const items = [];
   const notes = [];
   for (const url of urls.slice(0, Math.max(1, Math.ceil(perSource / 2)))) {
-    const { text, note } = await fetchAndExtract(url);
+    const { text, note } = await cachedPageText(webPageCacheDir(), url, opts);
     if (note) notes.push(note);
     if (!text) continue;
     const ex = excerptsFromText(text, url, `Web \u2014 ${url}`, "web", question, perSource);
@@ -16522,9 +16866,10 @@ async function webSource(ctx) {
   const project = ctx.repoRef.repo ?? "";
   const query4 = `${project} ${kws}`.trim();
   if (!query4) return { source: "web", items: [], notes: ["No keywords to search the web."] };
-  const { urls, via, notes } = await discover(query4, ctx.options.webEngine, ctx.options.perSource);
+  const fc = { firecrawl: ctx.options.firecrawl };
+  const { urls, via, notes } = await discover(query4, ctx.options.webEngine, ctx.options.perSource, fc);
   if (urls.length === 0) return { source: "web", items: [], notes };
-  const fetched = await webFetchUrls(urls, ctx.options.question, ctx.options.perSource);
+  const fetched = await webFetchUrls(urls, ctx.options.question, ctx.options.perSource, fc);
   return {
     source: "web",
     items: fetched.items,
@@ -16640,7 +16985,7 @@ async function runSources(ctx) {
 
 // src/drill-plan.ts
 import { writeFileSync as writeFileSync12 } from "fs";
-import { join as join33 } from "path";
+import { join as join34 } from "path";
 var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var MAX_DRILL_CELLS = 24;
 var MAX_SYMBOL_CELLS = 3;
@@ -16703,7 +17048,7 @@ function buildDrillPlan(opts) {
   };
 }
 function writeDrillPlan(dir, plan) {
-  const p = join33(dir, "drill-plan.json");
+  const p = join34(dir, "drill-plan.json");
   writeFileSync12(p, JSON.stringify(plan, null, 2));
   return p;
 }
@@ -16777,11 +17122,11 @@ async function runSingleSource(options, kind) {
 
 // src/doc.ts
 import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync14 } from "fs";
-import { basename as basename5, join as join35 } from "path";
+import { basename as basename5, join as join36 } from "path";
 
 // src/overview.ts
 import { existsSync as existsSync15, mkdirSync as mkdirSync12, readFileSync as readFileSync15, writeFileSync as writeFileSync13 } from "fs";
-import { basename as basename4, dirname as dirname8, join as join34 } from "path";
+import { basename as basename4, dirname as dirname8, join as join35 } from "path";
 
 // src/index/modules.ts
 var NOISE_DIR = /(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e|docs?|website|site)(\/|$)/i;
@@ -16821,12 +17166,12 @@ function coreModules(repoDir) {
 }
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join34(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join35(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join34(repoDir, readme));
+  const text = readText(join35(repoDir, readme));
   const out2 = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -16989,7 +17334,7 @@ function detectProjectTraits(repoDir, index) {
   const bases = new Map(index.configFiles.map((f) => [f.split("/").pop().toLowerCase(), f]));
   const readCfg = (base) => {
     const rel = bases.get(base);
-    return rel ? readText(join35(repoDir, rel)) : "";
+    return rel ? readText(join36(repoDir, rel)) : "";
   };
   let isCli = false;
   const pkg = readCfg("package.json");
@@ -17103,8 +17448,8 @@ function renderDocTodo(plan, evidence) {
   return out2.join("\n");
 }
 function defaultDocDir(repoDir, scopePkg) {
-  const base = join35(indexDir(repoDir), "doc");
-  return scopePkg ? join35(base, slugify2(scopePkg.name)) : base;
+  const base = join36(indexDir(repoDir), "doc");
+  return scopePkg ? join36(base, slugify2(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
@@ -17163,11 +17508,11 @@ async function runDoc(options, opts = {}) {
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
   mkdirSync13(dir, { recursive: true });
-  const evidenceJson = join35(dir, "evidence.json");
-  const evidenceMd = join35(dir, "EVIDENCE.md");
-  const planJson = join35(dir, "DOC.plan.json");
-  const todoMd = join35(dir, "DOC.todo.md");
-  const metaJson = join35(dir, "meta.json");
+  const evidenceJson = join36(dir, "evidence.json");
+  const evidenceMd = join36(dir, "EVIDENCE.md");
+  const planJson = join36(dir, "DOC.plan.json");
+  const todoMd = join36(dir, "DOC.todo.md");
+  const metaJson = join36(dir, "meta.json");
   writeFileSync14(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync14(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync14(planJson, JSON.stringify(plan, null, 2));
@@ -17176,7 +17521,7 @@ async function runDoc(options, opts = {}) {
   let architecturePath;
   if (graph) {
     try {
-      architecturePath = join35(dir, "ARCHITECTURE.mmd");
+      architecturePath = join36(dir, "ARCHITECTURE.mmd");
       writeFileSync14(architecturePath, graph.mermaid());
     } catch {
       architecturePath = void 0;
@@ -17193,7 +17538,7 @@ async function runDoc(options, opts = {}) {
 // src/check.ts
 import { createHash as createHash5 } from "crypto";
 import { existsSync as existsSync17, readFileSync as readFileSync17 } from "fs";
-import { basename as basename6, dirname as dirname9, join as join37, resolve as resolvePath, sep as sep3 } from "path";
+import { basename as basename6, dirname as dirname9, join as join38, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
 var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
@@ -17438,7 +17783,7 @@ function claimCoverage(text, _evidence) {
 
 // src/verify.ts
 import { existsSync as existsSync16, readFileSync as readFileSync16, writeFileSync as writeFileSync15 } from "fs";
-import { join as join36 } from "path";
+import { join as join37 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -17452,7 +17797,7 @@ function claimStrings(text) {
   return out2;
 }
 function buildWorklist(dir, opts = {}) {
-  const evidencePath = join36(dir, "evidence.json");
+  const evidencePath = join37(dir, "evidence.json");
   if (!existsSync16(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
   const evidence = JSON.parse(readFileSync16(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
@@ -17497,8 +17842,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims: worklist.uncitedClaims
   };
-  writeFileSync15(join36(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync15(join36(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync15(join37(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync15(join37(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -17573,12 +17918,12 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync15(join36(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
+  writeFileSync15(join37(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
   try {
-    const todoPath = join36(dir, "VERIFY.todo.json");
+    const todoPath = join37(dir, "VERIFY.todo.json");
     if (!existsSync16(todoPath)) return null;
     const todo = JSON.parse(readFileSync16(todoPath, "utf8"));
     if (!Array.isArray(todo?.pairs)) return null;
@@ -17590,7 +17935,7 @@ function expectedClaims(dir) {
 function answerSignatureFor(dir) {
   try {
     const answerPath = resolveAnswerPath(dir);
-    const evidencePath = join36(dir, "evidence.json");
+    const evidencePath = join37(dir, "evidence.json");
     if (!answerPath || !existsSync16(evidencePath)) return null;
     const evidence = JSON.parse(readFileSync16(evidencePath, "utf8"));
     return answerClaimSignature(readFileSync16(answerPath, "utf8"), evidence);
@@ -17651,11 +17996,11 @@ function formatVerifyReport(r) {
 var COVERAGE_MIN_DEFAULT = 0.7;
 function resolveAnswerPath(dir, answerFile) {
   if (answerFile) {
-    const p = join37(dir, answerFile);
+    const p = join38(dir, answerFile);
     return existsSync17(p) ? p : null;
   }
   for (const name2 of ["ANSWER.md", "DOC.md"]) {
-    const p = join37(dir, name2);
+    const p = join38(dir, name2);
     if (existsSync17(p)) return p;
   }
   return null;
@@ -17676,7 +18021,7 @@ var REVALIDATION = {
 function pinnedClone(dir) {
   const pin = { headMatches: false };
   try {
-    const metaPath = join37(dir, "meta.json");
+    const metaPath = join38(dir, "meta.json");
     if (!existsSync17(metaPath)) return pin;
     const meta = JSON.parse(readFileSync17(metaPath, "utf8"));
     pin.meta = meta;
@@ -17819,7 +18164,7 @@ function headingsOf(answer) {
 }
 function missingDocSections(dir, answerPath, answer) {
   if (basename6(answerPath) !== "DOC.md") return void 0;
-  const planPath = join37(dir, "DOC.plan.json");
+  const planPath = join38(dir, "DOC.plan.json");
   if (!existsSync17(planPath)) return void 0;
   let plan;
   try {
@@ -17855,7 +18200,7 @@ function answerClaimSignature(answer, evidence) {
   return createHash5("sha256").update(parts2.join("\n")).digest("hex").slice(0, 32);
 }
 function applySemantic(dir, result, answer, evidence, allowUnverified = false, answerFile) {
-  const p = join37(dir, "VERIFY.json");
+  const p = join38(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
     if (allowUnverified) {
@@ -17926,7 +18271,7 @@ function checkRun(dir, opts = {}) {
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
-  const evidencePath = join37(dir, "evidence.json");
+  const evidencePath = join38(dir, "evidence.json");
   if (!existsSync17(evidencePath)) {
     return {
       ok: false,
@@ -18079,7 +18424,7 @@ function formatCheckReport(r, dir) {
 }
 
 // src/index/symbols.ts
-import { join as join38 } from "path";
+import { join as join39 } from "path";
 var DEF_SCORE = 100;
 var CALL_SCORE = 60;
 var UNCORROBORATED = "unique-name";
@@ -18093,7 +18438,7 @@ function symbolEvidence(ctx, name2, opts = {}) {
   const lineCache = /* @__PURE__ */ new Map();
   const linesOf = (rel) => {
     if (!lineCache.has(rel)) {
-      const content = readText(join38(ctx.repoDir, rel));
+      const content = readText(join39(ctx.repoDir, rel));
       lineCache.set(rel, content ? content.split(/\r?\n/) : void 0);
     }
     return lineCache.get(rel);
@@ -18184,7 +18529,7 @@ function symbolEvidence(ctx, name2, opts = {}) {
 
 // src/cache.ts
 import { existsSync as existsSync18, readdirSync as readdirSync5, rmSync as rmSync3, statSync as statSync9 } from "fs";
-import { join as join39 } from "path";
+import { join as join40 } from "path";
 function dirSize(dir) {
   let total = 0;
   let entries;
@@ -18194,7 +18539,7 @@ function dirSize(dir) {
     return 0;
   }
   for (const name2 of entries) {
-    const p = join39(dir, name2);
+    const p = join40(dir, name2);
     let st;
     try {
       st = statSync9(p);
@@ -18213,7 +18558,7 @@ function cacheStatus() {
   try {
     slugs = readdirSync5(root).filter((n) => {
       try {
-        return statSync9(join39(root, n)).isDirectory();
+        return statSync9(join40(root, n)).isDirectory();
       } catch {
         return false;
       }
@@ -18221,8 +18566,8 @@ function cacheStatus() {
   } catch {
   }
   for (const slug of slugs) {
-    if (slug === "compose") continue;
-    const dir = join39(root, slug);
+    if (slug === "compose" || slug === "pages") continue;
+    const dir = join40(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit2(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
@@ -18243,7 +18588,7 @@ function cacheClean(opts) {
   }
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
-    const dir = join39(root, slug);
+    const dir = join40(root, slug);
     if (existsSync18(dir)) {
       rmSync3(dir, { recursive: true, force: true });
       removed.push(slug);
@@ -18263,10 +18608,10 @@ function formatCacheStatus(s) {
 
 // src/orchestrate.ts
 import { existsSync as existsSync19, mkdirSync as mkdirSync14, readFileSync as readFileSync18, writeFileSync as writeFileSync16 } from "fs";
-import { join as join41, resolve as resolve4 } from "path";
+import { join as join42, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
-import { join as join40 } from "path";
+import { join as join41 } from "path";
 var ONE_WRITER_FOOTER = `
 ## Return, don't write
 
@@ -18370,7 +18715,7 @@ function toBatches(ids, batchSize) {
 }
 function phaseWorkflowScript(ph, runAbs, engineAbs, batchSize) {
   const spec = phaseSpec(ph.name);
-  const scriptPath = join40(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
+  const scriptPath = join41(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
   const meta = { name: `ultradoc-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
   return [
     `export const meta = ${JSON.stringify(meta)}`,
@@ -18414,7 +18759,7 @@ function agentContracts(runAbs, engineAbs) {
 
 You run ONE slice of an ultradoc retrieval fan-out \u2014 a few drill cells, each one stateless, read-only CLI call against the cached clone+index. Recall is the first lever of a grounded answer: your cells are exactly the query-variant \xD7 source pairs the seed \`ask\` did not cover.
 
-Worklist: \`${join40(runAbs, "drill-plan.json")}\` (an object with \`question\`, \`repo\`, optional \`ref\`/\`pkg\`, and \`cells[]\`; each cell has \`id\`, \`variant\`, \`query\`, \`source\`). Handle ONLY the cells whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join41(runAbs, "drill-plan.json")}\` (an object with \`question\`, \`repo\`, optional \`ref\`/\`pkg\`, and \`cells[]\`; each cell has \`id\`, \`variant\`, \`query\`, \`source\`). Handle ONLY the cells whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your cells:
 
@@ -18434,7 +18779,7 @@ ${footer}`,
 
 You are an adversarial skeptic verifying that an ultradoc answer's citations actually SUPPORT its claims. Default to disbelief: the cited evidence must back the claim, not merely mention its keywords.
 
-Worklist: \`${join40(runAbs, "VERIFY.todo.json")}\` (an object with \`pairs[]\`; each pair has \`claimId\`, \`claim\`, \`evidenceId\`, \`ref\`, \`source\`, \`digest\`, and sometimes \`crossCheck: true\`). Handle ONLY the pairs whose \`<claimId>:<evidenceId>\` id is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join41(runAbs, "VERIFY.todo.json")}\` (an object with \`pairs[]\`; each pair has \`claimId\`, \`claim\`, \`evidenceId\`, \`ref\`, \`source\`, \`digest\`, and sometimes \`crossCheck: true\`). Handle ONLY the pairs whose \`<claimId>:<evidenceId>\` id is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your pairs:
 
@@ -18454,11 +18799,11 @@ ${footer}`,
 
 You draft section(s) of an ultradoc grounded reference doc. The engine already retrieved and merged the evidence; your job is cited prose, not new retrieval.
 
-Worklist: \`${join40(runAbs, "DOC.plan.json")}\` (a plan with \`sections[]\`; each section has \`id\`, \`title\`, \`query\`, \`evidenceIds\`). Handle ONLY the sections whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
+Worklist: \`${join41(runAbs, "DOC.plan.json")}\` (a plan with \`sections[]\`; each section has \`id\`, \`title\`, \`query\`, \`evidenceIds\`). Handle ONLY the sections whose \`id\` is named in your prompt (\`ITEMS=<id,\u2026>\`).
 
 For EACH of your sections:
 
-1. Read its entry in \`${join40(runAbs, "DOC.todo.md")}\` and the cited snippets in \`${join40(runAbs, "EVIDENCE.md")}\` (\`evidence.json\` holds the full items).
+1. Read its entry in \`${join41(runAbs, "DOC.todo.md")}\` and the cited snippets in \`${join41(runAbs, "EVIDENCE.md")}\` (\`evidence.json\` holds the full items).
 2. Draft the section's markdown: its heading plus grounded prose where EVERY factual claim cites a resolvable evidence id like \`[E3]\`. Cite only ids that exist in the run's \`evidence.json\`; never write from memory.
 3. Thin evidence? You may drill read-only for context (\`node ${engineAbs} code|docs|issues|prs|releases|history|discussions|so|web --repo \u2026 --q "\u2026"\`), but a claim may still only cite the run's existing \`[E#]\` ids \u2014 anything the dossier does not contain stays a gap.
 4. State what the evidence does not settle in \`gaps\` (explicit unknowns) instead of papering over it.
@@ -18486,14 +18831,14 @@ ${status}
 
 ## The loop (play every role yourself, one item at a time)
 
-1. **Seed** (if not done): \`${engine} ask --repo <url|path> --q "<question>" --out ${runAbs}\` \u2192 \`${join40(runAbs, "EVIDENCE.md")}\`, \`${join40(runAbs, "evidence.json")}\` and the drill plan \`${join40(runAbs, "drill-plan.json")}\`.
-2. **Drill the plan** \u2014 for EVERY cell in \`${join40(runAbs, "drill-plan.json")}\`, apply \`${join40(runAbs, "orchestration", "agents", "explorer.md")}\` yourself (run the cell's read-only drill command, triage, keep \u22648 items per round). When your harness runs parallel tool-calls, batch the independent drills of a round in one message.
-3. **Write** \`${join40(runAbs, "ANSWER.md")}\` (cite \`[E#]\`), then gate: \`${engine} check --run ${runAbs} --strict\`.
-4. **Verify the claims** \u2014 \`${engine} verify --run ${runAbs}\` writes \`${join40(runAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join40(runAbs, "orchestration", "agents", "skeptic.md")}\` yourself (verdict supported/partial/refuted/unsupported + note), collect every verdict into ONE \`${join40(runAbs, "verdicts.json")}\`, then fold: \`${engine} verify --apply verdicts.json --run ${runAbs}\`.
+1. **Seed** (if not done): \`${engine} ask --repo <url|path> --q "<question>" --out ${runAbs}\` \u2192 \`${join41(runAbs, "EVIDENCE.md")}\`, \`${join41(runAbs, "evidence.json")}\` and the drill plan \`${join41(runAbs, "drill-plan.json")}\`.
+2. **Drill the plan** \u2014 for EVERY cell in \`${join41(runAbs, "drill-plan.json")}\`, apply \`${join41(runAbs, "orchestration", "agents", "explorer.md")}\` yourself (run the cell's read-only drill command, triage, keep \u22648 items per round). When your harness runs parallel tool-calls, batch the independent drills of a round in one message.
+3. **Write** \`${join41(runAbs, "ANSWER.md")}\` (cite \`[E#]\`), then gate: \`${engine} check --run ${runAbs} --strict\`.
+4. **Verify the claims** \u2014 \`${engine} verify --run ${runAbs}\` writes \`${join41(runAbs, "VERIFY.todo.json")}\`. For EVERY pair, apply \`${join41(runAbs, "orchestration", "agents", "skeptic.md")}\` yourself (verdict supported/partial/refuted/unsupported + note), collect every verdict into ONE \`${join41(runAbs, "verdicts.json")}\`, then fold: \`${engine} verify --apply verdicts.json --run ${runAbs}\`.
 5. **Gate**: \`${engine} check --semantic --run ${runAbs}\` must exit 0 before presenting anything.
-6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join40(runAbs, "DOC.plan.json")}\` + \`${join40(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join40(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join40(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
+6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join41(runAbs, "DOC.plan.json")}\` + \`${join41(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join41(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join41(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
 
-With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join40(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join41(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
 `;
 }
 
@@ -18503,7 +18848,7 @@ var SMALL_WORKLIST = 3;
 var BATCH_SIZE = 8;
 function listPhases(runDir, engineAbs) {
   const run3 = resolve4(runDir);
-  const drillPath = join41(run3, "drill-plan.json");
+  const drillPath = join42(run3, "drill-plan.json");
   let drillIds = [];
   let drillReady = false;
   if (existsSync19(drillPath)) {
@@ -18516,7 +18861,7 @@ function listPhases(runDir, engineAbs) {
     } catch {
     }
   }
-  const verPath = join41(run3, "VERIFY.todo.json");
+  const verPath = join42(run3, "VERIFY.todo.json");
   let verIds = [];
   let verReady = false;
   if (existsSync19(verPath)) {
@@ -18529,7 +18874,7 @@ function listPhases(runDir, engineAbs) {
     } catch {
     }
   }
-  const docPath = join41(run3, "DOC.plan.json");
+  const docPath = join42(run3, "DOC.plan.json");
   let docIds = [];
   let docReady = false;
   if (existsSync19(docPath)) {
@@ -18598,14 +18943,14 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
     }
     selected = [ph];
   }
-  const orchDir = join41(run3, "orchestration");
-  const agentsDir = join41(orchDir, "agents");
-  mkdirSync14(join41(orchDir, "out"), { recursive: true });
+  const orchDir = join42(run3, "orchestration");
+  const agentsDir = join42(orchDir, "agents");
+  mkdirSync14(join42(orchDir, "out"), { recursive: true });
   mkdirSync14(agentsDir, { recursive: true });
   const written = [];
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(run3, engineAbs))) {
-    const p = join41(agentsDir, `${name2}.md`);
+    const p = join42(agentsDir, `${name2}.md`);
     writeFileSync16(p, content);
     written.push(p);
   }
@@ -18618,12 +18963,12 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
       if (ph.items <= SMALL_WORKLIST) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
       }
-      const p = join41(orchDir, `${ph.name}.workflow.mjs`);
+      const p = join42(orchDir, `${ph.name}.workflow.mjs`);
       writeFileSync16(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
       written.push(p);
     }
   }
-  const rb = join41(orchDir, "RUNBOOK.md");
+  const rb = join42(orchDir, "RUNBOOK.md");
   writeFileSync16(rb, runbookMd(phases, run3, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
@@ -18646,6 +18991,7 @@ Usage:
   ultradoc verify --run <dossier-dir> [--apply <verdicts.json>] [--answer <file>] [--max-verify <n>]
   ultradoc orchestrate --run <dossier-dir> [--phase drill|verify|doc] [--eco] [--list]
   ultradoc semantic up|down|status|pull
+  ultradoc firecrawl up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
 
 Commands:
@@ -18687,6 +19033,10 @@ Commands:
              NO container; 'up|down|status' drive the Docker stack (Qdrant +
              Ollama + SearXNG), which embeds real code/doc content and is the
              strongest tier \u2014 select it with --semantic-tier docker.
+  firecrawl  Manage the optional self-hosted Firecrawl stack (compose profile
+             'extract', keyless). When it is up, every fetched page (docs URL,
+             web result) is cleaned into main-content markdown instead of being
+             regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
 
 Options:
@@ -18698,7 +19048,11 @@ Options:
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
-  --web-engine <e>     auto | searxng | ddg | claude                (default: auto)
+  --web-engine <e>     auto | searxng | ddg | claude | firecrawl    (default: auto)
+                       'firecrawl' is explicit-only; auto is unchanged
+  --firecrawl <url>    Firecrawl base URL for page extraction, or 'off'
+                                              (default: $ULTRADOC_FIRECRAWL or
+                                               http://localhost:3002)
   --url <u,...>        For 'web': specific page(s) to fetch + ground
   --name <symbol>      For 'symbol': the declaration to resolve (Class/method
                        also works, e.g. --name HttpClient/request)
@@ -18735,7 +19089,9 @@ Environment (all optional, keyless by default):
   GITHUB_TOKEN               Raise the GitHub REST rate limit on the keyless fallback.
   GITLAB_TOKEN               Read private GitLab projects / lift limits (PRIVATE-TOKEN).
   ULTRADOC_CACHE_DIR         Override the clone/index cache root (persistent per-user).
-  ULTRADOC_EXTDOCS_TTL_HOURS External-docs cache freshness before refetch (default 168).
+  ULTRADOC_EXTDOCS_TTL_HOURS Fetched-page cache freshness before refetch (default 168).
+  ULTRADOC_FIRECRAWL         Firecrawl base URL, or 'off' (default http://localhost:3002).
+  ULTRADOC_FIRECRAWL_KEY     Bearer token \u2014 only for Firecrawl Cloud; self-hosted is keyless.
   ULTRADOC_MAX_FILES, \u2026      Raise index/scan/retrieval caps (see references).
 `;
 var COMMANDS = /* @__PURE__ */ new Set([
@@ -18757,6 +19113,7 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "verify",
   "orchestrate",
   "semantic",
+  "firecrawl",
   "cache"
 ]);
 var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
@@ -18767,6 +19124,7 @@ var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "ref",
   "docs-url",
   "web-engine",
+  "firecrawl",
   "url",
   "per-source",
   "out",
@@ -18889,7 +19247,7 @@ function buildAskOptions(p, opts = {}) {
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude"]);
+  const webEngine = oneOf("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude", "firecrawl"]);
   const semanticTier = oneOf("semantic-tier", p.values["semantic-tier"] ?? "auto", ["auto", "static", "endpoint", "docker", "off"]);
   return {
     repo,
@@ -18902,6 +19260,7 @@ function buildAskOptions(p, opts = {}) {
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
+    firecrawl: p.values.firecrawl,
     perSource,
     json: p.bools.has("json"),
     refresh: p.bools.has("refresh")
@@ -19021,7 +19380,7 @@ async function run2(argv = process.argv.slice(2)) {
       if (p.values.url) {
         const urls = p.values.url.split(",").map((u) => u.trim()).filter(Boolean);
         const q = opts.question || urls.join(" ");
-        const { items, notes: notes2 } = await webFetchUrls(urls, q, opts.perSource);
+        const { items, notes: notes2 } = await webFetchUrls(urls, q, opts.perSource, { firecrawl: opts.firecrawl });
         const evidence2 = assignIds2([{ source: "web", items, notes: notes2 }]);
         const meta2 = {
           question: q,
@@ -19230,7 +19589,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join42(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join43(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
@@ -19258,6 +19617,12 @@ async function run2(argv = process.argv.slice(2)) {
 `
         );
       }
+      if (r.code !== 0) process.exit(r.code);
+      return;
+    }
+    case "firecrawl": {
+      const r = firecrawlControl(p.positional[0] ?? "status");
+      process.stdout.write(r.message + "\n");
       if (r.code !== 0) process.exit(r.code);
       return;
     }

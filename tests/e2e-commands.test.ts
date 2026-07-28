@@ -221,6 +221,22 @@ describe("drill commands (print evidence, write nothing)", () => {
     expect(r.error).toBeUndefined();
     expect(r.stdout).toContain("# Evidence dossier");
   }, 20_000);
+
+  // `firecrawl` is an explicit engine: with the stack down it must degrade with
+  // a note naming what to run, exactly like an explicit `searxng`.
+  it("web --web-engine firecrawl degrades with an honest note when the stack is down", async () => {
+    const r = await runCli(["web", "--repo", gitRepo, "--q", "retry backoff", "--web-engine", "firecrawl"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).toMatch(/Firecrawl search returned nothing/);
+    expect(r.stdout).toMatch(/ultradoc firecrawl up/);
+  }, 20_000);
+
+  it("rejects an unknown --web-engine", async () => {
+    const r = await runCli(["web", "--repo", gitRepo, "--q", "x", "--web-engine", "bing"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/invalid --web-engine/);
+  });
 });
 
 describe("overview (cached repo digest)", () => {
@@ -388,6 +404,14 @@ describe("semantic (optional docker stack)", () => {
     const r = await runCli(["semantic", "frobnicate"]);
     expect(r.exitCode).toBe(1);
     expect(r.stdout).toMatch(/unknown action/);
+  });
+});
+
+describe("firecrawl (optional extraction stack)", () => {
+  it("rejects an unknown action without touching docker", async () => {
+    const r = await runCli(["firecrawl", "frobnicate"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toMatch(/ultradoc firecrawl: unknown action/);
   });
 });
 

@@ -1,8 +1,9 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { docsSource, getDocText } from "../src/sources/docs.js";
+import { pageCacheFile } from "../src/sources/page-cache.js";
 import { htmlToText, nearestHeading, excerptsFromText } from "../src/sources/fetch.js";
 import { resolveRepo } from "../src/clone.js";
 import { buildIndex } from "../src/index/structural.js";
@@ -73,8 +74,17 @@ describe("external-docs cache TTL", () => {
   const url = "https://docs.test/guide";
   let repoDir: string;
   let cacheFile: string;
+  const prevFirecrawl = process.env.ULTRADOC_FIRECRAWL;
 
+  // Pin the extractor: with Firecrawl left at its default base, whether these
+  // assertions hold would depend on whether the machine running the suite
+  // happens to have the container up.
+  beforeEach(() => {
+    process.env.ULTRADOC_FIRECRAWL = "off";
+  });
   afterEach(() => {
+    if (prevFirecrawl === undefined) delete process.env.ULTRADOC_FIRECRAWL;
+    else process.env.ULTRADOC_FIRECRAWL = prevFirecrawl;
     vi.restoreAllMocks();
     if (repoDir) rmSync(repoDir, { recursive: true, force: true });
   });
@@ -83,7 +93,7 @@ describe("external-docs cache TTL", () => {
     repoDir = mkdtempSync(join(tmpdir(), "ud-extdocs-"));
     const dir = join(repoDir, ".ultradoc", "extdocs");
     mkdirSync(dir, { recursive: true });
-    cacheFile = join(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
+    cacheFile = pageCacheFile(dir, url, "native");
     writeFileSync(cacheFile, text);
   }
 
@@ -94,6 +104,16 @@ describe("external-docs cache TTL", () => {
     const r = await getDocText(repoDir, url);
     expect(r.text).toBe("cached guide body");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // The cache key carries the extractor identity: a native entry must NOT be
+  // served to a run that would extract with Firecrawl, or a week-old
+  // regex-stripped copy shadows the better extractor for the whole TTL.
+  it("keys the cache file on the extractor", () => {
+    const dir = "/tmp/x";
+    expect(pageCacheFile(dir, url, "native")).toMatch(/\.v3-native\.txt$/);
+    expect(pageCacheFile(dir, url, "firecrawl")).toMatch(/\.v3-firecrawl\.txt$/);
+    expect(pageCacheFile(dir, url, "native")).not.toBe(pageCacheFile(dir, url, "firecrawl"));
   });
 
   it("refetches once the cached copy is older than the TTL", async () => {

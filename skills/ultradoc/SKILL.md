@@ -75,6 +75,7 @@ See `references/orchestration.md`.
 |---|---|
 | `git clone failed` (404 / auth) | check the URL; a private repo → ask the user for a local checkout and pass `--repo <path>` |
 | offline / every network source notes a failure | answer from `code,docs,releases,history` only, and state the gap in the answer |
+| a `web`/`docs` excerpt is nav/cookie chrome, or a docs page came back empty | the page is JS-rendered or chrome-heavy — `firecrawl up`, then re-run the drill |
 | a note says GitHub is **rate-limited** | set `GITHUB_TOKEN` (or `gh auth login`), or continue with the other sources and say so |
 | huge repo, slow index / a "truncated" note | scope with `--package`; raise a cap only per `references/tuning.md` |
 | the **question** is ambiguous (which repo? which behavior?) | ask the user before retrieving — never guess the repo |
@@ -234,6 +235,14 @@ Tier-1 search (ripgrep + symbol index) is the default and needs nothing. Add
 backend `--semantic` names the command that would enable one and falls back to
 Tier 1. See `references/semantic-setup.md`.
 
+## Optional page extraction (fully local, no API key)
+
+`firecrawl up|down|status` runs a keyless self-hosted Firecrawl; fetched pages
+then arrive as browser-rendered main-content markdown instead of regex-stripped
+HTML. Reach for it when a `docs`/`web` excerpt is nav/cookie chrome or a page
+came back empty (JS-rendered). Never required — it degrades to the stripper,
+noting any failure. See `references/web-discovery.md`.
+
 ## References
 
 | Open it when | File |
@@ -246,5 +255,5 @@ Tier 1. See `references/semantic-setup.md`.
 | a run is too slow, too shallow, or too noisy | `references/tuning.md` |
 | parallelizing drills or verification across calls/subagents | `references/orchestration.md` |
 | issues/PRs look wrong or empty for a host | `references/provider-apis.md` |
-| `web` found nothing, or you want to drive discovery | `references/web-discovery.md` |
-| setting up or choosing a vector tier | `references/semantic-setup.md` |
+| `web` found nothing, or a page extracted badly | `references/web-discovery.md` |
+| setting up a vector tier or the Firecrawl stack | `references/semantic-setup.md` |

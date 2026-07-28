@@ -108,7 +108,10 @@ export interface IndexStats {
 }
 
 // Which web-discovery engine to use; "auto" tries searxng → ddg → claude.
-export type WebEngine = "auto" | "searxng" | "ddg" | "claude";
+// "firecrawl" (the self-hosted /search) is explicit-only and never part of
+// "auto" — it cascades to the same keyless engines server-side, so it would add
+// a container in front of what auto already reaches directly.
+export type WebEngine = "auto" | "searxng" | "ddg" | "claude" | "firecrawl";
 
 // Which vector backend `--semantic` should use. "auto" tries endpoint → static
 // → docker, i.e. the tiers that need no infrastructure first. "docker" is the
@@ -128,6 +131,9 @@ export interface AskOptions {
   semantic: boolean;
   semanticTier?: SemanticTier; // which vector backend (default: auto)
   webEngine: WebEngine;
+  // Firecrawl base URL for page extraction, or the literal "off" to disable it.
+  // Unset ⇒ ULTRADOC_FIRECRAWL, then http://localhost:3002.
+  firecrawl?: string;
   perSource: number; // cap on evidence items kept per source
   json: boolean;
   refresh: boolean; // force re-clone / re-index

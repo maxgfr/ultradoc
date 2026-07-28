@@ -1,6 +1,8 @@
 import type { RunContext, SourceResult, EvidenceItem, WebEngine } from "../types.js";
 import { keywords } from "../util.js";
-import { httpGet, fetchAndExtract, excerptsFromText } from "./fetch.js";
+import { httpGet, excerptsFromText } from "./fetch.js";
+import { type FirecrawlOptions, firecrawlBase, searchViaFirecrawl } from "./firecrawl.js";
+import { cachedPageText, webPageCacheDir } from "./page-cache.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -62,8 +64,18 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
 // tries SearXNG, then DuckDuckGo. The `claude` engine (and the all-failed case)
 // returns no URLs and signals the orchestrator/model to use its built-in
 // WebSearch and feed URLs back via `ultradoc web --url`.
-async function discover(query: string, engine: WebEngine, n: number): Promise<{ urls: string[]; via: string; notes: string[] }> {
+//
+// `firecrawl` is EXPLICIT ONLY and deliberately absent from `auto`: its /search
+// cascades to SearXNG and DuckDuckGo server-side, so putting it in the default
+// cascade would just add a container dependency in front of engines `auto`
+// already tries directly.
+async function discover(query: string, engine: WebEngine, n: number, opts: FirecrawlOptions = {}): Promise<{ urls: string[]; via: string; notes: string[] }> {
   const notes: string[] = [];
+  if (engine === "firecrawl") {
+    const f = await searchViaFirecrawl(query, n, opts);
+    if (f?.length) return { urls: f, via: "firecrawl", notes };
+    notes.push(`Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
+  }
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query, n);
     if (s?.length) return { urls: s, via: "searxng", notes };
@@ -83,12 +95,20 @@ async function discover(query: string, engine: WebEngine, n: number): Promise<{ 
 }
 
 // Fetch a set of URLs and turn each into grounded web evidence. Shared by the
-// `web` discovery flow and the `ultradoc web --url` drill-down.
-export async function webFetchUrls(urls: string[], question: string, perSource: number): Promise<{ items: RawItem[]; notes: string[] }> {
+// `web` discovery flow and the `ultradoc web --url` drill-down. Pages go
+// through the same URL+extractor-keyed cache as the external-docs source: a
+// Firecrawl render is expensive enough that refetching the same page on every
+// run is not acceptable.
+export async function webFetchUrls(
+  urls: string[],
+  question: string,
+  perSource: number,
+  opts: FirecrawlOptions = {},
+): Promise<{ items: RawItem[]; notes: string[] }> {
   const items: RawItem[] = [];
   const notes: string[] = [];
   for (const url of urls.slice(0, Math.max(1, Math.ceil(perSource / 2)))) {
-    const { text, note } = await fetchAndExtract(url);
+    const { text, note } = await cachedPageText(webPageCacheDir(), url, opts);
     if (note) notes.push(note);
     if (!text) continue;
     const ex = excerptsFromText(text, url, `Web — ${url}`, "web", question, perSource);
@@ -119,10 +139,11 @@ export async function webSource(ctx: RunContext): Promise<SourceResult> {
   const query = `${project} ${kws}`.trim();
   if (!query) return { source: "web", items: [], notes: ["No keywords to search the web."] };
 
-  const { urls, via, notes } = await discover(query, ctx.options.webEngine, ctx.options.perSource);
+  const fc: FirecrawlOptions = { firecrawl: ctx.options.firecrawl };
+  const { urls, via, notes } = await discover(query, ctx.options.webEngine, ctx.options.perSource, fc);
   if (urls.length === 0) return { source: "web", items: [], notes };
 
-  const fetched = await webFetchUrls(urls, ctx.options.question, ctx.options.perSource);
+  const fetched = await webFetchUrls(urls, ctx.options.question, ctx.options.perSource, fc);
   return {
     source: "web",
     items: fetched.items,

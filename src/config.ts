@@ -39,6 +39,14 @@ export const LIMITS = {
   embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4), // parallel embed requests
 } as const;
 
+// How long a cached fetched page (external docs, web results) is trusted before
+// a refetch — a docs site updates, and the page is keyed by URL + extractor
+// only. Overridable; default one week. Also handed to Firecrawl as its own
+// server-side `maxAge`, so the two caches agree on what "fresh" means.
+export function extdocsTtlMs(): number {
+  return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 3600_000;
+}
+
 // Everything ultradoc writes into a working tree lives under this directory,
 // and everything that scans a tree must exclude it.
 export const CACHE_DIR_NAME = ".ultradoc";

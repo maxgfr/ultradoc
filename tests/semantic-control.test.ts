@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { semanticControl } from "../src/index/semantic/index.js";
+import { firecrawlControl, semanticControl } from "../src/index/semantic/index.js";
 import type { ShResult } from "../src/util.js";
 
 // A fake `sh` runner matching the real signature: records every invocation and
@@ -63,5 +63,63 @@ describe("semanticControl up — image pull step wiring", () => {
     expect(res.message).toMatch(/pull/i);
     // A failed pull must short-circuit: no `up -d` is attempted afterwards.
     expect(calls.some((c) => isUp(c.args))).toBe(false);
+  });
+
+  it("waits for the healthchecks, so a green `up` means the endpoints answer", () => {
+    const { calls, run } = fakeRunner();
+    semanticControl("up", { run, has: () => true });
+    expect(calls.find((c) => isUp(c.args))!.args).toContain("--wait");
+  });
+});
+
+// The Firecrawl stack is the SAME compose file under a different profile: it
+// must never be started by `semantic up` (~3 GB of images), and `semantic` must
+// keep its own `all` profile. Both are asserted through the injected runner.
+describe("firecrawlControl — the `extract` profile", () => {
+  const profileOf = (args: string[]): string | undefined => args[args.indexOf("--profile") + 1];
+
+  it("drives every action on --profile extract, never on all", () => {
+    for (const action of ["up", "down", "status"]) {
+      const { calls, run } = fakeRunner();
+      const res = firecrawlControl(action, { run, has: () => true });
+      expect(res.code).toBe(0);
+      expect(calls.length).toBeGreaterThan(0);
+      for (const c of calls) expect(profileOf(c.args)).toBe("extract");
+    }
+  });
+
+  it("pulls before `up -d --wait` (5 containers, ~3 GB of images)", () => {
+    const { calls, run } = fakeRunner();
+    const res = firecrawlControl("up", { run, has: () => true });
+    expect(res.code).toBe(0);
+    const pullIdx = calls.findIndex((c) => isImagePull(c.args));
+    const upIdx = calls.findIndex((c) => isUp(c.args));
+    expect(pullIdx).toBeGreaterThanOrEqual(0);
+    expect(pullIdx).toBeLessThan(upIdx);
+    expect(calls[upIdx]!.args).toContain("--wait");
+    // No embedding model to pull — that post-up step belongs to `semantic`.
+    expect(calls.some((c) => c.args.includes("exec"))).toBe(false);
+    expect(res.message).toMatch(/Firecrawl :3002/);
+  });
+
+  it("names itself in every message and rejects an unknown action", () => {
+    const { run } = fakeRunner();
+    const res = firecrawlControl("frobnicate", { run, has: () => true });
+    expect(res.code).toBe(1);
+    expect(res.message).toMatch(/^ultradoc firecrawl: unknown action/);
+  });
+
+  it("reports a missing docker instead of throwing", () => {
+    const { calls, run } = fakeRunner();
+    const res = firecrawlControl("up", { run, has: () => false });
+    expect(res.code).toBe(1);
+    expect(res.message).toMatch(/docker not found/);
+    expect(calls).toEqual([]);
+  });
+
+  it("`semantic` keeps the `all` profile", () => {
+    const { calls, run } = fakeRunner();
+    semanticControl("up", { run, has: () => true });
+    expect(profileOf(calls.find((c) => isUp(c.args))!.args)).toBe("all");
   });
 });

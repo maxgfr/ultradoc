@@ -1,5 +1,14 @@
 import { type EvidenceItem, VERSION } from "../types.js";
 import { buildMatcher } from "../util.js";
+import {
+  EXTRACTOR_FIRECRAWL,
+  EXTRACTOR_NATIVE,
+  type FirecrawlOptions,
+  firecrawlBase,
+  firecrawlPinned,
+  probeFirecrawl,
+  scrapeViaFirecrawl,
+} from "./firecrawl.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -138,7 +147,7 @@ export async function httpJson(
   method: string,
   url: string,
   body?: unknown,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; headers?: Record<string, string> } = {},
 ): Promise<{ ok: boolean; status: number; data: any; error?: string }> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 30_000);
@@ -146,7 +155,7 @@ export async function httpJson(
     const res = await fetch(url, {
       method,
       signal: ctrl.signal,
-      headers: { "content-type": "application/json", accept: "application/json", "user-agent": UA },
+      headers: { "content-type": "application/json", accept: "application/json", "user-agent": UA, ...(opts.headers ?? {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -208,16 +217,60 @@ export function htmlToText(html: string): string {
     .join("\n");
 }
 
-// Fetch a URL and return its readable text (HTML stripped to prose). Used by
-// the external-docs and web sources.
-export async function fetchAndExtract(url: string): Promise<{ text: string; note?: string }> {
+// What a page fetch produced: its readable text, an optional honest note, and
+// WHICH extractor produced the text. The extractor id is not decoration — it is
+// part of the page-cache key, because a regex-stripped copy and a Firecrawl
+// markdown copy of the same URL are different documents.
+export interface ExtractResult {
+  text: string;
+  note?: string;
+  extractor: string;
+}
+
+// The built-in path: one GET, HTML stripped to prose. No dependency, no
+// container — this is what ultradoc has always done and what everything falls
+// back to.
+async function nativeExtract(url: string): Promise<ExtractResult> {
   const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
-    return { text: "", note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
+    return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
   const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
   const text = isHtml ? htmlToText(res.body) : res.body;
-  return { text };
+  return { text, extractor: EXTRACTOR_NATIVE };
+}
+
+// Prepend a Firecrawl note to whatever the native path already had to say.
+function withNote(res: ExtractResult, note: string): ExtractResult {
+  return { ...res, note: res.note ? `${note} ${res.note}` : note };
+}
+
+// Fetch a URL and return its readable text. Firecrawl first when the stack is
+// reachable (main-content markdown, JS pages included), the built-in HTML
+// stripper otherwise or whenever Firecrawl fails on this page. Used by the
+// external-docs and web sources, so all three call sites inherit the layer.
+//
+// Failure is never an exception: the result carries a note naming exactly what
+// happened, which the dossier surfaces with the rest of the retrieval notes.
+export async function fetchAndExtract(url: string, opts: FirecrawlOptions = {}): Promise<ExtractResult> {
+  const base = firecrawlBase(opts);
+  if (base && /^https?:\/\//i.test(url)) {
+    if (await probeFirecrawl(base)) {
+      const { page, error } = await scrapeViaFirecrawl(url, opts);
+      if (page) return { text: page.markdown, extractor: EXTRACTOR_FIRECRAWL };
+      return withNote(await nativeExtract(url), `Firecrawl could not extract ${url} (${error}); used the built-in HTML extractor instead.`);
+    }
+    // Unreachable. Only say so when the base was CHOSEN (--firecrawl or
+    // ULTRADOC_FIRECRAWL) — noting the default on every machine that never
+    // installed the stack would be noise, not honesty.
+    if (firecrawlPinned(opts)) {
+      return withNote(
+        await nativeExtract(url),
+        `Firecrawl unreachable at ${base} (start it with \`ultradoc firecrawl up\`); used the built-in HTML extractor.`,
+      );
+    }
+  }
+  return nativeExtract(url);
 }
 
 // The markdown section heading an anchor line sits under, ignoring

@@ -1,4 +1,4 @@
-# Semantic mode & local web search (optional, fully local, no key)
+# Semantic mode, local web search & extraction (optional, fully local, no key)
 
 Tier-1 retrieval (ripgrep + a structural symbol index) is the default and needs
 nothing. **Semantic mode** (`--semantic`) adds vector search for questions whose
@@ -55,24 +55,44 @@ node scripts/ultradoc.mjs ask --repo <url> --q "..." --semantic --semantic-tier 
 node scripts/ultradoc.mjs semantic down
 ```
 
-`docker-compose.yml` defines three services:
+`docker-compose.yml` defines three services in the `all` profile — every image
+is pinned, and every service has a healthcheck so `--wait` means something:
 
 | Service | Image | Port | Role |
 |---------|-------|------|------|
-| `qdrant` | `qdrant/qdrant` | 6333 | vector database (Apache-2.0) |
-| `ollama` | `ollama/ollama` | 11434 | local embedding model server |
-| `searxng` | `searxng/searxng` | 8888 | keyless metasearch for `web` discovery |
+| `qdrant` | `qdrant/qdrant:v1.18.2` | 6333 | vector database (Apache-2.0) |
+| `ollama` | `ollama/ollama:0.30.7` | 11434 | local embedding model server |
+| `searxng` | `searxng/searxng:2026.6.11-a1490676e` | 8888 | keyless metasearch for `web` discovery |
 
 Default embedding model: **`nomic-embed-text`** (137M, CPU-friendly, strong on
 specific code lookups). Override with `ULTRADOC_EMBED_MODEL`.
 
-`semantic up` runs `docker compose --profile all up -d` then
-`ollama pull nomic-embed-text`. To start a subset directly:
+`semantic up` runs `docker compose --profile all pull`, then
+`up -d --wait`, then `ollama pull nomic-embed-text`. To start a subset directly:
 
 ```
 docker compose --profile semantic up -d     # qdrant + ollama only
 docker compose --profile search up -d       # searxng only
 ```
+
+## The `extract` profile (Firecrawl) — a separate stack
+
+The same compose file carries a fourth, **deliberately separate** profile:
+`extract`, five containers (`firecrawl` + playwright + redis + rabbitmq +
+postgres) publishing a keyless API on `localhost:3002`. It is not in `all`
+because it is ~3 GB of images and ~4 GB of RAM, and `semantic up` must stay
+cheap.
+
+```
+node scripts/ultradoc.mjs firecrawl up|down|status
+docker compose --profile search --profile extract up -d --wait   # + SearXNG behind /search
+```
+
+It cleans **fetched pages**, not code: main-content markdown instead of
+regex-stripped HTML, and text at all from JS-rendered docs. Keyless
+(`USE_DB_AUTHENTICATION=false`); nothing here touches the vector tiers. Down or
+absent ⇒ the built-in extractor, transparently. See
+`references/web-discovery.md` and `docker/firecrawl/README.md`.
 
 On the first `docker`-tier run for a repo, ultradoc chunks the code + docs at
 symbol boundaries, embeds each chunk via Ollama, and upserts the vectors into a
@@ -111,4 +131,7 @@ a degraded run always says so in the dossier notes.
 | `ULTRADOC_EMBED_MODEL` | `nomic-embed-text` | Docker-tier embedding model id |
 | `ULTRADOC_MAX_CHUNKS` | `800` | cap on chunks embedded per repo (Docker tier) |
 | `ULTRADOC_SEARXNG` | `http://localhost:8888` | SearXNG base URL for `web` |
+| `ULTRADOC_FIRECRAWL` | `http://localhost:3002` | Firecrawl base URL; `off` disables extraction |
+| `ULTRADOC_FIRECRAWL_KEY` | — | bearer token for Firecrawl **Cloud**; self-hosted needs none |
+| `ULTRADOC_DOCKER_PULL_TIMEOUT_MS` | `1200000` | image-pull budget for `semantic up` / `firecrawl up` |
 | `ULTRADOC_CACHE_DIR` | per-user cache | also where the static model is stored |

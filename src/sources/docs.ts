@@ -1,10 +1,10 @@
 import { join } from "node:path";
-import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import type { RunContext, SourceResult, EvidenceItem } from "../types.js";
 import { readText } from "../walk.js";
 import { buildMatcher } from "../util.js";
-import { envInt } from "../config.js";
-import { fetchAndExtract, excerptsFromText, nearestHeading } from "./fetch.js";
+import { excerptsFromText, nearestHeading } from "./fetch.js";
+import type { FirecrawlOptions } from "./firecrawl.js";
+import { cachedPageText } from "./page-cache.js";
 
 type RawItem = Omit<EvidenceItem, "id">;
 
@@ -13,49 +13,11 @@ type RawItem = Omit<EvidenceItem, "id">;
 const DOCS_ENTRY_BOOST = 1.2;
 const DOCS_ROOT_BOOST = 1.5;
 
-// How long a cached external-docs page is trusted before a refetch (a docs site
-// updates, and the page is keyed by URL only). Overridable; default one week.
-function extdocsTtlMs(): number {
-  return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 3600_000;
-}
-
 // Fetch an external docs page, caching the extracted text per repo under
-// .ultradoc/extdocs/. The page content depends only on the URL (not the
-// question), so this turns repeated questions about the same repo into a single
-// network fetch — the excerpting still runs per-question on the cached text. The
-// cache expires after a TTL so an updated page is eventually refetched; if the
-// refetch fails, the stale copy is served rather than losing the docs entirely.
+// .ultradoc/extdocs/ (keyed by URL AND extractor — see sources/page-cache.ts).
 // Exported for testing.
-export async function getDocText(repoDir: string, url: string): Promise<{ text: string; note?: string }> {
-  const dir = join(repoDir, ".ultradoc", "extdocs");
-  // .v2: the extraction format changed (heading markers) — older cached text
-  // would silently lack section context.
-  const file = join(dir, url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100) + ".v2.txt");
-  let cached: string | undefined;
-  let fresh = false;
-  try {
-    if (existsSync(file)) {
-      cached = readFileSync(file, "utf8");
-      fresh = Date.now() - statSync(file).mtimeMs < extdocsTtlMs();
-    }
-  } catch {
-    /* fall through to a live fetch */
-  }
-  if (cached !== undefined && fresh) return { text: cached };
-
-  const res = await fetchAndExtract(url);
-  if (res.text) {
-    try {
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(file, res.text);
-    } catch {
-      /* caching is best-effort */
-    }
-    return res;
-  }
-  // Refetch failed — fall back to the stale copy rather than dropping the docs.
-  if (cached !== undefined) return { text: cached, note: `served a stale cached copy of ${url} (refetch failed)` };
-  return res;
+export async function getDocText(repoDir: string, url: string, opts: FirecrawlOptions = {}): Promise<{ text: string; note?: string }> {
+  return cachedPageText(join(repoDir, ".ultradoc", "extdocs"), url, opts);
 }
 
 // The `docs` source. Searches the repo's own documentation (README, docs/**,
@@ -121,7 +83,7 @@ export async function docsSource(ctx: RunContext): Promise<SourceResult> {
   const docsUrl = ctx.options.docsUrl ?? ctx.index.docsUrl;
   if (docsUrl) {
     const discovered = !ctx.options.docsUrl;
-    const { text, note } = await getDocText(ctx.repoDir, docsUrl);
+    const { text, note } = await getDocText(ctx.repoDir, docsUrl, { firecrawl: ctx.options.firecrawl });
     if (note) notes.push(note);
     if (text) {
       const label = discovered ? `Official docs (auto-discovered) — ${docsUrl}` : `Official docs — ${docsUrl}`;
