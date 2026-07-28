@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.11.2](https://github.com/maxgfr/ultradoc/compare/v2.11.1...v2.11.2) (2026-07-28)
+
+
+### Bug Fixes
+
+* **cache:** stop listing the static model as a repo in `cache status` ([a315528](https://github.com/maxgfr/ultradoc/commit/a31552892e6ba38b04373fbe3f1bff4405365df4))
+
 ## [2.11.1](https://github.com/maxgfr/ultradoc/compare/v2.11.0...v2.11.1) (2026-07-28)
 
 
