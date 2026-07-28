@@ -22,10 +22,15 @@ export function pageCacheFile(dir: string, url: string, extractor: string): stri
   return join(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
 }
 
+// The shared-cache subdirectory holding URL-keyed pages. Exported because
+// cache.ts must both skip it when listing repos AND clear it on `clean --all`;
+// a second literal in that file is exactly how the two drift apart.
+export const PAGES_DIR = "pages";
+
 // Web pages are not repo-specific, and `web --url` runs with no clone at all —
 // so they cache under the shared cache root rather than beside a checkout.
 export function webPageCacheDir(): string {
-  return join(cacheRoot(), "pages");
+  return join(cacheRoot(), PAGES_DIR);
 }
 
 // Which extractor THIS run will use, decided before the fetch so the cache can

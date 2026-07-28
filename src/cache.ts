@@ -2,6 +2,7 @@ import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { cacheRoot } from "./config.js";
 import { headCommit, resolveRepo } from "./clone.js";
+import { PAGES_DIR } from "./sources/page-cache.js";
 
 export interface CacheRepo {
   slug: string;
@@ -14,6 +15,10 @@ export interface CacheStatus {
   root: string;
   repos: CacheRepo[];
   totalBytes: number;
+  // The URL-keyed fetched-page cache (sources/page-cache.ts). It is not a repo,
+  // so it is reported separately — but `clean --all` does clear it, otherwise
+  // extracted pages would only ever expire on their 168 h TTL.
+  pagesBytes: number;
 }
 
 // Recursive on-disk size of a directory (best-effort; unreadable entries skip).
@@ -59,12 +64,12 @@ export function cacheStatus(): CacheStatus {
   for (const slug of slugs) {
     // Shared cache dirs that are not repos: the materialized docker files and
     // the URL-keyed fetched-page cache (sources/page-cache.ts).
-    if (slug === "compose" || slug === "pages") continue;
+    if (slug === "compose" || slug === PAGES_DIR) continue;
     const dir = join(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
-  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0) };
+  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0), pagesBytes: dirSize(join(root, PAGES_DIR)) };
 }
 
 // Clear cached clones/indexes. `all` wipes every repo (keeps the root dir);
@@ -77,6 +82,19 @@ export function cacheClean(opts: { all?: boolean; repo?: string }): { removed: s
       try {
         rmSync(r.dir, { recursive: true, force: true });
         removed.push(r.slug);
+      } catch {
+        /* skip */
+      }
+    }
+    // The page cache is keyed by URL, not by repo, so it survives every
+    // per-repo removal above. Without this, `clean --all` leaves extracted
+    // pages behind for their whole 168 h TTL — including entries produced by
+    // an extractor the user has since turned off.
+    const pages = join(root, PAGES_DIR);
+    if (existsSync(pages)) {
+      try {
+        rmSync(pages, { recursive: true, force: true });
+        removed.push(PAGES_DIR);
       } catch {
         /* skip */
       }
@@ -101,5 +119,6 @@ export function formatCacheStatus(s: CacheStatus): string {
     lines.push(`  ${r.slug}  ${mb(r.bytes)}${r.commit ? ` @ ${r.commit.slice(0, 8)}` : ""}`);
   }
   if (s.repos.length > 20) lines.push(`  … +${s.repos.length - 20} more`);
+  if (s.pagesBytes > 0) lines.push(`  ${PAGES_DIR}/  ${mb(s.pagesBytes)} (fetched web pages; cleared by \`cache clean --all\`)`);
   return lines.join("\n");
 }

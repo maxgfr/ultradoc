@@ -16061,8 +16061,9 @@ var CACHE_GEN = "v3";
 function pageCacheFile(dir, url, extractor) {
   return join31(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
 }
+var PAGES_DIR = "pages";
 function webPageCacheDir() {
-  return join31(cacheRoot(), "pages");
+  return join31(cacheRoot(), PAGES_DIR);
 }
 async function plannedExtractor(opts = {}) {
   const base = firecrawlBase(opts);
@@ -18566,12 +18567,12 @@ function cacheStatus() {
   } catch {
   }
   for (const slug of slugs) {
-    if (slug === "compose" || slug === "pages") continue;
+    if (slug === "compose" || slug === PAGES_DIR) continue;
     const dir = join40(root, slug);
     repos.push({ slug, dir, bytes: dirSize(dir), commit: headCommit2(dir) });
   }
   repos.sort((a, b) => b.bytes - a.bytes);
-  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0) };
+  return { root, repos, totalBytes: repos.reduce((s, r) => s + r.bytes, 0), pagesBytes: dirSize(join40(root, PAGES_DIR)) };
 }
 function cacheClean(opts) {
   const root = cacheRoot();
@@ -18581,6 +18582,14 @@ function cacheClean(opts) {
       try {
         rmSync3(r.dir, { recursive: true, force: true });
         removed.push(r.slug);
+      } catch {
+      }
+    }
+    const pages = join40(root, PAGES_DIR);
+    if (existsSync18(pages)) {
+      try {
+        rmSync3(pages, { recursive: true, force: true });
+        removed.push(PAGES_DIR);
       } catch {
       }
     }
@@ -18603,6 +18612,7 @@ function formatCacheStatus(s) {
     lines.push(`  ${r.slug}  ${mb(r.bytes)}${r.commit ? ` @ ${r.commit.slice(0, 8)}` : ""}`);
   }
   if (s.repos.length > 20) lines.push(`  \u2026 +${s.repos.length - 20} more`);
+  if (s.pagesBytes > 0) lines.push(`  ${PAGES_DIR}/  ${mb(s.pagesBytes)} (fetched web pages; cleared by \`cache clean --all\`)`);
   return lines.join("\n");
 }
 
