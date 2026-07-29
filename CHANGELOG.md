@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.12.0](https://github.com/maxgfr/ultradoc/compare/v2.11.2...v2.12.0) (2026-07-29)
+
+
+### Features
+
+* **mcp:** serve ultradoc over the Model Context Protocol ([900aad0](https://github.com/maxgfr/ultradoc/commit/900aad05f0000a9b749ac0197a5e53c9d90aa581))
+
 ## [2.11.2](https://github.com/maxgfr/ultradoc/compare/v2.11.1...v2.11.2) (2026-07-28)
 
 
