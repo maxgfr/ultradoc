@@ -162,11 +162,74 @@ Two retrieval tiers:
 | `semantic up\|down\|status` | Manage the optional local Docker stack (Qdrant + Ollama + SearXNG) |
 | `firecrawl up\|down\|status` | Manage the optional self-hosted Firecrawl stack (page extraction, keyless) |
 | `cache status\|clean` | Inspect or clear the persistent clone/index cache |
+| `mcp` | Serve everything above over the Model Context Protocol (see below) |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
 code,issues,prs,docs,releases,history,discussions,web,so`, `--ref <branch>`
 (pin a version), `--package <name|dir>` (scope a monorepo), `--docs-url <url>`,
 `--semantic`, `--firecrawl off`.
+
+## Use it as an MCP server
+
+The skill shells out to the CLI and parses its output. An MCP server skips both:
+your agent calls ultradoc as typed tools, with JSON schemas in and structured
+results out. Same engine, same cache, no wrapper.
+
+```bash
+# stdio — the default, and what Claude Code / Claude Desktop / Cursor expect
+claude mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp
+
+# or over HTTP, on loopback
+node scripts/ultradoc.mjs mcp --transport http --port 7337
+claude mcp add --transport http ultradoc http://127.0.0.1:7337/mcp
+```
+
+Claude Desktop (`claude_desktop_config.json`) and Cursor (`.cursor/mcp.json`):
+
+```jsonc
+// Claude Desktop takes stdio servers only — a remote URL here will not work.
+{ "mcpServers": { "ultradoc": { "command": "node", "args": ["/abs/path/to/scripts/ultradoc.mjs", "mcp"] } } }
+// Cursor, HTTP:
+{ "mcpServers": { "ultradoc": { "url": "http://127.0.0.1:7337/mcp" } } }
+```
+
+Ten tools. `ultradoc_search` is the one to reach for first:
+
+| Tool | What it does |
+|------|--------------|
+| `ultradoc_search` | Ranked, citable evidence across code/issues/PRs/docs/releases/history/discussions/SO/web. Writes nothing |
+| `ultradoc_overview` | Cached repo digest — packages, layout, core modules, public API, docs map |
+| `ultradoc_symbol` | One declaration + its real body + every call site with the caller it sits in |
+| `ultradoc_read` | A file, or a line range, at the exact commit ultradoc indexed |
+| `ultradoc_fetch` | Fetch specific URLs into ranked excerpts. Needs no repo |
+| `ultradoc_ask` | The full pipeline → an evidence dossier on disk; returns its directory |
+| `ultradoc_check` | The grounding gate: pass your answer as `answer_text`, every `[E#]` must resolve |
+| `ultradoc_verify` | Claim↔evidence worklist for adversarial support-checking |
+| `ultradoc_doc` | Reference-doc scaffold: outline + a dossier per section (slow) |
+| `ultradoc_cache` | What is cached on disk |
+
+The retrieval tools take the same knobs as the CLI: `sources`, `per_source`,
+`package` (monorepo scoping), `ref` (pin a version), `docs_url`, and `semantic`
+(opt-in vector retrieval, degrading to lexical with a note when no backend is up).
+
+Pass `--repo <url|path>` at startup to dedicate the server to one project —
+`repo` then becomes optional on every tool. `--allow-write` additionally exposes
+`ultradoc_cache_clean`, which deletes cached clones; it is off by default so an
+auto-approving agent cannot reach it.
+
+Three things worth knowing:
+
+- **The first call on a new repo clones and indexes it** — 10-60s depending on
+  size. Every later call on the same repo is fast, and `ultradoc_search`,
+  `ultradoc_symbol` and `ultradoc_read` are sub-second once it is warm.
+- **During that clone the server answers nothing**, not even `ping`. ultradoc
+  shells out to `git` synchronously, so the process is blocked until it
+  returns. Once warm this never shows up again, and a slow tool call otherwise
+  never blocks a fast one.
+- **The HTTP transport binds `127.0.0.1` and refuses anything else** unless you
+  pass `--allow-remote`. This server clones arbitrary git URLs and reads local
+  files; an exposed port is a fetch-anything primitive for whoever finds it.
+  Browser `Origin`s are checked for the same reason.
 
 ## Cleaner text out of web & docs pages (optional)
 

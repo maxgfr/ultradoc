@@ -94,4 +94,30 @@ describe("parseArgs", () => {
     const p = parseArgs(["ask", "--repo", "owner/repo", "--q", "why?", "--package", "packages/api"]);
     expect(p.values.package).toBe("packages/api");
   });
+
+  it("accepts the mcp command with no flags at all", () => {
+    const p = parseArgs(["mcp"]);
+    expect(p.command).toBe("mcp");
+    expect(p.values.transport).toBeUndefined();
+  });
+
+  it("parses the mcp http flags", () => {
+    const p = parseArgs(["mcp", "--transport", "http", "--port", "7337", "--bind", "127.0.0.1", "--allow-origin", "https://a.test,https://b.test"]);
+    expect(p.values.transport).toBe("http");
+    expect(p.values.port).toBe("7337");
+    expect(p.values.bind).toBe("127.0.0.1");
+    expect(p.values["allow-origin"]).toBe("https://a.test,https://b.test");
+  });
+
+  it("parses the mcp boolean flags and a default repo", () => {
+    const p = parseArgs(["mcp", "--repo", "owner/repo", "--allow-write", "--allow-remote", "--max-response-bytes", "2000"]);
+    expect(p.values.repo).toBe("owner/repo");
+    expect(p.bools.has("allow-write")).toBe(true);
+    expect(p.bools.has("allow-remote")).toBe(true);
+    expect(p.values["max-response-bytes"]).toBe("2000");
+  });
+
+  it("still rejects an unknown flag on mcp", () => {
+    expect(trapExit(() => parseArgs(["mcp", "--nope"])).code).toBe(1);
+  });
 });

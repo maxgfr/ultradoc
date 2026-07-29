@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { CodeSymbol, RepoRef, StructuralIndex } from "./types.js";
+import { writeFileAtomic } from "./util.js";
 import { walk, readText } from "./walk.js";
 import { repoGraph, type RankedModule } from "./index/modules.js";
 
@@ -209,6 +210,6 @@ export function ensureOverview(index: StructuralIndex, ref: RepoRef, repoDir: st
   }
   const markdown = renderOverview(index, ref, repoDir);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, markdown);
+  writeFileAtomic(path, markdown);
   return { path, markdown, cached: false };
 }

@@ -1,4 +1,28 @@
 import { spawnSync } from "node:child_process";
+import { renameSync, unlinkSync, writeFileSync } from "node:fs";
+
+// Write a cache artifact so a concurrent reader sees either the old bytes or the
+// new ones, never a half-written file. `rename` is atomic within a filesystem,
+// and the temp file is a sibling so it always is one. This is what keeps a
+// second ultradoc process (the MCP server alongside the CLI, or two servers)
+// from poisoning index.json / OVERVIEW.md with an interleaved write that the
+// next `JSON.parse` throws on. The pid+counter suffix keeps two writers from
+// colliding on the temp name itself.
+let tmpCounter = 0;
+export function writeFileAtomic(path: string, data: string): void {
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
+  try {
+    writeFileSync(tmp, data);
+    renameSync(tmp, path);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* the temp file may never have been created */
+    }
+    throw e;
+  }
+}
 
 // Result of a subprocess call. `ok` is true on exit code 0 with the binary
 // found; `missing` is true when the binary isn't on PATH (so callers can fall

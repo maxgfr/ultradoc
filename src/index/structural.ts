@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { StructuralIndex, CodeSymbol } from "../types.js";
 import { LIMITS } from "../config.js";
+import { writeFileAtomic } from "../util.js";
 import { languageOf } from "../lang/registry.js";
 import { scanRepo, grammarKeysForExts, grammarReady } from "../vendor/codeindex-engine.mjs";
 import { publishScan, scanOptions } from "./scan.js";
@@ -166,7 +167,7 @@ export function buildIndex(root: string, slug: string, opts: { maxFiles?: number
 
   try {
     mkdirSync(indexDir(root), { recursive: true });
-    writeFileSync(indexPath(root), JSON.stringify(index));
+    writeFileAtomic(indexPath(root), JSON.stringify(index));
   } catch {
     // A read-only tree still works in-memory; persistence is an optimization.
   }

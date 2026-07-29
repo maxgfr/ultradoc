@@ -56,6 +56,14 @@ doc.ts            `doc`: project-type-adaptive outline → a dossier per section
 citations.ts      citation tokenization, strict alias resolution, claim coverage (shared by check/verify)
 check.ts          validate ANSWER.md/DOC.md citations + claim coverage (the grounding guarantee)
 verify.ts         claim↔evidence worklist + the semantic support gate (check --semantic)
+repo-lock.ts      withRepoLock: serialize cache work per repo (ensureClone/ensureIndex race)
+mcp/              the MCP server — a second front-end over the same library
+  protocol.ts     version negotiation, arg validation, response cap, Origin check (pure)
+  tools.ts        the tool declarations + annotations (pure data, no pipeline imports)
+  handlers.ts     tool name → library call; the JSON→AskOptions mapper that THROWS
+  server.ts       the JSON-RPC core, transport-agnostic (replies via a send callback)
+  stdio.ts        newline-delimited JSON on stdin/stdout + the stdout-purity guard
+  http.ts         stateless Streamable HTTP on node:http (POST /mcp, loopback)
 ```
 
 ## Data flow
@@ -74,6 +82,14 @@ AskOptions
   → checkRun: every citation resolves? else non-zero exit
   → (optional) runVerify → agent verdicts → check --semantic: every citation supports?
 ```
+
+`cli.ts` and `mcp/handlers.ts` are peer front-ends over this, not layers: both
+marshal options and call `buildContext` → `runSources` → `writeDossier`. The MCP
+server never spawns the CLI, and `mcp/` never imports `cli.ts` — whose `fail()`
+calls `process.exit`, which in a long-lived server would turn one bad argument
+into a dead session. What the two shared (`SOURCE_TOKENS`, `DEFAULT_SOURCES`)
+moved to `sources/kinds.ts`, where `parseSourceList` *returns* its error and each
+front-end decides whether that means an exit or a thrown `ToolError`.
 
 ## Retrieval, in detail
 
@@ -257,6 +273,58 @@ Together they prevent memory-based answers from passing as grounded ones.
   register it in `src/providers/registry.ts`.
 - **A source:** add `src/sources/<x>.ts` returning a `SourceResult` and wire it
   into `src/sources/registry.ts` + the `SourceKind` union.
+- **An MCP tool:** declare it in `src/mcp/tools.ts` (schema + a `TOOL_META`
+  row), handle it in `src/mcp/handlers.ts`, and add its annotation line to the
+  matrix in `tests/mcp-tools.test.ts` — which asserts tool by tool, so a new
+  tool with no expected row fails rather than sliding in unannotated.
+
+## The MCP server
+
+`ultradoc mcp` serves the same library as typed tools. It lives inside the
+single CLI entry point on purpose: a second `bin` would mean a second committed
+bundle threaded through `copy-bundle.mjs`, `verify-skill-bundle.mjs` and
+`check:build`'s explicit path list, and buys nothing. `skills/ultradoc/` is
+untouched — MCP is a host-integration surface, not skill guidance, and the
+skill's always-loaded token budget should not pay for something no skill
+invocation uses.
+
+Hand-written JSON-RPC, no `@modelcontextprotocol/sdk`: design principle 2 says
+the bundle has zero runtime dependencies, and the surface needed here is small.
+The vendored engine ships the same shape at
+`src/vendor/codeindex-engine.mjs:11407` for its own tools; `src/mcp/` is that
+shape retargeted, not a reuse of it.
+
+**Stateless HTTP.** No `Mcp-Session-Id` is issued. Every tool call carries its
+own `repo` and arguments, so a session would hold nothing — and issuing one buys
+a class of interop bugs (echo-back, expiry, 404-then-reinitialize, DELETE
+semantics) for no capability. A server instance is created per HTTP request, so
+two overlapping requests on different protocol versions cannot read each other's.
+No SSE: nothing sends server-initiated messages, and `GET /mcp` answers 405,
+which is the spec's way of saying so.
+
+**`readOnlyHint` is drawn at the user's environment, not at ultradoc's cache.**
+`search`, `overview`, `symbol` and `read` all write a clone and an index under
+the cache root; annotating them destructive would make every call prompt and the
+server unusable. They touch nothing the user made. `ask`, `doc` and `verify`
+produce artifacts the user is told to open, so they are not read-only.
+`cache_clean` is destructive and is not even registered without `--allow-write`.
+
+**Error semantics.** `isError` means the tool could not run; anything ultradoc
+can *report* is a result. So: an unknown tool or a schema violation is a
+JSON-RPC `-32602` (a client bug, not something the model should reason around);
+a repo that won't clone or a path outside the tree is an `isError` result the
+caller can act on; and a degraded source, zero evidence, or `checkRun` returning
+`ok: false` are **successful** results. That last one matters — `cli.ts` exits 1
+on it, and mapping that to `isError` would tell the model the grounding gate is
+broken when it just did its job.
+
+**Two known limits, both worth stating out loud.** `sh()` is `spawnSync`, so
+during a `git clone` the event loop is frozen: the server answers nothing, not
+even `ping`, and no timeout can preempt it. The real fix is forking a worker
+process per call; it is a follow-up, not a v1 requirement. And `withRepoLock`
+(`src/repo-lock.ts`) only serializes within one process — the cross-process race
+is covered by the atomic `writeFileAtomic` in `util.ts` for `index.json` and
+`OVERVIEW.md`, while `ensureClone` itself remains a gap.
 
 ## Release
 

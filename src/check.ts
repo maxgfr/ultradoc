@@ -20,6 +20,12 @@ export const COVERAGE_MIN_DEFAULT = 0.7;
 export interface CheckOptions {
   semantic?: boolean;
   answerFile?: string;
+  // The answer prose itself, checked in place of a file inside the dossier. The
+  // CLI always has the answer on disk; the MCP server has it in the tool call,
+  // and requiring a write into the dossier just to validate it would make the
+  // grounding gate cost a filesystem mutation the caller never asked for.
+  // `answerFile` still names it, so DOC.md-specific checks stay reachable.
+  answerText?: string;
   coverageMin?: number; // grounding threshold (default COVERAGE_MIN_DEFAULT)
   strict?: boolean; // coverageMin = 1.0 and fence-only citations become errors
   allowUnverified?: boolean; // --semantic without VERIFY.json warns instead of failing
@@ -418,7 +424,9 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   const warnings: string[] = [];
   const coverageMin = opts.strict ? 1 : (opts.coverageMin ?? COVERAGE_MIN_DEFAULT);
 
-  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  // An inline answer needs no file to exist, but still needs a name: the error
+  // messages quote it and the DOC.md-only checks key off its basename.
+  const answerPath = opts.answerText === undefined ? resolveAnswerPath(dir, opts.answerFile) : join(dir, opts.answerFile ?? "ANSWER.md");
   const evidencePath = join(dir, "evidence.json");
 
   if (!existsSync(evidencePath)) {
@@ -460,7 +468,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
     };
   }
 
-  const answer = readFileSync(answerPath, "utf8");
+  const answer = opts.answerText ?? readFileSync(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
 

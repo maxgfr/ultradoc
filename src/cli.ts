@@ -10,12 +10,15 @@ import { renderEvidenceMarkdown } from "./dossier.js";
 import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
+import { DEFAULT_SOURCES, parseSourceList } from "./sources/kinds.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl, firecrawlControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
+import { runStdioServer } from "./mcp/stdio.js";
+import { startHttpServer } from "./mcp/http.js";
 
 const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -35,6 +38,7 @@ Usage:
   ultradoc semantic up|down|status|pull
   ultradoc firecrawl up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
+  ultradoc mcp [--transport stdio|http] [--port <n>] [--bind <addr>] [--repo <url|path>]
 
 Commands:
   ask        Retrieve from all selected sources and write an evidence dossier.
@@ -80,6 +84,12 @@ Commands:
              web result) is cleaned into main-content markdown instead of being
              regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
+  mcp        Serve ultradoc over the Model Context Protocol, so any MCP client
+             (Claude Code, Claude Desktop, Cursor) calls it as typed tools
+             instead of shelling out: ultradoc_search, ultradoc_read,
+             ultradoc_symbol, ultradoc_fetch, ultradoc_ask, ultradoc_check…
+             Speaks stdio by default; --transport http serves JSON-RPC over
+             POST /mcp on loopback.
 
 Options:
   --repo <url|path>    Any git URL or a local checkout              (required)
@@ -117,6 +127,17 @@ Options:
                        needing no infrastructure first
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
+  --transport <t>      For 'mcp': stdio | http                        (default: stdio)
+  --port <n>           For 'mcp --transport http': listen port        (default: 7337)
+  --bind <addr>        For 'mcp --transport http': listen address     (default: 127.0.0.1)
+                       Non-loopback is refused unless --allow-remote
+  --allow-origin <o,…> For 'mcp --transport http': extra browser Origins to accept
+                       (loopback origins are always accepted)
+  --allow-remote       For 'mcp --transport http': permit a non-loopback --bind.
+                       The server clones arbitrary git URLs and reads local files
+  --allow-write        For 'mcp': also expose the destructive ultradoc_cache_clean
+  --max-response-bytes <n>  For 'mcp': withhold a tool result larger than this
+                                                              (default: 1000000)
   -h, --help           Show this help
   -v, --version        Show version
 
@@ -158,6 +179,7 @@ const COMMANDS = new Set([
   "semantic",
   "firecrawl",
   "cache",
+  "mcp",
 ]);
 const VALUE_FLAGS = new Set([
   "repo",
@@ -180,8 +202,15 @@ const VALUE_FLAGS = new Set([
   "phase",
   "name",
   "semantic-tier",
+  // `mcp` only. The flag sets are global, so these are accepted (and ignored)
+  // on every command — the same as --phase and --list already are.
+  "transport",
+  "port",
+  "bind",
+  "allow-origin",
+  "max-response-bytes",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
+const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list", "allow-remote", "allow-write"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -269,39 +298,10 @@ export function parseArgs(argv: string[]): Parsed {
   return { command, positional, values, bools };
 }
 
-const SOURCE_TOKENS: Record<string, SourceKind> = {
-  code: "code",
-  issue: "issue",
-  issues: "issue",
-  pr: "pr",
-  prs: "pr",
-  "pull-requests": "pr",
-  "merge-requests": "pr",
-  doc: "docs",
-  docs: "docs",
-  release: "release",
-  releases: "release",
-  history: "history",
-  discussion: "discussion",
-  discussions: "discussion",
-  web: "web",
-  so: "so",
-  stackoverflow: "so",
-};
-const DEFAULT_SOURCES: SourceKind[] = ["code", "issue", "pr", "docs"];
-
 function parseSources(s: string): SourceKind[] {
-  const out: SourceKind[] = [];
-  for (const t of s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean)) {
-    const k = SOURCE_TOKENS[t.toLowerCase()];
-    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,releases,history,discussions,web,so)`);
-    if (!out.includes(k)) out.push(k);
-  }
-  if (out.length === 0) fail("--sources resolved to nothing");
-  return out;
+  const { sources, error } = parseSourceList(s.split(","), "--sources");
+  if (error || !sources) fail(error ?? "--sources resolved to nothing");
+  return sources;
 }
 
 function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): AskOptions {
@@ -757,6 +757,56 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         return;
       }
       fail(`unknown cache action "${action}" (use: status | clean)`);
+      return;
+    }
+
+    case "mcp": {
+      const transport = oneOf("transport", p.values.transport ?? "stdio", ["stdio", "http"]);
+      const maxResponseBytes = p.values["max-response-bytes"] ? Number(p.values["max-response-bytes"]) : undefined;
+      if (maxResponseBytes !== undefined && (!Number.isFinite(maxResponseBytes) || maxResponseBytes <= 0)) fail("invalid --max-response-bytes");
+      const options = {
+        // A default repo makes `repo` optional on every tool, for a server
+        // dedicated to one project.
+        defaultRepo: p.values.repo,
+        allowWrite: p.bools.has("allow-write"),
+        maxResponseBytes,
+      };
+
+      if (transport === "stdio") {
+        // Nothing is written to stdout here: from this point stdout carries
+        // JSON-RPC frames only, and runStdioServer guards that.
+        await runStdioServer(options);
+        return;
+      }
+
+      const port = p.values.port ? Number(p.values.port) : 7337;
+      if (!Number.isInteger(port) || port < 0 || port > 65535) fail("invalid --port");
+      const allowOrigin = p.values["allow-origin"]
+        ? p.values["allow-origin"]
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
+      let running: Awaited<ReturnType<typeof startHttpServer>>;
+      try {
+        running = await startHttpServer({ ...options, port, bind: p.values.bind, allowOrigin, allowRemote: p.bools.has("allow-remote") });
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      // stderr, not stdout: an HTTP server's stdout is not a protocol stream,
+      // but keeping the two transports identical here means no one has to
+      // remember which is which.
+      process.stderr.write(`ultradoc: MCP server listening on ${running.url}\n`);
+      process.stderr.write(`  tools:  ${running.server.listening ? "ready" : "starting"} · ${options.allowWrite ? "read/write" : "read-only"}\n`);
+      process.stderr.write(`  client: claude mcp add --transport http ultradoc ${running.url}\n`);
+      for (const sig of ["SIGINT", "SIGTERM"] as const) {
+        process.once(sig, () => {
+          void running.close().then(() => process.exit(0));
+        });
+      }
+      // Resolve only when the server stops, so `run()` doesn't return while it
+      // is still listening.
+      await new Promise<void>((resolve) => running.server.once("close", resolve));
       return;
     }
   }

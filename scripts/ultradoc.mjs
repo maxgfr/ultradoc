@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join43, resolve as resolve5 } from "path";
+import { join as join43, resolve as resolve6 } from "path";
 import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath3 } from "url";
-import { existsSync as existsSync20, realpathSync as realpathSync2 } from "fs";
+import { existsSync as existsSync21, realpathSync as realpathSync3 } from "fs";
 
 // src/vendor/codeindex-engine.mjs
 import { spawnSync } from "child_process";
@@ -654,9 +654,9 @@ function diffFiles(dir, spec) {
     }
   }
   const byPath = new Map(out2.map((f) => [f.path, f]));
-  const num2 = sh("git", [...gitArgs(dir), "diff", "-z", "-M", "--numstat", ...rangeArgs(spec)]);
-  if (num2.ok) {
-    const toks = num2.stdout.split("\0");
+  const num22 = sh("git", [...gitArgs(dir), "diff", "-z", "-M", "--numstat", ...rangeArgs(spec)]);
+  if (num22.ok) {
+    const toks = num22.stdout.split("\0");
     let i2 = 0;
     while (i2 < toks.length) {
       const head = toks[i2++];
@@ -2879,7 +2879,7 @@ async function Module2(moduleArg = {}) {
   _fd_close.sig = "ii";
   var INT53_MAX = 9007199254740992;
   var INT53_MIN = -9007199254740992;
-  var bigintToI53Checked = /* @__PURE__ */ __name((num2) => num2 < INT53_MIN || num2 > INT53_MAX ? NaN : Number(num2), "bigintToI53Checked");
+  var bigintToI53Checked = /* @__PURE__ */ __name((num22) => num22 < INT53_MIN || num22 > INT53_MAX ? NaN : Number(num22), "bigintToI53Checked");
   function _fd_seek(fd, offset, whence, newOffset) {
     offset = bigintToI53Checked(offset);
     return 70;
@@ -2897,7 +2897,7 @@ async function Module2(moduleArg = {}) {
     }
   }, "printChar");
   var _fd_write = /* @__PURE__ */ __name((fd, iov, iovcnt, pnum) => {
-    var num2 = 0;
+    var num22 = 0;
     for (var i2 = 0; i2 < iovcnt; i2++) {
       var ptr = LE_HEAP_LOAD_U32((iov >> 2) * 4);
       var len = LE_HEAP_LOAD_U32((iov + 4 >> 2) * 4);
@@ -2905,9 +2905,9 @@ async function Module2(moduleArg = {}) {
       for (var j = 0; j < len; j++) {
         printChar(fd, HEAPU8[ptr + j]);
       }
-      num2 += len;
+      num22 += len;
     }
-    LE_HEAP_STORE_U32((pnum >> 2) * 4, num2);
+    LE_HEAP_STORE_U32((pnum >> 2) * 4, num22);
     return 0;
   }, "_fd_write");
   _fd_write.sig = "iippp";
@@ -9949,14 +9949,14 @@ function buildEmbeddingIndex(scan2, model) {
   return { embedVersion: EMBED_VERSION, modelId: model.modelId, dim: model.dim, records };
 }
 function serializeEmbeddings(index) {
-  const header = JSON.stringify({
+  const header2 = JSON.stringify({
     embedVersion: index.embedVersion,
     modelId: index.modelId,
     dim: index.dim,
     count: index.records.length,
     records: index.records.map((r) => ({ file: r.file, symbol: r.symbol ?? "", line: r.line ?? 0 }))
   });
-  const headerBuf = Buffer.from(header, "utf8");
+  const headerBuf = Buffer.from(header2, "utf8");
   const body2 = Buffer.alloc(index.records.length * index.dim);
   let off = 0;
   for (const r of index.records) {
@@ -9975,10 +9975,10 @@ function deserializeEmbeddings(bytes) {
     throw new Error("embeddings.bin: bad magic (not a codeindex embeddings artifact)");
   }
   const headerLen = buf.readUInt32LE(4);
-  const header = JSON.parse(buf.toString("utf8", 8, 8 + headerLen));
+  const header2 = JSON.parse(buf.toString("utf8", 8, 8 + headerLen));
   const bodyOff = 8 + headerLen;
-  const { dim } = header;
-  const records = header.records.map((m, i2) => {
+  const { dim } = header2;
+  const records = header2.records.map((m, i2) => {
     const vec = new Int8Array(dim);
     for (let d = 0; d < dim; d++) vec[d] = buf.readInt8(bodyOff + i2 * dim + d);
     const rec = { file: m.file, vec };
@@ -9986,7 +9986,7 @@ function deserializeEmbeddings(bytes) {
     if (m.line) rec.line = m.line;
     return rec;
   });
-  return { embedVersion: header.embedVersion, modelId: header.modelId, dim, records };
+  return { embedVersion: header2.embedVersion, modelId: header2.modelId, dim, records };
 }
 var MAGIC;
 var init_embed = __esm({
@@ -10372,9 +10372,9 @@ function renderRepoMap(scan2, graph, opts = {}) {
   const maxSymbols = opts.maxSymbolsPerFile ?? 8;
   const ranked = [...graph.files].filter((f) => f.fileKind === "code").sort((a, b) => (b.pagerank ?? 0) - (a.pagerank ?? 0) || b.symbols - a.symbols || byStr(a.rel, b.rel));
   const records = new Map(scan2.files.map((f) => [f.rel, f]));
-  const header = `# repo map \u2014 ${graph.fileCount} files
+  const header2 = `# repo map \u2014 ${graph.fileCount} files
 `;
-  let out2 = header;
+  let out2 = header2;
   let files = 0;
   for (const node of ranked) {
     const rec = records.get(node.rel);
@@ -12992,7 +12992,7 @@ function parseFlags(args2) {
       if (v === void 0) throw new Error(`missing value for ${a}`);
       return v;
     };
-    const num2 = () => {
+    const num22 = () => {
       const raw = next();
       const n = Number(raw);
       if (!Number.isFinite(n) || n <= 0) throw new Error(`${a} expects a positive number, got "${raw}"`);
@@ -13008,12 +13008,12 @@ function parseFlags(args2) {
     else if (a === "--scope") flags2.scope = next();
     else if (a === "--no-gitignore") flags2.gitignore = false;
     else if (a === "--ignore-dir") flags2.ignoreDirs.push(next());
-    else if (a === "--max-files") flags2.maxFiles = num2();
-    else if (a === "--max-bytes") flags2.maxBytes = num2();
-    else if (a === "--max-calls") flags2.maxCalls = num2();
+    else if (a === "--max-files") flags2.maxFiles = num22();
+    else if (a === "--max-bytes") flags2.maxBytes = num22();
+    else if (a === "--max-calls") flags2.maxCalls = num22();
     else if (a === "--ignore-case") flags2.ignoreCase = true;
-    else if (a === "--max-hits") flags2.maxHits = num2();
-    else if (a === "--budget-tokens") flags2.budgetTokens = num2();
+    else if (a === "--max-hits") flags2.maxHits = num22();
+    else if (a === "--budget-tokens") flags2.budgetTokens = num22();
     else if (a === "--no-ast") flags2.noAst = true;
     else if (a === "--index") flags2.indexDir = next();
     else if (a === "--no-index-cache") flags2.noIndexCache = true;
@@ -13024,14 +13024,14 @@ function parseFlags(args2) {
       flags2.workers = n;
     } else if (a === "--since") flags2.since = next();
     else if (a === "--config") flags2.config = resolve2(next());
-    else if (a === "--limit") flags2.limit = num2();
+    else if (a === "--limit") flags2.limit = num22();
     else if (a === "--no-fuzzy") flags2.fuzzy = false;
     else if (a === "--semantic") flags2.semantic = true;
     else if (a === "--recall") flags2.recall = true;
     else if (a === "--run") flags2.run = true;
     else if (a === "--base") flags2.base = next();
     else if (a === "--staged") flags2.staged = true;
-    else if (a === "--depth") flags2.depth = num2();
+    else if (a === "--depth") flags2.depth = num22();
     else if (a === "--kind") flags2.kind = next();
     else if (a === "--json") flags2.json = true;
     else if (!a.startsWith("--") && flags2.positional === void 0) flags2.positional = a;
@@ -13542,12 +13542,27 @@ ${HELP}`);
 var VERSION = "2.11.2";
 
 // src/clone.ts
-import { existsSync as existsSync8, statSync as statSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync4, renameSync as renameSync2 } from "fs";
+import { existsSync as existsSync8, statSync as statSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync4, renameSync as renameSync3 } from "fs";
 import { resolve as resolve3, join as join21, basename as basename3 } from "path";
 import { tmpdir as tmpdir2 } from "os";
 
 // src/util.ts
 import { spawnSync as spawnSync2 } from "child_process";
+import { renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync5 } from "fs";
+var tmpCounter = 0;
+function writeFileAtomic(path, data) {
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
+  try {
+    writeFileSync5(tmp, data);
+    renameSync2(tmp, path);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+    }
+    throw e;
+  }
+}
 function sh2(cmd, args2, opts = {}) {
   const res = spawnSync2(cmd, args2, {
     cwd: opts.cwd,
@@ -13981,7 +13996,7 @@ function migrateLegacyClone(dir, slug) {
   if (legacy === dir || !existsSync8(join21(legacy, ".git"))) return;
   try {
     mkdirSync4(cacheRoot(), { recursive: true });
-    renameSync2(legacy, dir);
+    renameSync3(legacy, dir);
   } catch {
   }
 }
@@ -14104,7 +14119,7 @@ function originUrl(dir) {
 }
 
 // src/index/structural.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, writeFileSync as writeFileSync5, readFileSync as readFileSync10 } from "fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync10 } from "fs";
 import { join as join24 } from "path";
 
 // src/lang/registry.ts
@@ -14180,13 +14195,13 @@ var HOSTED = /\.github\.io|\.netlify\.app|\.vercel\.app|\.pages\.dev/i;
 var DOC_SUBDOMAIN = /^https?:\/\/docs?\./i;
 var DOC_PATH = /(^|\/)(docs?|documentation|guide|guides|manual|handbook|reference|learn)(\/|$|#|\?)/i;
 var URL_RE = /https?:\/\/[^\s)"'<>`\]]+/g;
-function scoreDocUrl(url, context) {
+function scoreDocUrl(url, context2) {
   let s = 0;
   if (DOC_SUBDOMAIN.test(url)) s += 5;
   if (KNOWN_DOC_HOST.test(url)) s += 5;
   if (DOC_PATH.test(url)) s += 3;
   if (HOSTED.test(url) && DOC_PATH.test(url)) s += 1;
-  if (/\b(documentation|docs|guide|manual|reference|api docs)\b/i.test(context)) s += 2;
+  if (/\b(documentation|docs|guide|manual|reference|api docs)\b/i.test(context2)) s += 2;
   const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
   const depth = (path.match(/\//g) ?? []).length;
   if (depth >= 3) s -= Math.min(2, (depth - 2) * 0.5);
@@ -14199,10 +14214,10 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   const candidates = [];
   const names = projectNames.filter((n) => n && n.length >= 3).map((n) => n.toLowerCase());
   const related = (url) => names.some((n) => url.toLowerCase().includes(n));
-  const add = (url, context, bonus = 0) => {
+  const add = (url, context2, bonus = 0) => {
     const u = clean(url);
     if (!/^https?:\/\//.test(u)) return;
-    candidates.push({ url: u, score: scoreDocUrl(u, context) + bonus + (related(u) ? 3 : 0) });
+    candidates.push({ url: u, score: scoreDocUrl(u, context2) + bonus + (related(u) ? 3 : 0) });
   };
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
   if (readme) {
@@ -14376,7 +14391,7 @@ function buildIndex(root, slug, opts = {}) {
   };
   try {
     mkdirSync5(indexDir(root), { recursive: true });
-    writeFileSync5(indexPath(root), JSON.stringify(index));
+    writeFileAtomic(indexPath(root), JSON.stringify(index));
   } catch {
   }
   return index;
@@ -16483,12 +16498,12 @@ async function query2(ref, terms, kind, perSource) {
     if (!Array.isArray(arr)) return { items: [], error: `GitLab ${kind} search returned no array.` };
     const marker = kind === "issue" ? "#" : "!";
     const items = arr.map((it) => {
-      const num2 = it.iid ?? it.id;
+      const num3 = it.iid ?? it.id;
       const body2 = String(it.description ?? "").replace(/\r/g, "").trim().slice(0, 1200);
       return {
         source: kind,
-        title: `${marker}${num2} ${it.title} [${it.state}]`,
-        ref: `${kind}#${num2}`,
+        title: `${marker}${num3} ${it.title} [${it.state}]`,
+        ref: `${kind}#${num3}`,
         location: it.web_url,
         score: 0,
         // GitLab exposes no relevance score; withRankScores sets it
@@ -16496,7 +16511,7 @@ async function query2(ref, terms, kind, perSource) {
 
 ${body2 || "(no description)"}`,
         url: it.web_url,
-        meta: { iid: num2, state: it.state }
+        meta: { iid: num3, state: it.state }
       };
     });
     return { items };
@@ -16535,13 +16550,13 @@ var gitlab = {
 function toItems2(arr, kind) {
   const marker = kind === "issue" ? "#" : "!";
   return (arr ?? []).map((it) => {
-    const num2 = it.number;
+    const num3 = it.number;
     const labels = (it.labels ?? []).map((l) => typeof l === "string" ? l : l.name).filter(Boolean).join(", ");
     const body2 = String(it.body ?? "").replace(/\r/g, "").trim().slice(0, 1200);
     return {
       source: kind,
-      title: `${marker}${num2} ${it.title} [${it.state}]`,
-      ref: `${kind}#${num2}`,
+      title: `${marker}${num3} ${it.title} [${it.state}]`,
+      ref: `${kind}#${num3}`,
       location: it.html_url,
       score: 0,
       // Gitea exposes no relevance score; withRankScores sets it
@@ -16549,7 +16564,7 @@ function toItems2(arr, kind) {
 
 ${body2 || "(no description)"}`,
       url: it.html_url,
-      meta: { number: num2, state: it.state }
+      meta: { number: num3, state: it.state }
     };
   });
 }
@@ -17123,11 +17138,11 @@ async function runSingleSource(options, kind) {
 }
 
 // src/doc.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync14 } from "fs";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync13 } from "fs";
 import { basename as basename5, join as join36 } from "path";
 
 // src/overview.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync12, readFileSync as readFileSync15, writeFileSync as writeFileSync13 } from "fs";
+import { existsSync as existsSync15, mkdirSync as mkdirSync12, readFileSync as readFileSync15 } from "fs";
 import { basename as basename4, dirname as dirname8, join as join35 } from "path";
 
 // src/index/modules.ts
@@ -17305,7 +17320,7 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
   }
   const markdown = renderOverview(index, ref, repoDir);
   mkdirSync12(dirname8(path), { recursive: true });
-  writeFileSync13(path, markdown);
+  writeFileAtomic(path, markdown);
   return { path, markdown, cached: false };
 }
 
@@ -17515,16 +17530,16 @@ async function runDoc(options, opts = {}) {
   const planJson = join36(dir, "DOC.plan.json");
   const todoMd = join36(dir, "DOC.todo.md");
   const metaJson = join36(dir, "meta.json");
-  writeFileSync14(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync14(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync14(planJson, JSON.stringify(plan, null, 2));
-  writeFileSync14(todoMd, renderDocTodo(plan, evidence));
-  writeFileSync14(metaJson, JSON.stringify(meta, null, 2));
+  writeFileSync13(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync13(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync13(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync13(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync13(metaJson, JSON.stringify(meta, null, 2));
   let architecturePath;
   if (graph) {
     try {
       architecturePath = join36(dir, "ARCHITECTURE.mmd");
-      writeFileSync14(architecturePath, graph.mermaid());
+      writeFileSync13(architecturePath, graph.mermaid());
     } catch {
       architecturePath = void 0;
     }
@@ -17784,7 +17799,7 @@ function claimCoverage(text, _evidence) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync16, readFileSync as readFileSync16, writeFileSync as writeFileSync15 } from "fs";
+import { existsSync as existsSync16, readFileSync as readFileSync16, writeFileSync as writeFileSync14 } from "fs";
 import { join as join37 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
@@ -17844,8 +17859,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims: worklist.uncitedClaims
   };
-  writeFileSync15(join37(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync15(join37(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync14(join37(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync14(join37(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -17920,7 +17935,7 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync15(join37(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
+  writeFileSync14(join37(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
@@ -18272,7 +18287,7 @@ function checkRun(dir, opts = {}) {
   const errors = [];
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
-  const answerPath = resolveAnswerPath(dir, opts.answerFile);
+  const answerPath = opts.answerText === void 0 ? resolveAnswerPath(dir, opts.answerFile) : join38(dir, opts.answerFile ?? "ANSWER.md");
   const evidencePath = join38(dir, "evidence.json");
   if (!existsSync17(evidencePath)) {
     return {
@@ -18311,7 +18326,7 @@ function checkRun(dir, opts = {}) {
       warnings: []
     };
   }
-  const answer = readFileSync17(answerPath, "utf8");
+  const answer = opts.answerText ?? readFileSync17(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const { tokens: citations, fencedOnly } = collectCitations(answer);
@@ -18423,6 +18438,41 @@ function formatCheckReport(r, dir) {
   for (const w of r.warnings) lines.push(`  \u26A0 ${w}`);
   lines.push(r.ok ? `  \u2713 answer is grounded \u2014 every citation resolves to evidence` : `  \u2717 answer is NOT grounded`);
   return lines.join("\n");
+}
+
+// src/sources/kinds.ts
+var SOURCE_TOKENS = {
+  code: "code",
+  issue: "issue",
+  issues: "issue",
+  pr: "pr",
+  prs: "pr",
+  "pull-requests": "pr",
+  "merge-requests": "pr",
+  doc: "docs",
+  docs: "docs",
+  release: "release",
+  releases: "release",
+  history: "history",
+  discussion: "discussion",
+  discussions: "discussion",
+  web: "web",
+  so: "so",
+  stackoverflow: "so"
+};
+var DEFAULT_SOURCES = ["code", "issue", "pr", "docs"];
+var SOURCE_LIST_HINT = "use: code,issues,prs,docs,releases,history,discussions,web,so";
+function parseSourceList(tokens, label = "sources") {
+  const out2 = [];
+  for (const raw of tokens) {
+    const t = raw.trim();
+    if (!t) continue;
+    const k = SOURCE_TOKENS[t.toLowerCase()];
+    if (!k) return { error: `unknown source "${t}" (${SOURCE_LIST_HINT})` };
+    if (!out2.includes(k)) out2.push(k);
+  }
+  if (out2.length === 0) return { error: `${label} resolved to nothing` };
+  return { sources: out2 };
 }
 
 // src/index/symbols.ts
@@ -18628,7 +18678,7 @@ function formatCacheStatus(s) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync19, mkdirSync as mkdirSync14, readFileSync as readFileSync18, writeFileSync as writeFileSync16 } from "fs";
+import { existsSync as existsSync19, mkdirSync as mkdirSync14, readFileSync as readFileSync18, writeFileSync as writeFileSync15 } from "fs";
 import { join as join42, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
@@ -18867,8 +18917,8 @@ With subagents available, prefer the emitted workflows instead: \`orchestrate --
 var PHASES = ["drill", "verify", "doc"];
 var SMALL_WORKLIST = 3;
 var BATCH_SIZE = 8;
-function listPhases(runDir, engineAbs) {
-  const run3 = resolve4(runDir);
+function listPhases(runDir2, engineAbs) {
+  const run3 = resolve4(runDir2);
   const drillPath = join42(run3, "drill-plan.json");
   let drillIds = [];
   let drillReady = false;
@@ -18935,8 +18985,8 @@ function listPhases(runDir, engineAbs) {
     }
   ];
 }
-function orchestrateRun(runDir, engineAbs, opts = {}) {
-  const run3 = resolve4(runDir);
+function orchestrateRun(runDir2, engineAbs, opts = {}) {
+  const run3 = resolve4(runDir2);
   if (!existsSync19(run3)) {
     return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run3}`], phases: [] };
   }
@@ -18972,7 +19022,7 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(run3, engineAbs))) {
     const p = join42(agentsDir, `${name2}.md`);
-    writeFileSync16(p, content);
+    writeFileSync15(p, content);
     written.push(p);
   }
   if (!opts.eco) {
@@ -18985,14 +19035,1097 @@ function orchestrateRun(runDir, engineAbs, opts = {}) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
       }
       const p = join42(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync16(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
+      writeFileSync15(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
       written.push(p);
     }
   }
   const rb = join42(orchDir, "RUNBOOK.md");
-  writeFileSync16(rb, runbookMd(phases, run3, engineAbs));
+  writeFileSync15(rb, runbookMd(phases, run3, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
+}
+
+// src/mcp/stdio.ts
+import { createInterface as createInterface2 } from "readline";
+
+// src/mcp/handlers.ts
+import { existsSync as existsSync20, readFileSync as readFileSync19, realpathSync as realpathSync2, statSync as statSync10 } from "fs";
+import { isAbsolute as isAbsolute2, resolve as resolve5, sep as sep4 } from "path";
+
+// src/repo-lock.ts
+var chains = /* @__PURE__ */ new Map();
+function withRepoLock(slug, fn) {
+  const prev = chains.get(slug) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  const tail = next.then(noop, noop);
+  chains.set(slug, tail);
+  tail.then(() => {
+    if (chains.get(slug) === tail) chains.delete(slug);
+  }, noop);
+  return next;
+}
+function noop() {
+}
+
+// src/mcp/handlers.ts
+var ToolError = class extends Error {
+};
+var MAX_READ_LINES = 2e3;
+var WINDOWED_READ_MAX_BYTES = LIMITS.maxFileBytes * 64;
+var SYMBOL_MAX_DEFAULT = 12;
+function str3(v) {
+  return typeof v === "string" && v.trim() !== "" ? v : void 0;
+}
+function num2(v) {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : void 0;
+}
+function bool(v) {
+  return v === true || v === "true";
+}
+function strArray2(v) {
+  return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : void 0;
+}
+function requiredRepo(args2, defaults) {
+  const repo = str3(args2.repo) ?? defaults.defaultRepo;
+  if (!repo) throw new ToolError("`repo` is required: a git URL, owner/repo, or an absolute local path.");
+  return repo;
+}
+function requiredStr(args2, key, hint) {
+  const v = str3(args2[key]);
+  if (!v) throw new ToolError(`\`${key}\` is required \u2014 ${hint}`);
+  return v;
+}
+function askOptions(args2, defaults, opts = {}) {
+  const rawSources = strArray2(args2.sources);
+  let sources = DEFAULT_SOURCES;
+  if (rawSources !== void 0) {
+    if (rawSources.length === 0) throw new ToolError("`sources` was an empty array \u2014 omit it to use the default (code, issue, pr, docs).");
+    const parsed = parseSourceList(rawSources, "`sources`");
+    if (parsed.error || !parsed.sources) throw new ToolError(parsed.error ?? "`sources` resolved to nothing");
+    sources = parsed.sources;
+  }
+  const perSource = num2(args2.per_source);
+  if (perSource !== void 0 && perSource <= 0) throw new ToolError("`per_source` must be greater than 0.");
+  const out2 = str3(args2.out);
+  if (out2 !== void 0 && !isAbsolute2(out2)) throw new ToolError("`out` must be an absolute path.");
+  const docsUrl = str3(args2.docs_url);
+  if (docsUrl !== void 0 && !/^https?:\/\//i.test(docsUrl)) throw new ToolError("`docs_url` must be an absolute http(s) URL.");
+  return {
+    repo: requiredRepo(args2, defaults),
+    question: opts.question ?? str3(args2.question) ?? "",
+    sources,
+    ref: str3(args2.ref),
+    docsUrl,
+    pkg: str3(args2.package),
+    out: out2,
+    // Opt-in, exactly like --semantic: it degrades to the lexical tier with a
+    // note when no backend is reachable, so turning it on is never a failure.
+    semantic: bool(args2.semantic),
+    // The tiers that need no infrastructure are tried first; which one wins is
+    // not something a tool caller should have to decide.
+    semanticTier: "auto",
+    webEngine: "auto",
+    perSource: perSource ?? 6,
+    json: true,
+    refresh: bool(args2.refresh)
+  };
+}
+var warmed;
+var warmNotes = [];
+function ensureGrammarsWarm() {
+  if (!warmed) {
+    const notes = [];
+    warmed = warmGrammars({ label: "ultradoc", onNote: (m) => notes.push(m.trim()) }).then(
+      () => {
+        warmNotes = notes.filter(Boolean);
+      },
+      (e) => {
+        warmNotes = [`Grammar warm-up failed (${errMessage2(e)}) \u2014 symbol extraction falls back to the regex tier.`];
+      }
+    );
+  }
+  return warmed.then(() => {
+    const n = warmNotes;
+    warmNotes = [];
+    return n;
+  });
+}
+function errMessage2(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+function within(path, root) {
+  return path === root || path.startsWith(root + sep4);
+}
+function safeRealpath(p) {
+  try {
+    return realpathSync2(p);
+  } catch {
+    return void 0;
+  }
+}
+var REPO_FREE_TOOLS = /* @__PURE__ */ new Set(["ultradoc_fetch", "ultradoc_check", "ultradoc_verify", "ultradoc_cache", "ultradoc_cache_clean"]);
+async function callTool2(name2, args2, defaults = {}) {
+  if (name2 === "ultradoc_cache_clean" && !defaults.allowWrite) {
+    throw new ToolError("ultradoc_cache_clean is disabled \u2014 start the server with --allow-write to enable it.");
+  }
+  if (REPO_FREE_TOOLS.has(name2)) return outcome(name2, await callRepoFree(name2, args2));
+  const repo = requiredRepo(args2, defaults);
+  const slug = resolveRepo(repo).slug;
+  const notes = await ensureGrammarsWarm();
+  return withRepoLock(slug, async () => outcome(name2, await callRepoTool(name2, args2, defaults, notes)));
+}
+function outcome(name2, result) {
+  return { text: JSON.stringify(result, null, 2) + "\n", artifact: artifactFor(name2, result) };
+}
+function artifactFor(name2, result) {
+  if (typeof result !== "object" || result === null) return void 0;
+  const r = result;
+  if (name2 === "ultradoc_ask") {
+    const evidenceMd = r.paths?.evidence_md;
+    return typeof evidenceMd === "string" ? evidenceMd : void 0;
+  }
+  if (name2 === "ultradoc_overview") return typeof r.path === "string" ? r.path : void 0;
+  if (name2 === "ultradoc_doc") {
+    const todo = r.paths?.todoMd;
+    return typeof todo === "string" ? todo : void 0;
+  }
+  return void 0;
+}
+async function callRepoFree(name2, args2) {
+  switch (name2) {
+    case "ultradoc_fetch":
+      return await handleFetch(args2);
+    case "ultradoc_check":
+      return handleCheck(args2);
+    case "ultradoc_verify":
+      return handleVerify(args2);
+    case "ultradoc_cache":
+      return cacheStatus();
+    case "ultradoc_cache_clean":
+      return handleCacheClean(args2);
+    default:
+      throw new ToolError(`unknown tool: ${name2}`);
+  }
+}
+async function callRepoTool(name2, args2, defaults, warmNotes2) {
+  switch (name2) {
+    case "ultradoc_search":
+      return await handleSearch(args2, defaults, warmNotes2);
+    case "ultradoc_ask":
+      return await handleAsk(args2, defaults, warmNotes2);
+    case "ultradoc_overview":
+      return handleOverview(args2, defaults, warmNotes2);
+    case "ultradoc_symbol":
+      return handleSymbol(args2, defaults, warmNotes2);
+    case "ultradoc_read":
+      return handleRead(args2, defaults);
+    case "ultradoc_doc":
+      return await handleDoc(args2, defaults, warmNotes2);
+    default:
+      throw new ToolError(`unknown tool: ${name2}`);
+  }
+}
+function context(options) {
+  try {
+    return buildContext(options);
+  } catch (e) {
+    throw new ToolError(errMessage2(e));
+  }
+}
+async function handleSearch(args2, defaults, warmNotes2) {
+  const options = askOptions(args2, defaults, { question: requiredStr(args2, "question", "the precise question to retrieve evidence for.") });
+  const t0 = Date.now();
+  const ctx = context(options);
+  const results = await runSources(ctx);
+  const evidence = assignIds2(results);
+  const sourceMs = {};
+  for (const r of results) if (r.ms !== void 0) sourceMs[r.source] = r.ms;
+  return {
+    repo: ctx.repoRef.raw,
+    host: ctx.repoRef.host,
+    commit: ctx.index.commit,
+    repo_dir: ctx.repoDir,
+    package: ctx.scopePkg?.name,
+    sources: options.sources,
+    evidence,
+    // Retrieval notes are the honest part of the result: a host with no issues
+    // API, an unreachable page, a capped index. They are never an error.
+    notes: [...warmNotes2, ...results.flatMap((r) => r.notes)],
+    fallbacks: results.flatMap((r) => r.fallbacks ?? []),
+    timings: {
+      clone_ms: ctx.setupTimings?.cloneMs ?? 0,
+      index_ms: ctx.setupTimings?.indexMs ?? 0,
+      total_ms: Date.now() - t0,
+      sources: sourceMs
+    }
+  };
+}
+async function handleAsk(args2, defaults, warmNotes2) {
+  const options = askOptions(args2, defaults, { question: requiredStr(args2, "question", "the question the dossier is built to answer.") });
+  let r;
+  try {
+    r = await runAsk(options);
+  } catch (e) {
+    throw new ToolError(errMessage2(e));
+  }
+  return {
+    run_dir: r.dir,
+    paths: {
+      evidence_md: r.paths.evidenceMd,
+      evidence_json: r.paths.evidenceJson,
+      meta_json: r.paths.metaJson
+    },
+    meta: r.meta,
+    evidence_count: r.evidence.length,
+    notes: [...warmNotes2, ...r.meta.notes],
+    next: `Read ${r.paths.evidenceMd} with ultradoc_read, write an answer citing [E#], then call ultradoc_check with run_dir "${r.dir}".`
+  };
+}
+function handleOverview(args2, defaults, warmNotes2) {
+  const options = askOptions(args2, defaults, { question: "" });
+  const ctx = context(options);
+  const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, { refresh: options.refresh });
+  return {
+    path: r.path,
+    cached: r.cached,
+    markdown: r.markdown,
+    commit: ctx.index.commit,
+    file_count: ctx.index.fileCount,
+    packages: ctx.index.packages,
+    notes: warmNotes2
+  };
+}
+function handleSymbol(args2, defaults, warmNotes2) {
+  const name2 = requiredStr(args2, "name", "the exact symbol name to resolve.");
+  const max = num2(args2.max);
+  if (max !== void 0 && max <= 0) throw new ToolError("`max` must be greater than 0.");
+  const ctx = context(askOptions(args2, defaults, { question: name2 }));
+  const { items, notes } = symbolEvidence(ctx, name2, { max: max ?? SYMBOL_MAX_DEFAULT });
+  return {
+    repo: ctx.repoRef.raw,
+    commit: ctx.index.commit,
+    symbol: name2,
+    items: assignIds2([{ source: "code", items, notes: [] }]),
+    notes: [...warmNotes2, ...notes]
+  };
+}
+function handleRead(args2, defaults) {
+  const rel = requiredStr(args2, "path", "a repo-relative path, or an absolute path inside the clone or ultradoc's cache.");
+  const ctx = context(askOptions(args2, defaults, { question: "" }));
+  const root = realpathSync2(ctx.repoDir);
+  const target = isAbsolute2(rel) ? rel : resolve5(root, rel);
+  let real;
+  try {
+    real = realpathSync2(target);
+  } catch {
+    throw new ToolError(`No such file in ${ctx.repoRef.raw}: ${rel}`);
+  }
+  const cache = safeRealpath(cacheRoot());
+  if (!within(real, root) && !(cache && within(real, cache))) {
+    throw new ToolError(
+      `\`path\` is outside ${ctx.repoRef.raw} and outside ultradoc's cache: ${rel}. ultradoc_read only opens files in the clone or in a dossier under the cache \u2014 read anything else with your own file tools.`
+    );
+  }
+  let stat;
+  try {
+    stat = statSync10(real);
+  } catch {
+    throw new ToolError(`No such file in ${ctx.repoRef.raw}: ${rel}`);
+  }
+  if (stat.isDirectory()) throw new ToolError(`\`path\` is a directory, not a file: ${rel}`);
+  const wantsWindow = args2.start_line !== void 0 || args2.end_line !== void 0;
+  if (stat.size > WINDOWED_READ_MAX_BYTES) {
+    throw new ToolError(
+      `${rel} is ${stat.size} bytes \u2014 too large for ultradoc to open (ceiling ${WINDOWED_READ_MAX_BYTES}). Read it with your own file tools.`
+    );
+  }
+  if (stat.size > LIMITS.maxFileBytes && !wantsWindow) {
+    throw new ToolError(
+      `${rel} is ${stat.size} bytes, over the ${LIMITS.maxFileBytes}-byte whole-file cap \u2014 pass start_line/end_line and the window will be returned.`
+    );
+  }
+  const lines = readFileSync19(real, "utf8").split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const total = lines.length;
+  const start2 = Math.max(1, Math.trunc(num2(args2.start_line) ?? 1));
+  if (start2 > total) throw new ToolError(`start_line ${start2} is past the end of ${rel} (${total} lines).`);
+  const requestedEnd = Math.trunc(num2(args2.end_line) ?? total);
+  const end = Math.min(total, Math.max(start2, requestedEnd), start2 + MAX_READ_LINES - 1);
+  return {
+    path: rel,
+    commit: ctx.index.commit,
+    start_line: start2,
+    end_line: end,
+    total_lines: total,
+    truncated: end < Math.min(total, Math.max(start2, requestedEnd)),
+    content: lines.slice(start2 - 1, end).join("\n")
+  };
+}
+async function handleFetch(args2) {
+  const urls = strArray2(args2.urls);
+  if (!urls || urls.length === 0) throw new ToolError("`urls` is required \u2014 an array of absolute http(s) URLs.");
+  const bad = urls.find((u) => !/^https?:\/\//i.test(u));
+  if (bad) throw new ToolError(`\`urls\` must be absolute http(s) URLs \u2014 got "${bad}".`);
+  const perSource = num2(args2.per_source);
+  if (perSource !== void 0 && perSource <= 0) throw new ToolError("`per_source` must be greater than 0.");
+  const question = str3(args2.question) ?? "";
+  const { items, notes } = await webFetchUrls(urls, question, perSource ?? 6, {});
+  return { urls, items: assignIds2([{ source: "web", items, notes: [] }]), notes };
+}
+function runDir(args2) {
+  const dir = requiredStr(args2, "run_dir", "the dossier directory returned by ultradoc_ask.");
+  if (!existsSync20(dir)) throw new ToolError(`No dossier at ${dir} \u2014 run ultradoc_ask first, and pass the run_dir it returned.`);
+  return dir;
+}
+function handleCheck(args2) {
+  const dir = runDir(args2);
+  const coverageMin = num2(args2.coverage_min);
+  if (coverageMin !== void 0 && (coverageMin < 0 || coverageMin > 1)) throw new ToolError("`coverage_min` must be between 0 and 1.");
+  const answerText = typeof args2.answer_text === "string" ? args2.answer_text : void 0;
+  const result = checkRun(dir, {
+    answerText,
+    answerFile: str3(args2.answer_file),
+    strict: bool(args2.strict),
+    coverageMin,
+    semantic: bool(args2.semantic),
+    allowUnverified: bool(args2.allow_unverified)
+  });
+  return { ...result, run_dir: dir, answer_source: answerText === void 0 ? "file" : "inline" };
+}
+function handleVerify(args2) {
+  const dir = runDir(args2);
+  const maxVerify = num2(args2.max_verify);
+  if (maxVerify !== void 0 && maxVerify <= 0) throw new ToolError("`max_verify` must be greater than 0.");
+  try {
+    return { ...runVerify(dir, { maxVerify, answerFile: str3(args2.answer_file) }), run_dir: dir };
+  } catch (e) {
+    throw new ToolError(errMessage2(e));
+  }
+}
+async function handleDoc(args2, defaults, warmNotes2) {
+  const options = askOptions(args2, defaults, { question: "" });
+  let r;
+  try {
+    r = await runDoc(options);
+  } catch (e) {
+    throw new ToolError(errMessage2(e));
+  }
+  return {
+    dir: r.dir,
+    paths: r.paths,
+    outline_sections: r.plan.sections.map((s) => ({ id: s.id, title: s.title, evidence_ids: s.evidenceIds })),
+    evidence_count: r.evidence.length,
+    notes: warmNotes2,
+    next: `Read ${r.paths.todoMd}, write the cited DOC.md, then call ultradoc_check with run_dir "${r.dir}".`
+  };
+}
+function handleCacheClean(args2) {
+  const all = bool(args2.all);
+  const repo = str3(args2.repo);
+  if (!all && !repo) throw new ToolError("Pass `repo` to drop one cache entry, or `all: true` to drop every one.");
+  return { ...cacheClean({ all, repo }), all, repo };
+}
+
+// src/mcp/protocol.ts
+var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
+var ASSUMED_HTTP_PROTOCOL = "2025-03-26";
+var ANNOTATIONS_SINCE2 = "2025-03-26";
+var RICH_TOOLS_SINCE2 = "2025-06-18";
+var DEFAULT_MAX_RESPONSE_BYTES2 = 1e6;
+function isProtocolVersion(v) {
+  return typeof v === "string" && PROTOCOL_VERSIONS2.includes(v);
+}
+function negotiateProtocol2(requested) {
+  return isProtocolVersion(requested) ? requested : LATEST_PROTOCOL2;
+}
+function validateArgs2(schema, args2) {
+  for (const key of schema.required) {
+    const v = args2[key];
+    if (v === void 0 || v === null || v === "") return `\`${key}\` is required`;
+  }
+  for (const [key, value] of Object.entries(args2)) {
+    if (value === void 0 || value === null) continue;
+    const spec = schema.properties[key];
+    if (!spec?.type) continue;
+    const actual = Array.isArray(value) ? "array" : typeof value;
+    if (spec.type === "number") {
+      if (actual === "number") continue;
+      if (actual === "string" && value.trim() !== "" && Number.isFinite(Number(value))) continue;
+      return `\`${key}\` must be a number, got ${actual === "string" ? JSON.stringify(value) : actual}`;
+    }
+    if (spec.type === "array") {
+      if (actual !== "array") return `\`${key}\` must be an array, got ${actual}`;
+      const arr = value;
+      if (spec.items?.type === "string" && !arr.every((x) => typeof x === "string")) {
+        return `\`${key}\` must be an array of strings`;
+      }
+      if (spec.enum) {
+        const bad = arr.find((x) => typeof x === "string" && !spec.enum.includes(x));
+        if (bad !== void 0) return `\`${key}\` contains "${String(bad)}" \u2014 allowed: ${spec.enum.join(", ")}`;
+      }
+      continue;
+    }
+    if (actual !== spec.type) return `\`${key}\` must be a ${spec.type}, got ${actual}`;
+    if (spec.enum && typeof value === "string" && !spec.enum.includes(value)) {
+      return `\`${key}\` must be one of: ${spec.enum.join(", ")}`;
+    }
+  }
+  return void 0;
+}
+var NARROWER2 = {
+  ultradoc_search: "lower `per_source`, or narrow `sources` to the one you actually need",
+  ultradoc_ask: "lower `per_source`, or narrow `sources`",
+  ultradoc_symbol: "lower `max`, or scope with `package`",
+  ultradoc_read: "pass `start_line`/`end_line` to read a window instead of the whole file",
+  ultradoc_fetch: "pass fewer `urls`, or lower `per_source`",
+  ultradoc_overview: "read the file at the returned `path` instead of inlining it",
+  ultradoc_doc: "scope with `package`, or narrow `sources`",
+  ultradoc_verify: "lower `max_verify`"
+};
+function capResponse2(text, tool, maxBytes, artifact) {
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes <= maxBytes) return text;
+  return JSON.stringify(
+    {
+      truncated: true,
+      tool,
+      bytes,
+      maxBytes,
+      reason: "This response exceeds the configured limit and was withheld rather than sent as an unusable partial payload.",
+      narrower: NARROWER2[tool] ?? "narrow the request and call again",
+      ...artifact ? { artifact, artifactNote: "The full result is on disk here \u2014 read it directly if you need all of it." } : {}
+    },
+    null,
+    2
+  ) + "\n";
+}
+function structuredContentFor2(text, capped, hasSchema) {
+  if (capped || !hasSchema) return void 0;
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return void 0;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return void 0;
+  return parsed;
+}
+var LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+function isOriginAllowed(origin, allowed = []) {
+  if (origin === void 0) return true;
+  const o = origin.trim();
+  if (o === "" || o === "null") return true;
+  if (LOOPBACK_ORIGIN.test(o)) return true;
+  return allowed.some((a) => a === "*" || a.toLowerCase() === o.toLowerCase());
+}
+
+// src/mcp/tools.ts
+var SOURCE_ENUM = Object.keys(SOURCE_TOKENS).sort();
+var repoProp2 = {
+  type: "string",
+  description: "The repository: a git URL, owner/repo, or an absolute local path."
+};
+var refProp = { type: "string", description: "Branch or tag to pin the clone to (default: the repo's default branch)." };
+var pkgProp = { type: "string", description: "Scope retrieval to one workspace package of a monorepo (package name or directory)." };
+var refreshProp = { type: "boolean", description: "Re-clone and re-index instead of reusing the cache." };
+var perSourceProp = { type: "number", description: "Max evidence items kept per source (default 6)." };
+var semanticProp = {
+  type: "boolean",
+  description: "Add vector retrieval on top of the lexical tier, for questions whose wording won't match the code's. Falls back to lexical with a note when no backend is reachable."
+};
+var docsUrlProp = {
+  type: "string",
+  description: "An official documentation URL to fetch and ground against, for when the repo's own docs are thin. Auto-discovered from the README when omitted."
+};
+var sourcesProp = {
+  type: "array",
+  items: { type: "string" },
+  enum: SOURCE_ENUM,
+  description: "Which sources to retrieve from. Default: code, issue, pr, docs. Add 'web'/'so' only when the answer is unlikely to be in the repo."
+};
+var CACHE_NOTE = "Clones and indexes into ultradoc's own cache; the first call on a new repo takes 10-60s, later calls are fast.";
+var TOOLS2 = [
+  {
+    name: "ultradoc_search",
+    title: "Search a repository's real sources",
+    description: "Answer a precise question about an open-source project from its REAL sources rather than memory. Clones the repo, indexes it, and retrieves ranked, citable evidence across code, issues, PRs, docs, release notes, git history, discussions, StackOverflow and the web. Start here. Returns evidence without writing anything \u2014 use ultradoc_ask when you want a persisted dossier you can validate with ultradoc_check. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        question: { type: "string", description: "The precise question, in natural language. Keywords are extracted from it to drive retrieval." },
+        sources: sourcesProp,
+        per_source: perSourceProp,
+        package: pkgProp,
+        ref: refProp,
+        semantic: semanticProp,
+        docs_url: docsUrlProp,
+        refresh: refreshProp
+      },
+      required: ["repo", "question"]
+    }
+  },
+  {
+    name: "ultradoc_overview",
+    title: "Map a repository",
+    description: "Get a cached markdown digest of a repository: workspace packages, directory layout, the most central modules, the public API surface and where the docs live. Read this first when you don't yet know how a repo is organised. Navigation only \u2014 never cite it; cite what ultradoc_search returns. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: { repo: repoProp2, ref: refProp, refresh: refreshProp },
+      required: ["repo"]
+    }
+  },
+  {
+    name: "ultradoc_symbol",
+    title: "Resolve a symbol and its call sites",
+    description: "Resolve ONE named symbol in a repository: its declaration with the real body span, every call site labelled with the function it sits in, and the files where the name is only mentioned. This is the tool for 'where is X used', 'who calls X', 'is X dead code'. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        name: { type: "string", description: "The exact symbol name (function, class, method, type, const)." },
+        max: { type: "number", description: "Max evidence items to return (default 12)." },
+        package: pkgProp,
+        ref: refProp
+      },
+      required: ["repo", "name"]
+    }
+  },
+  {
+    name: "ultradoc_read",
+    title: "Read a file from the pinned clone",
+    description: "Read a file, or a line range of one, from the repository at the exact commit ultradoc indexed. Use it to widen a snippet that ultradoc_search returned, or to read a dossier file (EVIDENCE.md, meta.json) that ultradoc_ask wrote. Reads are confined to the clone and to ultradoc's cache \u2014 anything else is your own file tool's job. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        path: {
+          type: "string",
+          description: "Repo-relative path (e.g. 'src/index.ts'), or an absolute path inside the clone or a dossier \u2014 such as the evidence_md that ultradoc_ask returns."
+        },
+        start_line: { type: "number", description: "First line to return, 1-based (default 1)." },
+        end_line: { type: "number", description: "Last line to return, inclusive (default: end of file, capped)." },
+        ref: refProp
+      },
+      required: ["repo", "path"]
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        commit: { type: "string" },
+        start_line: { type: "number" },
+        end_line: { type: "number" },
+        total_lines: { type: "number" },
+        truncated: { type: "boolean" },
+        content: { type: "string" }
+      },
+      required: ["path", "start_line", "end_line", "total_lines", "truncated", "content"]
+    }
+  },
+  {
+    name: "ultradoc_fetch",
+    title: "Fetch web pages as evidence",
+    description: "Fetch specific URLs and turn each into ranked, citable excerpts. Needs no repository. Use it for a page you already have the URL of; to DISCOVER pages, call ultradoc_search with sources including 'web'. Pages go through a shared cache, so refetching the same URL is cheap.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        urls: { type: "array", items: { type: "string" }, description: "Absolute http(s) URLs to fetch." },
+        question: { type: "string", description: "What you're looking for \u2014 used to pick and rank the excerpts returned from each page." },
+        per_source: perSourceProp
+      },
+      required: ["urls"]
+    }
+  },
+  {
+    name: "ultradoc_ask",
+    title: "Build a grounded evidence dossier",
+    description: "Run the full retrieval pipeline and WRITE an evidence dossier to disk: EVIDENCE.md (numbered items you cite as [E1], [E2]) plus evidence.json and meta.json. Returns the dossier directory, not the evidence \u2014 read EVIDENCE.md with ultradoc_read, write your answer citing [E#], then validate it with ultradoc_check. Use ultradoc_search instead when you just want evidence back and don't need the citation gate. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        question: { type: "string", description: "The precise question the dossier is built to answer." },
+        sources: sourcesProp,
+        per_source: perSourceProp,
+        package: pkgProp,
+        ref: refProp,
+        semantic: semanticProp,
+        docs_url: docsUrlProp,
+        refresh: refreshProp,
+        out: { type: "string", description: "Absolute directory to write the dossier to (default: a timestamped dir inside the clone's cache)." }
+      },
+      required: ["repo", "question"]
+    }
+  },
+  {
+    name: "ultradoc_check",
+    title: "Validate an answer's citations",
+    description: "The grounding gate. Given a dossier from ultradoc_ask and an answer that cites [E#], prove every citation resolves to real retrieved evidence and that enough of the prose is cited at all. Pass the answer inline as answer_text. A result with ok:false is a real verdict, not a tool failure \u2014 read `errors` and `dangling`, fix the answer, and check again.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_dir: { type: "string", description: "The dossier directory returned by ultradoc_ask." },
+        answer_text: { type: "string", description: "The answer to validate, citing evidence as [E1], [E2]. Preferred over answer_file." },
+        answer_file: { type: "string", description: "Filename inside run_dir to validate instead (default: ANSWER.md, then DOC.md)." },
+        strict: { type: "boolean", description: "Require every claim to carry a citation, and treat fence-only citations as errors." },
+        coverage_min: { type: "number", description: "Minimum share of claims that must be cited, 0..1 (default 0.7)." },
+        semantic: { type: "boolean", description: "Also fold in the verdicts from ultradoc_verify, failing on refuted or unsupported claims." },
+        allow_unverified: { type: "boolean", description: "With semantic, warn instead of failing when no verdicts have been recorded yet." }
+      },
+      required: ["run_dir"]
+    }
+  },
+  {
+    name: "ultradoc_verify",
+    title: "Build a claim-support worklist",
+    description: "Go past 'the citation resolves' to 'the evidence actually supports the claim'. Emits a deterministic claim-by-evidence worklist from a dossier and its answer, for you to adjudicate each pair as supported / partial / refuted / unsupported. Writes VERIFY.md and VERIFY.todo.json into the dossier. Record the verdicts with the CLI (`ultradoc verify --run <dir> --apply <verdicts.json>`), then re-run ultradoc_check with semantic:true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        run_dir: { type: "string", description: "The dossier directory returned by ultradoc_ask." },
+        answer_file: { type: "string", description: "Filename inside run_dir to verify (default: ANSWER.md, then DOC.md)." },
+        max_verify: { type: "number", description: "Cap on the number of claim/evidence pairs emitted." }
+      },
+      required: ["run_dir"]
+    }
+  },
+  {
+    name: "ultradoc_doc",
+    title: "Scaffold grounded reference documentation",
+    description: "SLOW: builds one evidence dossier per outline section. Generates a whole-repo reference-doc scaffold \u2014 an outline adapted to the project type, a grounded dossier per section, an architecture diagram and a DOC.todo worklist you fill into a cited DOC.md, which ultradoc_check then validates. Expect tens of seconds to minutes on a large repo. " + CACHE_NOTE,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: repoProp2,
+        package: pkgProp,
+        sources: sourcesProp,
+        per_source: perSourceProp,
+        ref: refProp,
+        semantic: semanticProp,
+        docs_url: docsUrlProp,
+        refresh: refreshProp,
+        out: { type: "string", description: "Absolute directory to write the scaffold to (default: inside the clone's cache)." }
+      },
+      required: ["repo"]
+    }
+  },
+  {
+    name: "ultradoc_cache",
+    title: "Inspect the clone cache",
+    description: "Report what ultradoc has cached on disk: each cloned repo, its size and commit, plus the shared page and model caches. Read-only.",
+    inputSchema: { type: "object", properties: {}, required: [] }
+  }
+];
+var WRITE_TOOLS = [
+  {
+    name: "ultradoc_cache_clean",
+    title: "Delete cached clones",
+    description: "DESTRUCTIVE: permanently deletes cached clones, indexes and dossiers from disk. Pass repo to drop one, or all:true to drop everything. Anything not yet read out of a dossier is lost. Re-cloning is the only way back.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: { type: "string", description: "Drop just this repository's cache entry." },
+        all: { type: "boolean", description: "Drop every cached repo, plus the page and model caches." }
+      },
+      required: []
+    }
+  }
+];
+var TOOL_META2 = {
+  ultradoc_search: { openWorld: true },
+  ultradoc_overview: { openWorld: true },
+  ultradoc_symbol: { openWorld: true },
+  ultradoc_read: { openWorld: true },
+  ultradoc_fetch: { openWorld: true },
+  ultradoc_ask: { write: true, destructive: false, idempotent: false, openWorld: true },
+  ultradoc_check: { openWorld: false },
+  ultradoc_verify: { write: true, destructive: false, idempotent: true, openWorld: false },
+  ultradoc_doc: { write: true, destructive: false, idempotent: false, openWorld: true },
+  ultradoc_cache: { openWorld: false },
+  ultradoc_cache_clean: { write: true, destructive: true, idempotent: true, openWorld: false }
+};
+function annotationsFor2(name2) {
+  const meta = TOOL_META2[name2];
+  if (!meta) return void 0;
+  return {
+    readOnlyHint: !meta.write,
+    ...meta.write ? { destructiveHint: meta.destructive === true, idempotentHint: meta.idempotent === true } : {},
+    openWorldHint: meta.openWorld === true
+  };
+}
+function toolsFor2(protocolVersion, opts = {}) {
+  const base = opts.allowWrite ? [...TOOLS2, ...WRITE_TOOLS] : TOOLS2;
+  const withAnnotations = protocolVersion >= ANNOTATIONS_SINCE2;
+  const withRich = protocolVersion >= RICH_TOOLS_SINCE2;
+  return base.map((t) => {
+    const decl = {
+      name: t.name,
+      description: t.description,
+      // A destructive delete never inherits a repo the caller didn't name.
+      inputSchema: t.name === "ultradoc_cache_clean" ? t.inputSchema : applyDefaultRepo(t.inputSchema, opts.defaultRepo)
+    };
+    if (withRich && t.title) decl.title = t.title;
+    if (withRich && t.outputSchema) decl.outputSchema = t.outputSchema;
+    if (withAnnotations) {
+      const a = annotationsFor2(t.name);
+      if (a) decl.annotations = a;
+    }
+    return decl;
+  });
+}
+function applyDefaultRepo(schema, defaultRepo) {
+  const existing = schema.properties.repo;
+  if (!defaultRepo || !existing) return schema;
+  return {
+    type: "object",
+    properties: {
+      ...schema.properties,
+      repo: { ...existing, description: `${existing.description} Optional \u2014 defaults to ${defaultRepo}.` }
+    },
+    required: schema.required.filter((r) => r !== "repo")
+  };
+}
+
+// src/mcp/server.ts
+var ERR_INVALID_REQUEST = -32600;
+var ERR_METHOD_NOT_FOUND = -32601;
+var ERR_INVALID_PARAMS = -32602;
+var ERR_INTERNAL = -32603;
+function createServer(opts = {}) {
+  const serverInfo = { name: opts.serverName ?? "ultradoc", version: VERSION };
+  const maxBytes = opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES2;
+  let protocol = LATEST_PROTOCOL2;
+  const cancelled = /* @__PURE__ */ new Set();
+  const CANCELLED_MAX = 1024;
+  const listTools = () => toolsFor2(protocol, { defaultRepo: opts.defaultRepo, allowWrite: opts.allowWrite });
+  async function handle2(msg, send) {
+    if (msg === null || typeof msg !== "object" || Array.isArray(msg)) {
+      send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: expected a JSON-RPC object" } });
+      return;
+    }
+    if (msg.id === void 0 || msg.id === null) {
+      if (msg.method === "notifications/cancelled") {
+        const target = msg.params?.requestId;
+        if (typeof target === "string" || typeof target === "number") {
+          if (cancelled.size >= CANCELLED_MAX) cancelled.delete(cancelled.values().next().value);
+          cancelled.add(String(target));
+        }
+      }
+      return;
+    }
+    const id = msg.id;
+    const reply = (out2) => {
+      if (cancelled.delete(String(id))) return;
+      send({ jsonrpc: "2.0", id, ...out2 });
+    };
+    try {
+      switch (msg.method) {
+        case "initialize": {
+          protocol = negotiateProtocol2(msg.params?.protocolVersion);
+          reply({ result: { protocolVersion: protocol, capabilities: { tools: { listChanged: false } }, serverInfo } });
+          return;
+        }
+        case "ping":
+          reply({ result: {} });
+          return;
+        case "tools/list":
+          reply({ result: { tools: listTools() } });
+          return;
+        case "tools/call":
+          await handleToolCall(msg, reply);
+          return;
+        default:
+          reply({ error: { code: ERR_METHOD_NOT_FOUND, message: `method not found: ${String(msg.method)}` } });
+          return;
+      }
+    } catch (e) {
+      reply({ error: { code: ERR_INTERNAL, message: errMessage3(e) } });
+    }
+  }
+  async function handleToolCall(msg, reply) {
+    const params = msg.params ?? {};
+    const name2 = typeof params.name === "string" ? params.name : "";
+    const args2 = params.arguments ?? {};
+    const decl = listTools().find((t) => t.name === name2);
+    if (!decl) {
+      reply({ error: { code: ERR_INVALID_PARAMS, message: `unknown tool: ${name2 || "(none given)"}` } });
+      return;
+    }
+    const invalid = validateArgs2(decl.inputSchema, args2);
+    if (invalid) {
+      reply({ error: { code: ERR_INVALID_PARAMS, message: invalid } });
+      return;
+    }
+    try {
+      const { text: raw, artifact } = await callTool2(name2, args2, { defaultRepo: opts.defaultRepo, allowWrite: opts.allowWrite });
+      const text = capResponse2(raw, name2, maxBytes, artifact);
+      const capped = text !== raw;
+      const structured = protocol >= RICH_TOOLS_SINCE2 ? structuredContentFor2(text, capped, decl.outputSchema !== void 0) : void 0;
+      reply({ result: { content: [{ type: "text", text }], ...structured ? { structuredContent: structured } : {} } });
+    } catch (e) {
+      if (e instanceof ToolError) {
+        reply({ result: { content: [{ type: "text", text: e.message }], isError: true } });
+        return;
+      }
+      reply({ error: { code: ERR_INTERNAL, message: errMessage3(e) } });
+    }
+  }
+  return {
+    handle: handle2,
+    protocolVersion: () => protocol,
+    setProtocolVersion: (v) => {
+      protocol = v;
+    },
+    tools: listTools
+  };
+}
+function errMessage3(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+// src/mcp/stdio.ts
+var MAX_IN_FLIGHT = 4;
+async function runStdioServer(opts = {}) {
+  const input = opts.input ?? process.stdin;
+  const output = opts.output ?? process.stdout;
+  const emit2 = output.write.bind(output);
+  let restore;
+  if (!opts.captureStdout && output === process.stdout) {
+    const original = process.stdout.write;
+    process.stdout.write = ((chunk, ...rest) => process.stderr.write(chunk, ...rest));
+    restore = () => {
+      process.stdout.write = original;
+    };
+  }
+  const server = createServer(opts);
+  const send = (msg) => {
+    emit2(JSON.stringify(msg) + "\n");
+  };
+  const inFlight = /* @__PURE__ */ new Set();
+  const track = (p) => {
+    inFlight.add(p);
+    void p.finally(() => inFlight.delete(p));
+    return p;
+  };
+  const drainToLimit = async () => {
+    while (inFlight.size >= MAX_IN_FLIGHT) await Promise.race(inFlight);
+  };
+  const rl = createInterface2({ input, terminal: false });
+  try {
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+        continue;
+      }
+      await drainToLimit();
+      if (Array.isArray(parsed)) {
+        track(
+          (async () => {
+            const out2 = [];
+            await Promise.all(parsed.map((m) => server.handle(m, (r) => void out2.push(r))));
+            if (out2.length) emit2(JSON.stringify(out2) + "\n");
+          })().catch(reportInternal(send))
+        );
+        continue;
+      }
+      if (parsed === null || typeof parsed !== "object") {
+        send({ jsonrpc: "2.0", id: null, error: { code: ERR_INVALID_REQUEST, message: "invalid request: expected a JSON-RPC object" } });
+        continue;
+      }
+      track(server.handle(parsed, send).catch(reportInternal(send)));
+    }
+    await Promise.all(inFlight);
+  } finally {
+    rl.close();
+    restore?.();
+  }
+}
+function reportInternal(send) {
+  return (e) => {
+    send({ jsonrpc: "2.0", id: null, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
+  };
+}
+
+// src/mcp/http.ts
+import { createServer as createHttpServer } from "http";
+var MCP_PATH = "/mcp";
+var MAX_BODY_BYTES = 4 * 1024 * 1024;
+var CORS_HEADERS = "content-type, accept, mcp-protocol-version, mcp-session-id, authorization, last-event-id";
+var LOOPBACK_BIND = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
+function startHttpServer(opts = {}) {
+  const bind = opts.bind ?? "127.0.0.1";
+  if (!LOOPBACK_BIND.has(bind) && !opts.allowRemote) {
+    return Promise.reject(
+      new Error(
+        `refusing to bind ${bind}: ultradoc's MCP server clones arbitrary git URLs and reads local files. Pass --allow-remote if that is really what you want.`
+      )
+    );
+  }
+  const server = createHttpServer((req, res) => {
+    void route(req, res, opts).catch((e) => {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
+      sendJson(res, 500, { jsonrpc: "2.0", id: null, error: { code: -32603, message: e instanceof Error ? e.message : String(e) } });
+    });
+  });
+  server.requestTimeout = 0;
+  server.headersTimeout = 6e4;
+  server.keepAliveTimeout = 12e4;
+  return new Promise((resolve7, reject) => {
+    server.once("error", reject);
+    server.listen(opts.port ?? 0, bind, () => {
+      server.removeListener("error", reject);
+      const addr2 = server.address();
+      const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
+      const host = bind.includes(":") ? `[${bind}]` : bind;
+      resolve7({
+        server,
+        port,
+        url: `http://${host}:${port}${MCP_PATH}`,
+        close: () => new Promise((done) => {
+          server.closeAllConnections?.();
+          server.close(() => done());
+        })
+      });
+    });
+  });
+}
+async function route(req, res, opts) {
+  const path = (req.url ?? "").split("?")[0];
+  const origin = header(req, "origin");
+  if (!isOriginAllowed(origin, opts.allowOrigin)) {
+    sendJson(res, 403, { error: "origin not allowed", origin });
+    return;
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      ...corsHeaders(origin),
+      "access-control-allow-methods": "POST, GET, DELETE, OPTIONS",
+      "access-control-allow-headers": CORS_HEADERS,
+      "access-control-max-age": "86400"
+    });
+    res.end();
+    return;
+  }
+  if (path !== MCP_PATH) {
+    sendJson(res, 404, { error: `not found: ${path} (the MCP endpoint is ${MCP_PATH})` }, origin);
+    return;
+  }
+  if (req.method === "GET" || req.method === "DELETE") {
+    res.writeHead(405, { allow: "POST, OPTIONS", ...corsHeaders(origin) });
+    res.end(JSON.stringify({ error: `${req.method} is not supported: this server is stateless and offers no server-initiated stream` }));
+    return;
+  }
+  if (req.method !== "POST") {
+    res.writeHead(405, { allow: "POST, OPTIONS", ...corsHeaders(origin) });
+    res.end(JSON.stringify({ error: `${req.method} is not supported` }));
+    return;
+  }
+  const contentType = (header(req, "content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (contentType && contentType !== "application/json") {
+    sendJson(res, 415, { error: `unsupported content-type "${contentType}" \u2014 send application/json` }, origin);
+    return;
+  }
+  const accept = (header(req, "accept") ?? "").toLowerCase();
+  if (accept && !/application\/json|text\/event-stream|\*\/\*/.test(accept)) {
+    sendJson(res, 406, { error: "this endpoint replies with application/json" }, origin);
+    return;
+  }
+  const declared = header(req, "mcp-protocol-version");
+  if (declared !== void 0 && !isProtocolVersion(declared)) {
+    sendJson(res, 400, { error: `unsupported MCP-Protocol-Version: ${declared}` }, origin);
+    return;
+  }
+  const protocol = declared ?? ASSUMED_HTTP_PROTOCOL;
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch (e) {
+    if (e.message === "too large") {
+      sendJson(res, 413, { error: `request body exceeds ${MAX_BODY_BYTES} bytes` }, origin);
+      return;
+    }
+    sendJson(res, 400, { error: `could not read request body: ${e.message}` }, origin);
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, origin);
+    return;
+  }
+  const mcp = createServer(opts);
+  mcp.setProtocolVersion(protocol);
+  const out2 = [];
+  const collect2 = (m) => void out2.push(m);
+  const messages = Array.isArray(parsed) ? parsed : [parsed];
+  for (const m of messages) await mcp.handle(m, collect2);
+  if (out2.length === 0) {
+    res.writeHead(202, corsHeaders(origin));
+    res.end();
+    return;
+  }
+  sendJson(res, 200, Array.isArray(parsed) ? out2 : out2[0], origin);
+}
+function header(req, name2) {
+  const v = req.headers[name2];
+  return Array.isArray(v) ? v[0] : v;
+}
+function corsHeaders(origin) {
+  return origin ? { "access-control-allow-origin": origin, vary: "origin" } : {};
+}
+function sendJson(res, status, body2, origin, extra = {}) {
+  const text = JSON.stringify(body2);
+  res.writeHead(status, {
+    "content-type": "application/json",
+    "content-length": String(Buffer.byteLength(text, "utf8")),
+    ...corsHeaders(origin),
+    ...extra
+  });
+  res.end(text);
+}
+var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
+function readBody(req) {
+  return new Promise((resolve7, reject) => {
+    const chunks = [];
+    let size = 0;
+    let over = false;
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) over = true;
+    req.on("data", (c2) => {
+      size += c2.length;
+      if (over) {
+        if (size > DRAIN_LIMIT) {
+          req.destroy();
+          reject(new Error("too large"));
+        }
+        return;
+      }
+      if (size > MAX_BODY_BYTES) {
+        over = true;
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(c2);
+    });
+    req.on("end", () => {
+      if (over) reject(new Error("too large"));
+      else resolve7(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", reject);
+    req.on("aborted", () => reject(new Error("client aborted the request")));
+  });
 }
 
 // src/cli.ts
@@ -19014,6 +20147,7 @@ Usage:
   ultradoc semantic up|down|status|pull
   ultradoc firecrawl up|down|status
   ultradoc cache status [--json] | cache clean (--all | --repo <url|path>)
+  ultradoc mcp [--transport stdio|http] [--port <n>] [--bind <addr>] [--repo <url|path>]
 
 Commands:
   ask        Retrieve from all selected sources and write an evidence dossier.
@@ -19059,6 +20193,12 @@ Commands:
              web result) is cleaned into main-content markdown instead of being
              regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
+  mcp        Serve ultradoc over the Model Context Protocol, so any MCP client
+             (Claude Code, Claude Desktop, Cursor) calls it as typed tools
+             instead of shelling out: ultradoc_search, ultradoc_read,
+             ultradoc_symbol, ultradoc_fetch, ultradoc_ask, ultradoc_check\u2026
+             Speaks stdio by default; --transport http serves JSON-RPC over
+             POST /mcp on loopback.
 
 Options:
   --repo <url|path>    Any git URL or a local checkout              (required)
@@ -19096,6 +20236,17 @@ Options:
                        needing no infrastructure first
   --refresh            Force re-clone and re-index
   --json               Machine-readable output
+  --transport <t>      For 'mcp': stdio | http                        (default: stdio)
+  --port <n>           For 'mcp --transport http': listen port        (default: 7337)
+  --bind <addr>        For 'mcp --transport http': listen address     (default: 127.0.0.1)
+                       Non-loopback is refused unless --allow-remote
+  --allow-origin <o,\u2026> For 'mcp --transport http': extra browser Origins to accept
+                       (loopback origins are always accepted)
+  --allow-remote       For 'mcp --transport http': permit a non-loopback --bind.
+                       The server clones arbitrary git URLs and reads local files
+  --allow-write        For 'mcp': also expose the destructive ultradoc_cache_clean
+  --max-response-bytes <n>  For 'mcp': withhold a tool result larger than this
+                                                              (default: 1000000)
   -h, --help           Show this help
   -v, --version        Show version
 
@@ -19135,7 +20286,8 @@ var COMMANDS = /* @__PURE__ */ new Set([
   "orchestrate",
   "semantic",
   "firecrawl",
-  "cache"
+  "cache",
+  "mcp"
 ]);
 var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "repo",
@@ -19157,9 +20309,16 @@ var VALUE_FLAGS2 = /* @__PURE__ */ new Set([
   "coverage-min",
   "phase",
   "name",
-  "semantic-tier"
+  "semantic-tier",
+  // `mcp` only. The flag sets are global, so these are accepted (and ignored)
+  // on every command — the same as --phase and --list already are.
+  "transport",
+  "port",
+  "bind",
+  "allow-origin",
+  "max-response-bytes"
 ]);
-var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list"]);
+var BOOL_FLAGS = /* @__PURE__ */ new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list", "allow-remote", "allow-write"]);
 function fail(message) {
   process.stderr.write(`ultradoc: ${message}
 `);
@@ -19230,35 +20389,10 @@ function parseArgs(argv) {
   }
   return { command, positional, values, bools };
 }
-var SOURCE_TOKENS = {
-  code: "code",
-  issue: "issue",
-  issues: "issue",
-  pr: "pr",
-  prs: "pr",
-  "pull-requests": "pr",
-  "merge-requests": "pr",
-  doc: "docs",
-  docs: "docs",
-  release: "release",
-  releases: "release",
-  history: "history",
-  discussion: "discussion",
-  discussions: "discussion",
-  web: "web",
-  so: "so",
-  stackoverflow: "so"
-};
-var DEFAULT_SOURCES = ["code", "issue", "pr", "docs"];
 function parseSources(s) {
-  const out2 = [];
-  for (const t of s.split(",").map((x) => x.trim()).filter(Boolean)) {
-    const k = SOURCE_TOKENS[t.toLowerCase()];
-    if (!k) fail(`unknown source "${t}" (use: code,issues,prs,docs,releases,history,discussions,web,so)`);
-    if (!out2.includes(k)) out2.push(k);
-  }
-  if (out2.length === 0) fail("--sources resolved to nothing");
-  return out2;
+  const { sources, error } = parseSourceList(s.split(","), "--sources");
+  if (error || !sources) fail(error ?? "--sources resolved to nothing");
+  return sources;
 }
 function buildAskOptions(p, opts = {}) {
   const repo = p.values.repo;
@@ -19277,7 +20411,7 @@ function buildAskOptions(p, opts = {}) {
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
     pkg: p.values.package,
-    out: p.values.out ? resolve5(p.values.out) : void 0,
+    out: p.values.out ? resolve6(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
@@ -19534,7 +20668,7 @@ async function run2(argv = process.argv.slice(2)) {
         coverageMin = Number(p.values["coverage-min"]);
         if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
       }
-      const res = checkRun(resolve5(dir), {
+      const res = checkRun(resolve6(dir), {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
@@ -19542,16 +20676,16 @@ async function run2(argv = process.argv.slice(2)) {
         allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
-      else process.stdout.write(formatCheckReport(res, resolve5(dir)) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve6(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }
     case "verify": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const rdir = resolve5(dir);
+      const rdir = resolve6(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve5(rdir, p.values.apply));
+        const result = applyVerdicts(rdir, resolve6(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
@@ -19577,17 +20711,17 @@ async function run2(argv = process.argv.slice(2)) {
         process.stderr.write("ultradoc orchestrate: --run <dir> is required (the run dir holding the worklists).\n");
         process.exit(2);
       }
-      const engineAbs = realpathSync2(fileURLToPath3(import.meta.url));
+      const engineAbs = realpathSync3(fileURLToPath3(import.meta.url));
       if (p.bools.has("list")) {
-        if (!existsSync20(dir)) {
+        if (!existsSync21(dir)) {
           process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.
 `);
           process.exit(2);
         }
-        process.stdout.write(JSON.stringify({ phases: listPhases(resolve5(dir), engineAbs) }, null, 2) + "\n");
+        process.stdout.write(JSON.stringify({ phases: listPhases(resolve6(dir), engineAbs) }, null, 2) + "\n");
         return;
       }
-      const res = orchestrateRun(resolve5(dir), engineAbs, {
+      const res = orchestrateRun(resolve6(dir), engineAbs, {
         phase: p.values.phase,
         eco: p.bools.has("eco")
       });
@@ -19610,7 +20744,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join43(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join43(resolve6(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
@@ -19665,6 +20799,44 @@ async function run2(argv = process.argv.slice(2)) {
       fail(`unknown cache action "${action}" (use: status | clean)`);
       return;
     }
+    case "mcp": {
+      const transport = oneOf("transport", p.values.transport ?? "stdio", ["stdio", "http"]);
+      const maxResponseBytes = p.values["max-response-bytes"] ? Number(p.values["max-response-bytes"]) : void 0;
+      if (maxResponseBytes !== void 0 && (!Number.isFinite(maxResponseBytes) || maxResponseBytes <= 0)) fail("invalid --max-response-bytes");
+      const options = {
+        // A default repo makes `repo` optional on every tool, for a server
+        // dedicated to one project.
+        defaultRepo: p.values.repo,
+        allowWrite: p.bools.has("allow-write"),
+        maxResponseBytes
+      };
+      if (transport === "stdio") {
+        await runStdioServer(options);
+        return;
+      }
+      const port = p.values.port ? Number(p.values.port) : 7337;
+      if (!Number.isInteger(port) || port < 0 || port > 65535) fail("invalid --port");
+      const allowOrigin = p.values["allow-origin"] ? p.values["allow-origin"].split(",").map((s) => s.trim()).filter(Boolean) : void 0;
+      let running;
+      try {
+        running = await startHttpServer({ ...options, port, bind: p.values.bind, allowOrigin, allowRemote: p.bools.has("allow-remote") });
+      } catch (e) {
+        fail(e.message);
+      }
+      process.stderr.write(`ultradoc: MCP server listening on ${running.url}
+`);
+      process.stderr.write(`  tools:  ${running.server.listening ? "ready" : "starting"} \xB7 ${options.allowWrite ? "read/write" : "read-only"}
+`);
+      process.stderr.write(`  client: claude mcp add --transport http ultradoc ${running.url}
+`);
+      for (const sig of ["SIGINT", "SIGTERM"]) {
+        process.once(sig, () => {
+          void running.close().then(() => process.exit(0));
+        });
+      }
+      await new Promise((resolve7) => running.server.once("close", resolve7));
+      return;
+    }
   }
 }
 function isInvokedDirectly() {
@@ -19672,7 +20844,7 @@ function isInvokedDirectly() {
   if (argv1 === void 0) return false;
   const modulePath = fileURLToPath3(import.meta.url);
   try {
-    if (realpathSync2(argv1) === realpathSync2(modulePath)) return true;
+    if (realpathSync3(argv1) === realpathSync3(modulePath)) return true;
   } catch {
   }
   return import.meta.url === pathToFileURL3(argv1).href;
