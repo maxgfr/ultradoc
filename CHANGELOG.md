@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.13.0](https://github.com/maxgfr/ultradoc/compare/v2.12.0...v2.13.0) (2026-07-29)
+
+
+### Features
+
+* **mcp:** serve the skill's method as prompts and resources, not just tools ([d2d0c39](https://github.com/maxgfr/ultradoc/commit/d2d0c398f5691cbc916e68a2b5694f49de749fa7))
+
 # [2.12.0](https://github.com/maxgfr/ultradoc/compare/v2.11.2...v2.12.0) (2026-07-29)
 
 
