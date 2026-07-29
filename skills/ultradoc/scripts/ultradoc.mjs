@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join43, resolve as resolve6 } from "path";
-import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath3 } from "url";
-import { existsSync as existsSync21, realpathSync as realpathSync3 } from "fs";
+import { join as join44, resolve as resolve7 } from "path";
+import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath4 } from "url";
+import { existsSync as existsSync22, realpathSync as realpathSync4 } from "fs";
 
 // src/vendor/codeindex-engine.mjs
 import { spawnSync } from "child_process";
@@ -19789,6 +19789,174 @@ function applyDefaultRepo(schema, defaultRepo) {
   };
 }
 
+// src/mcp/prompts.ts
+var PromptError = class extends Error {
+};
+var repoArg = {
+  name: "repo",
+  description: "The repository: a git URL, owner/repo, or an absolute local path.",
+  required: true
+};
+var PROMPTS = [
+  {
+    name: "answer_from_source",
+    title: "Answer a question from a repo's real source",
+    description: "The grounded-answer workflow: retrieve evidence from the repository, write an answer that cites every claim, and prove it with the citation gate. Use for any precise question about a named open-source project.",
+    arguments: [
+      repoArg,
+      { name: "question", description: "The precise question to answer.", required: true },
+      { name: "package", description: "Scope to one workspace package of a monorepo.", required: false },
+      { name: "ref", description: "Branch or tag to pin the answer to a version.", required: false }
+    ]
+  },
+  {
+    name: "document_project",
+    title: "Write grounded reference documentation",
+    description: "The reference-doc workflow: scaffold an outline, build one evidence dossier per section, write each section from its dossier, and validate the whole document against the citation gate. Slow \u2014 expect minutes on a large repo.",
+    arguments: [
+      repoArg,
+      { name: "package", description: "Document one workspace package instead of the whole repo.", required: false },
+      { name: "ref", description: "Branch or tag to pin the documentation to a version.", required: false }
+    ]
+  }
+];
+function getPrompt(name2, args2 = {}) {
+  const decl = PROMPTS.find((p) => p.name === name2);
+  if (!decl) throw new PromptError(`unknown prompt: ${name2 || "(none given)"}`);
+  for (const arg of decl.arguments) {
+    if (arg.required && !str4(args2[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name2}"`);
+  }
+  const text = name2 === "answer_from_source" ? answerFromSource(args2) : documentProject(args2);
+  return { description: decl.description, messages: [{ role: "user", content: { type: "text", text } }] };
+}
+var CORE_RULE = `Do not answer from your own knowledge of this project. Your training data is stale and invents APIs that never existed. Answer ONLY from evidence retrieved by the ultradoc tools. If the evidence does not cover something, say so and retrieve more \u2014 never bridge the gap with a plausible sentence.`;
+var GATE = `\`ultradoc_check\` returning \`ok: false\` is a VERDICT, not a tool failure. Read \`errors\` and \`dangling\`, fix the answer, and check again. Do not explain the failure away, and do not report an answer that has not passed.`;
+function answerFromSource(args2) {
+  const repo = str4(args2.repo);
+  const question = str4(args2.question);
+  const pkg = str4(args2.package);
+  const ref = str4(args2.ref);
+  const scope = [pkg ? `\`package: "${pkg}"\`` : "", ref ? `\`ref: "${ref}"\`` : ""].filter(Boolean).join(" and ");
+  return `Answer this question about \`${repo}\` from its real source:
+
+> ${question}
+
+${CORE_RULE}
+
+**Sequence:**
+
+1. \`ultradoc_overview\` on \`${repo}\` \u2014 only if you do not already know how this repo is laid out. Navigation only: never cite it.
+2. \`ultradoc_ask\` with the question above${scope ? `, passing ${scope}` : ""}. It writes an evidence dossier and returns its directory.
+3. \`ultradoc_read\` the \`EVIDENCE.md\` in that directory. Read every item before writing anything.
+4. Widen anything thin: \`ultradoc_symbol\` for "where is X used / who calls X", \`ultradoc_read\` with a line range to see more of a file, \`ultradoc_search\` with \`sources: ["web","so"]\` when the answer is genuinely not in the repo.
+5. Write the answer, then validate it: \`ultradoc_check\` with \`run_dir\` from step 2, your answer as \`answer_text\`, and \`strict: true\`.
+
+**The answer contract.** A lead line that answers the question \u2014 cited, \`strict\` counts it. Then one claim per sentence, each carrying the \`[E#]\` it rests on. Identifiers, defaults and values quoted verbatim from the excerpt, never paraphrased. Then a \`## Unknowns\` section naming what the evidence did not settle; that heading is exempt from the coverage gate, so an honest unknown never costs you a green run.
+
+**Before you write a sentence, check it against these:** "I know this library, the dossier just confirms it" \u2014 then cite it; if no item says it, it does not go in. "Close enough to cite" \u2014 a shared keyword is not support; the bar is that the snippet names the symbol or the behaviour. "The issue says so" \u2014 a tracker describes a point in time; cross-check against current code. "The evidence is thin, I'll bridge the gap" \u2014 a gap is an explicit unknown, not a sentence.
+
+${GATE}`;
+}
+function documentProject(args2) {
+  const repo = str4(args2.repo);
+  const pkg = str4(args2.package);
+  const ref = str4(args2.ref);
+  const scope = [pkg ? `\`package: "${pkg}"\`` : "", ref ? `\`ref: "${ref}"\`` : ""].filter(Boolean).join(" and ");
+  return `Write grounded reference documentation for \`${repo}\`${pkg ? `, scoped to the \`${pkg}\` package` : ""}.
+
+${CORE_RULE}
+
+**Sequence:**
+
+1. \`ultradoc_overview\` on \`${repo}\` \u2014 read how the project is actually organised before deciding what to document.
+2. \`ultradoc_doc\`${scope ? ` with ${scope}` : ""}. SLOW: it builds one evidence dossier per outline section, so expect tens of seconds to minutes. It returns a scaffold directory containing the outline, a dossier per section, and a \`DOC.todo\` worklist.
+3. \`ultradoc_read\` the worklist, then each section's \`EVIDENCE.md\` in turn.
+4. Write \`DOC.md\` section by section, each claim citing the \`[E#]\` from THAT section's dossier. A section whose dossier came back thin gets a short honest section, not an invented one.
+5. \`ultradoc_check\` with the scaffold's \`run_dir\`, \`answer_file: "DOC.md"\`, and \`strict: true\`.
+
+**What reference documentation is here.** Every API name, signature, default and flag copied verbatim from the excerpt that shows it \u2014 never reconstructed from what the name suggests. Behaviour described as the code implements it, not as the README wishes it worked. Where the evidence is silent, the section says so rather than filling the space.
+
+${GATE}`;
+}
+function str4(v) {
+  return typeof v === "string" && v.trim() !== "" ? v : void 0;
+}
+
+// src/mcp/resources.ts
+import { existsSync as existsSync21, readdirSync as readdirSync6, readFileSync as readFileSync20, realpathSync as realpathSync3, statSync as statSync11 } from "fs";
+import { basename as basename7, dirname as dirname10, join as join43, resolve as resolve6, sep as sep5 } from "path";
+import { fileURLToPath as fileURLToPath3 } from "url";
+var SKILL_NAME = "ultradoc";
+var URI_SCHEME = "skill://";
+function resolveSkillRoot(moduleDir) {
+  const here = moduleDir ?? dirname10(fileURLToPath3(import.meta.url));
+  const candidates = [resolve6(here, ".."), resolve6(here, "..", "skills", SKILL_NAME), resolve6(here, "..", "..", "skills", SKILL_NAME)];
+  return candidates.find((dir) => existsSync21(join43(dir, "SKILL.md")));
+}
+function listResources(moduleDir) {
+  const root = resolveSkillRoot(moduleDir);
+  if (!root) return [];
+  const out2 = [describe(root, "SKILL.md", `${SKILL_NAME}: the skill`)];
+  const refDir = join43(root, "references");
+  if (!existsSync21(refDir)) return out2;
+  for (const file of readdirSync6(refDir).sort()) {
+    if (!file.endsWith(".md")) continue;
+    out2.push(describe(root, join43("references", file), `${SKILL_NAME} reference: ${basename7(file, ".md")}`));
+  }
+  return out2;
+}
+function readResource(uri, moduleDir) {
+  if (!uri.startsWith(URI_SCHEME)) {
+    throw new ResourceError(`unknown resource scheme in "${uri}" (expected ${URI_SCHEME}\u2026)`);
+  }
+  const root = resolveSkillRoot(moduleDir);
+  if (!root) throw new ResourceError("no skill payload found next to this build \u2014 nothing to read");
+  const rel = uri.slice(URI_SCHEME.length);
+  if (!rel) throw new ResourceError("empty resource path");
+  const target = resolve6(root, rel);
+  const rootReal = realpathSync3(root);
+  let targetReal;
+  try {
+    targetReal = realpathSync3(target);
+  } catch {
+    throw new ResourceError(`no such resource: ${uri}`);
+  }
+  if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep5)) {
+    throw new ResourceError(`resource path escapes the skill root: ${uri}`);
+  }
+  if (!statSync11(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
+  return { uri, mimeType: "text/markdown", text: readFileSync20(targetReal, "utf8") };
+}
+var ResourceError = class extends Error {
+};
+function describe(root, rel, fallbackTitle) {
+  const decl = {
+    uri: `${URI_SCHEME}${rel.split(sep5).join("/")}`,
+    name: rel.split(sep5).join("/"),
+    title: fallbackTitle,
+    mimeType: "text/markdown"
+  };
+  const summary = firstProse(join43(root, rel));
+  if (summary) decl.description = summary;
+  return decl;
+}
+function firstProse(file) {
+  let text;
+  try {
+    text = readFileSync20(file, "utf8");
+  } catch {
+    return void 0;
+  }
+  const body2 = text.startsWith("---\n") ? text.slice(text.indexOf("\n---", 3) + 4) : text;
+  for (const block of body2.split(/\n\s*\n/)) {
+    const line = block.trim();
+    if (!line || line.startsWith("#") || line.startsWith(">") || line.startsWith("|") || line.startsWith("```")) continue;
+    const flat = line.replace(/\s+/g, " ").replace(/[*`]/g, "");
+    return flat.length > 300 ? `${flat.slice(0, 297)}\u2026` : flat;
+  }
+  return void 0;
+}
+
 // src/mcp/server.ts
 var ERR_INVALID_REQUEST = -32600;
 var ERR_METHOD_NOT_FOUND = -32601;
@@ -19825,7 +19993,21 @@ function createServer(opts = {}) {
       switch (msg.method) {
         case "initialize": {
           protocol = negotiateProtocol2(msg.params?.protocolVersion);
-          reply({ result: { protocolVersion: protocol, capabilities: { tools: { listChanged: false } }, serverInfo } });
+          reply({
+            result: {
+              protocolVersion: protocol,
+              // Three primitives, because a skill is three things: the engine
+              // (tools), the method (prompts) and the documentation the method
+              // refers to (resources). A client given only the first has to
+              // invent the other two.
+              capabilities: {
+                tools: { listChanged: false },
+                resources: { subscribe: false, listChanged: false },
+                prompts: { listChanged: false }
+              },
+              serverInfo
+            }
+          });
           return;
         }
         case "ping":
@@ -19837,6 +20019,37 @@ function createServer(opts = {}) {
         case "tools/call":
           await handleToolCall(msg, reply);
           return;
+        case "resources/list":
+          reply({ result: { resources: listResources(opts.skillDir) } });
+          return;
+        case "resources/read": {
+          const uri = typeof msg.params?.uri === "string" ? msg.params.uri : "";
+          if (!uri) {
+            reply({ error: { code: ERR_INVALID_PARAMS, message: "`uri` is required" } });
+            return;
+          }
+          try {
+            reply({ result: { contents: [readResource(uri, opts.skillDir)] } });
+          } catch (e) {
+            if (e instanceof ResourceError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage3(e) } });
+          }
+          return;
+        }
+        case "prompts/list":
+          reply({ result: { prompts: PROMPTS } });
+          return;
+        case "prompts/get": {
+          const name2 = typeof msg.params?.name === "string" ? msg.params.name : "";
+          const args2 = msg.params?.arguments ?? {};
+          try {
+            reply({ result: getPrompt(name2, args2) });
+          } catch (e) {
+            if (e instanceof PromptError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage3(e) } });
+          }
+          return;
+        }
         default:
           reply({ error: { code: ERR_METHOD_NOT_FOUND, message: `method not found: ${String(msg.method)}` } });
           return;
@@ -19981,14 +20194,14 @@ function startHttpServer(opts = {}) {
   server.requestTimeout = 0;
   server.headersTimeout = 6e4;
   server.keepAliveTimeout = 12e4;
-  return new Promise((resolve7, reject) => {
+  return new Promise((resolve8, reject) => {
     server.once("error", reject);
     server.listen(opts.port ?? 0, bind, () => {
       server.removeListener("error", reject);
       const addr2 = server.address();
       const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
       const host = bind.includes(":") ? `[${bind}]` : bind;
-      resolve7({
+      resolve8({
         server,
         port,
         url: `http://${host}:${port}${MCP_PATH}`,
@@ -20097,7 +20310,7 @@ function sendJson(res, status, body2, origin, extra = {}) {
 }
 var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
 function readBody(req) {
-  return new Promise((resolve7, reject) => {
+  return new Promise((resolve8, reject) => {
     const chunks = [];
     let size = 0;
     let over = false;
@@ -20121,7 +20334,7 @@ function readBody(req) {
     });
     req.on("end", () => {
       if (over) reject(new Error("too large"));
-      else resolve7(Buffer.concat(chunks).toString("utf8"));
+      else resolve8(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", reject);
     req.on("aborted", () => reject(new Error("client aborted the request")));
@@ -20411,7 +20624,7 @@ function buildAskOptions(p, opts = {}) {
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
     pkg: p.values.package,
-    out: p.values.out ? resolve6(p.values.out) : void 0,
+    out: p.values.out ? resolve7(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
@@ -20668,7 +20881,7 @@ async function run2(argv = process.argv.slice(2)) {
         coverageMin = Number(p.values["coverage-min"]);
         if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
       }
-      const res = checkRun(resolve6(dir), {
+      const res = checkRun(resolve7(dir), {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
@@ -20676,16 +20889,16 @@ async function run2(argv = process.argv.slice(2)) {
         allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
-      else process.stdout.write(formatCheckReport(res, resolve6(dir)) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve7(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }
     case "verify": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const rdir = resolve6(dir);
+      const rdir = resolve7(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve6(rdir, p.values.apply));
+        const result = applyVerdicts(rdir, resolve7(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
@@ -20711,17 +20924,17 @@ async function run2(argv = process.argv.slice(2)) {
         process.stderr.write("ultradoc orchestrate: --run <dir> is required (the run dir holding the worklists).\n");
         process.exit(2);
       }
-      const engineAbs = realpathSync3(fileURLToPath3(import.meta.url));
+      const engineAbs = realpathSync4(fileURLToPath4(import.meta.url));
       if (p.bools.has("list")) {
-        if (!existsSync21(dir)) {
+        if (!existsSync22(dir)) {
           process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.
 `);
           process.exit(2);
         }
-        process.stdout.write(JSON.stringify({ phases: listPhases(resolve6(dir), engineAbs) }, null, 2) + "\n");
+        process.stdout.write(JSON.stringify({ phases: listPhases(resolve7(dir), engineAbs) }, null, 2) + "\n");
         return;
       }
-      const res = orchestrateRun(resolve6(dir), engineAbs, {
+      const res = orchestrateRun(resolve7(dir), engineAbs, {
         phase: p.values.phase,
         eco: p.bools.has("eco")
       });
@@ -20744,7 +20957,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join43(resolve6(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join44(resolve7(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
@@ -20834,7 +21047,7 @@ async function run2(argv = process.argv.slice(2)) {
           void running.close().then(() => process.exit(0));
         });
       }
-      await new Promise((resolve7) => running.server.once("close", resolve7));
+      await new Promise((resolve8) => running.server.once("close", resolve8));
       return;
     }
   }
@@ -20842,9 +21055,9 @@ async function run2(argv = process.argv.slice(2)) {
 function isInvokedDirectly() {
   const argv1 = process.argv[1];
   if (argv1 === void 0) return false;
-  const modulePath = fileURLToPath3(import.meta.url);
+  const modulePath = fileURLToPath4(import.meta.url);
   try {
-    if (realpathSync3(argv1) === realpathSync3(modulePath)) return true;
+    if (realpathSync4(argv1) === realpathSync4(modulePath)) return true;
   } catch {
   }
   return import.meta.url === pathToFileURL3(argv1).href;

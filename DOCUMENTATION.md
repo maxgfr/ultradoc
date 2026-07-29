@@ -61,10 +61,36 @@ mcp/              the MCP server — a second front-end over the same library
   protocol.ts     version negotiation, arg validation, response cap, Origin check (pure)
   tools.ts        the tool declarations + annotations (pure data, no pipeline imports)
   handlers.ts     tool name → library call; the JSON→AskOptions mapper that THROWS
+  resources.ts    SKILL.md + references/*.md under skill://, read off disk (pure)
+  prompts.ts      the workflows as prompts — contract, tool sequence, gate (pure)
   server.ts       the JSON-RPC core, transport-agnostic (replies via a send callback)
   stdio.ts        newline-delimited JSON on stdin/stdout + the stdout-purity guard
   http.ts         stateless Streamable HTTP on node:http (POST /mcp, loopback)
 ```
+
+### Why three primitives
+
+`tools` alone ships the ENGINE. It does not ship the method — answer only from
+retrieved evidence, cite every claim, treat a failed `check` as a verdict — which
+inside Claude Code arrives as SKILL.md and nowhere else arrives at all. So the
+same payload is served two more ways: `resources` expose SKILL.md and every
+`references/*.md` under `skill://`, and `prompts` expose the workflows as
+ready-to-run instructions naming the exact tool sequence.
+
+`resources.ts` resolves the payload from its own module directory, trying three
+layouts in order: `<payload>/SKILL.md` (installed skill), then
+`<repo>/skills/ultradoc/SKILL.md` (repo-root bundle), then one level higher (the
+source tree, which is what the test suite runs as). A build with no payload
+beside it serves an empty resource list rather than refusing to start — missing
+documentation must not cost you the tools. Containment on `resources/read` is
+checked against the **realpath**, so a symlink out of `references/` is refused
+even though its path string normalises cleanly; this server can be reached over
+HTTP.
+
+`prompts.ts` imports the tool declarations purely so a test can assert that
+every `ultradoc_*` name a prompt tells the model to call is actually declared —
+the failure being a tool rename that leaves the prompts describing a sequence no
+host can follow, while still reading perfectly well.
 
 ## Data flow
 
@@ -277,6 +303,13 @@ Together they prevent memory-based answers from passing as grounded ones.
   row), handle it in `src/mcp/handlers.ts`, and add its annotation line to the
   matrix in `tests/mcp-tools.test.ts` — which asserts tool by tool, so a new
   tool with no expected row fails rather than sliding in unannotated.
+- **An MCP prompt:** add a `PromptDecl` to `PROMPTS` in `src/mcp/prompts.ts` and
+  a renderer for it. `tests/mcp-prompts.test.ts` then holds it to the shape every
+  prompt must have — it states the core rule, names only declared tools, and
+  ends at `ultradoc_check` — so a workflow that lists tools without the protocol
+  fails rather than shipping.
+- **A skill reference:** drop the `.md` into `skills/ultradoc/references/`. It is
+  served as a resource automatically; nothing has to be registered.
 
 ## The MCP server
 

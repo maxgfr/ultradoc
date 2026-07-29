@@ -71,7 +71,11 @@ describe("lifecycle methods", () => {
     expect(r.protocolVersion).toBe("2025-06-18");
     expect(r.serverInfo.name).toBe("ultradoc");
     expect(r.serverInfo.version).toMatch(/^\d+\.\d+\.\d+/);
-    expect(r.capabilities).toHaveProperty("tools");
+    expect(r.capabilities).toEqual({
+      tools: { listChanged: false },
+      resources: { subscribe: false, listChanged: false },
+      prompts: { listChanged: false },
+    });
   });
 
   it("answers ping and lists tools", async () => {
@@ -85,7 +89,22 @@ describe("lifecycle methods", () => {
   });
 
   it("rejects an unknown method with -32601", async () => {
-    expect((await rpc({ id: 1, method: "resources/list" }))!.error).toMatchObject({ code: -32601 });
+    expect((await rpc({ id: 1, method: "resources/subscribe" }))!.error).toMatchObject({ code: -32601 });
+  });
+
+  it("serves resources and prompts alongside tools", async () => {
+    const resources = ((await rpc({ id: 1, method: "resources/list" }))!.result as { resources: { uri: string }[] }).resources;
+    expect(resources.map((r) => r.uri)).toContain("skill://SKILL.md");
+
+    const prompts = ((await rpc({ id: 2, method: "prompts/list" }))!.result as { prompts: { name: string }[] }).prompts;
+    expect(prompts.map((p) => p.name)).toContain("answer_from_source");
+
+    const got = await rpc({ id: 3, method: "prompts/get", params: { name: "answer_from_source", arguments: { repo: "owner/lib", question: "why?" } } });
+    expect((got!.result as { messages: { content: { text: string } }[] }).messages[0]!.content.text).toContain("owner/lib");
+  });
+
+  it("requires a uri on resources/read", async () => {
+    expect((await rpc({ id: 1, method: "resources/read", params: {} }))!.error).toMatchObject({ code: -32602 });
   });
 
   it("treats an unknown tool and bad arguments as protocol errors, not tool failures", async () => {

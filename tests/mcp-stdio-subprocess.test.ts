@@ -99,11 +99,62 @@ describe("the bundled MCP server over stdio", () => {
   });
 
   it("survives an unknown method and keeps serving", async () => {
-    const s = await session([INIT, { jsonrpc: "2.0", id: 2, method: "resources/list" }, { jsonrpc: "2.0", id: 3, method: "ping" }]);
+    const s = await session([INIT, { jsonrpc: "2.0", id: 2, method: "resources/subscribe" }, { jsonrpc: "2.0", id: 3, method: "ping" }]);
     const msgs = s.lines.map((l) => JSON.parse(l));
     expect(msgs.find((m) => m.id === 2).error.code).toBe(-32601);
     // Still answering afterwards: a bad frame must not end the session.
     expect(msgs.find((m) => m.id === 3).result).toEqual({});
+    expect(s.code).toBe(0);
+  });
+
+  it("advertises and serves all three primitives from the committed bundle", async () => {
+    // The one test that proves the skill's METHOD ships with the engine. It
+    // runs against scripts/ultradoc.mjs, so it also proves resources resolve
+    // from the bundle's own location rather than from the source tree.
+    const s = await session([
+      INIT,
+      { jsonrpc: "2.0", id: 2, method: "resources/list" },
+      { jsonrpc: "2.0", id: 3, method: "prompts/list" },
+      { jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "skill://SKILL.md" } },
+      { jsonrpc: "2.0", id: 5, method: "prompts/get", params: { name: "answer_from_source", arguments: { repo: LIB, question: "how does retry work?" } } },
+    ]);
+    const msgs = s.lines.map((l) => JSON.parse(l));
+
+    expect(msgs[0]!.result.capabilities).toEqual({
+      tools: { listChanged: false },
+      resources: { subscribe: false, listChanged: false },
+      prompts: { listChanged: false },
+    });
+
+    const uris = msgs.find((m) => m.id === 2).result.resources.map((r: { uri: string }) => r.uri);
+    expect(uris).toContain("skill://SKILL.md");
+    expect(uris).toContain("skill://references/citation-format.md");
+
+    expect(msgs.find((m) => m.id === 3).result.prompts.map((p: { name: string }) => p.name)).toEqual(["answer_from_source", "document_project"]);
+
+    const contents = msgs.find((m) => m.id === 4).result.contents[0];
+    expect(contents.mimeType).toBe("text/markdown");
+    expect(contents.text).toContain("ultradoc");
+
+    const rendered = msgs.find((m) => m.id === 5).result.messages[0].content.text;
+    expect(rendered).toContain("how does retry work?");
+    expect(rendered).toContain("ultradoc_check");
+
+    expect(s.code).toBe(0);
+  });
+
+  it("reports a bad resource uri and a bad prompt name as invalid params", async () => {
+    const s = await session([
+      INIT,
+      { jsonrpc: "2.0", id: 2, method: "resources/read", params: { uri: "skill://../../package.json" } },
+      { jsonrpc: "2.0", id: 3, method: "prompts/get", params: { name: "nope" } },
+      { jsonrpc: "2.0", id: 4, method: "prompts/get", params: { name: "answer_from_source", arguments: { repo: "x" } } },
+      { jsonrpc: "2.0", id: 5, method: "ping" },
+    ]);
+    const msgs = s.lines.map((l) => JSON.parse(l));
+    for (const id of [2, 3, 4]) expect(msgs.find((m) => m.id === id).error.code, `id ${id}`).toBe(-32602);
+    // A client naming something wrong never ends the session.
+    expect(msgs.find((m) => m.id === 5).result).toEqual({});
     expect(s.code).toBe(0);
   });
 

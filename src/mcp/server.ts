@@ -1,5 +1,7 @@
 import { VERSION } from "../types.js";
 import { callTool, ToolError, type HandlerDefaults } from "./handlers.js";
+import { getPrompt, PROMPTS, PromptError } from "./prompts.js";
+import { listResources, readResource, ResourceError } from "./resources.js";
 import { toolsFor, type ToolDecl } from "./tools.js";
 import {
   DEFAULT_MAX_RESPONSE_BYTES,
@@ -30,6 +32,9 @@ export interface JsonRpcMessage {
 export interface ServerOptions extends HandlerDefaults {
   maxResponseBytes?: number;
   serverName?: string;
+  // Where to look for the skill payload (SKILL.md + references/). Injectable
+  // for tests; in production resources.ts finds it from its own module path.
+  skillDir?: string;
 }
 
 export const ERR_INVALID_REQUEST = -32600;
@@ -93,7 +98,21 @@ export function createServer(opts: ServerOptions = {}): McpServer {
       switch (msg.method) {
         case "initialize": {
           protocol = negotiateProtocol(msg.params?.protocolVersion);
-          reply({ result: { protocolVersion: protocol, capabilities: { tools: { listChanged: false } }, serverInfo } });
+          reply({
+            result: {
+              protocolVersion: protocol,
+              // Three primitives, because a skill is three things: the engine
+              // (tools), the method (prompts) and the documentation the method
+              // refers to (resources). A client given only the first has to
+              // invent the other two.
+              capabilities: {
+                tools: { listChanged: false },
+                resources: { subscribe: false, listChanged: false },
+                prompts: { listChanged: false },
+              },
+              serverInfo,
+            },
+          });
           return;
         }
         case "ping":
@@ -105,6 +124,39 @@ export function createServer(opts: ServerOptions = {}): McpServer {
         case "tools/call":
           await handleToolCall(msg, reply);
           return;
+        case "resources/list":
+          reply({ result: { resources: listResources(opts.skillDir) } });
+          return;
+        case "resources/read": {
+          const uri = typeof msg.params?.uri === "string" ? msg.params.uri : "";
+          if (!uri) {
+            reply({ error: { code: ERR_INVALID_PARAMS, message: "`uri` is required" } });
+            return;
+          }
+          try {
+            reply({ result: { contents: [readResource(uri, opts.skillDir)] } });
+          } catch (e) {
+            // A resource the client named wrongly is a client bug, the same as
+            // an unknown tool — not a read that failed on its own terms.
+            if (e instanceof ResourceError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage(e) } });
+          }
+          return;
+        }
+        case "prompts/list":
+          reply({ result: { prompts: PROMPTS } });
+          return;
+        case "prompts/get": {
+          const name = typeof msg.params?.name === "string" ? msg.params.name : "";
+          const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
+          try {
+            reply({ result: getPrompt(name, args) });
+          } catch (e) {
+            if (e instanceof PromptError) reply({ error: { code: ERR_INVALID_PARAMS, message: e.message } });
+            else reply({ error: { code: ERR_INTERNAL, message: errMessage(e) } });
+          }
+          return;
+        }
         default:
           reply({ error: { code: ERR_METHOD_NOT_FOUND, message: `method not found: ${String(msg.method)}` } });
           return;

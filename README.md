@@ -175,6 +175,10 @@ The skill shells out to the CLI and parses its output. An MCP server skips both:
 your agent calls ultradoc as typed tools, with JSON schemas in and structured
 results out. Same engine, same cache, no wrapper.
 
+It serves all three MCP primitives, because a skill is three things: the engine
+(**tools**), the method (**prompts**), and the documentation the method refers
+to (**resources**). A client given only the tools has to invent the rest.
+
 ```bash
 # stdio — the default, and what Claude Code / Claude Desktop / Cursor expect
 claude mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp
@@ -216,6 +220,37 @@ Pass `--repo <url|path>` at startup to dedicate the server to one project —
 `repo` then becomes optional on every tool. `--allow-write` additionally exposes
 `ultradoc_cache_clean`, which deletes cached clones; it is off by default so an
 auto-approving agent cannot reach it.
+
+### Prompts — the workflow, not just the tools
+
+Two prompts carry the protocol SKILL.md carries inside Claude Code: retrieve
+before answering, cite every claim, name what the evidence did not settle, and
+let `check` fail you rather than talk past it.
+
+| Prompt | Arguments | What it drives |
+|--------|-----------|----------------|
+| `answer_from_source` | `repo`, `question`, `package?`, `ref?` | The grounded-answer loop, end to end: dossier → read the evidence → cited answer → `ultradoc_check --strict` |
+| `document_project` | `repo`, `package?`, `ref?` | The reference-doc loop: outline → a dossier per section → write each section from its own evidence → validate the whole |
+
+A model that fetches `answer_from_source` gets the sequence and the gate in one
+call, instead of guessing which of ten tools to reach for first.
+
+### Resources — the skill's own documentation
+
+`SKILL.md` and all ten `references/*.md` are served under `skill://`:
+
+```
+skill://SKILL.md                          the skill, in full
+skill://references/citation-format.md     the citation grammar `check` enforces
+skill://references/answer-rubric.md       the bar an answer is held to
+skill://references/retrieval-playbook.md  question → complete grounded answer
+…
+```
+
+They are read off disk at request time, from the payload next to the running
+build — so a documentation fix reaches every client without a rebuild. A build
+installed without its payload still serves every tool, with an empty resource
+list.
 
 Three things worth knowing:
 
