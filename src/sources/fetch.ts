@@ -1,5 +1,6 @@
 import { type EvidenceItem, VERSION } from "../types.js";
 import { buildMatcher } from "../util.js";
+import { extractPdf } from "./pdf/ladder.js";
 import {
   EXTRACTOR_FIRECRAWL,
   EXTRACTOR_NATIVE,
@@ -14,6 +15,10 @@ type RawItem = Omit<EvidenceItem, "id">;
 
 const UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 
+const PDF_URL_RE = /\.pdf($|[?#])/i;
+// 16 MB: papers and specs routinely exceed the 4 MB default for HTML.
+const PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 } as const;
+
 export interface HttpResult {
   ok: boolean;
   status: number;
@@ -22,12 +27,14 @@ export interface HttpResult {
   error?: string;
   rateLimited?: boolean; // 429, or 403 with x-ratelimit-remaining: 0 (GitHub)
   retryAfterMs?: number; // parsed Retry-After, capped
+  bytes?: Buffer; // raw body, only when opts.binary — a PDF must not be decoded as utf8
 }
 
 export interface HttpGetOptions {
   timeoutMs?: number;
   accept?: string;
   maxBytes?: number;
+  binary?: boolean; // keep the raw bytes instead of decoding the body as utf8
   headers?: Record<string, string>; // extra request headers (e.g. authorization)
   retries?: number; // opt-in bounded retries for transient failures (default 0)
 }
@@ -92,6 +99,29 @@ export async function readCapped(res: Response, max: number): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Same streaming + cap semantics as readCapped, but keeps the raw bytes. */
+export async function readCappedBytes(res: Response, max: number): Promise<Buffer> {
+  const reader = res.body?.getReader?.();
+  if (!reader) return Buffer.from(await res.arrayBuffer()).subarray(0, max);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    const remaining = max - total;
+    if (chunk.length >= remaining) {
+      chunks.push(chunk.subarray(0, remaining));
+      await reader.cancel().catch(() => {});
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  return Buffer.concat(chunks);
+}
+
 // One GET attempt: times out, sends a UA (+ any extra headers), and bounds the
 // body so a huge page can't blow up memory — rejects early on an oversized
 // declared Content-Length, otherwise streams and stops at maxBytes. Surfaces a
@@ -114,6 +144,10 @@ async function httpGetOnce(url: string, opts: HttpGetOptions): Promise<HttpResul
     if (Number.isFinite(declared) && declared > max) {
       ctrl.abort();
       return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap`, rateLimited, retryAfterMs };
+    }
+    if (opts.binary) {
+      const bytes = await readCappedBytes(res, max);
+      return { ok: res.ok, status: res.status, body: "", bytes, contentType, rateLimited, retryAfterMs };
     }
     const body = await readCapped(res, max);
     return { ok: res.ok, status: res.status, body, contentType, rateLimited, retryAfterMs };
@@ -231,9 +265,21 @@ export interface ExtractResult {
 // container — this is what ultradoc has always done and what everything falls
 // back to.
 async function nativeExtract(url: string): Promise<ExtractResult> {
-  const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
+  const wantsPdf = PDF_URL_RE.test(url);
+  const res = await httpGet(url, wantsPdf ? PDF_FETCH_OPTS : { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
     return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
+  }
+  // A PDF is not text. Without this branch the isHtml test below falls through
+  // and returns res.body verbatim — the PDF's bytes decoded as UTF-8 — which
+  // then gets cached and quoted as documentation.
+  if (wantsPdf || /application\/pdf/i.test(res.contentType)) {
+    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS)).bytes;
+    const got = bytes ? await extractPdf(bytes) : { text: "", reason: "empty response body" };
+    if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text — ${got.reason}.` };
+    // The rung is the extractor identity, and so part of the page-cache key: a
+    // pdf-inspector copy and a pdftotext copy are different documents.
+    return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
   }
   const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
   const text = isHtml ? htmlToText(res.body) : res.body;

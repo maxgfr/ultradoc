@@ -11,3 +11,10 @@
 // Tests that exercise Firecrawl pass an explicit base (or set the env var
 // themselves), which overrides this.
 process.env.ULTRADOC_FIRECRAWL = "off";
+
+// The PDF extractor ladder shells out to npx (pdf-inspector) and pdftotext. In a
+// test that would mean network access, ~90s timeouts, and results that depend on
+// which tools the developer happens to have installed — the opposite of an
+// offline, deterministic suite. Pin it to the built-in reader; the cases that
+// exercise other rungs pass `engines` themselves.
+process.env.ULTRADOC_PDF_ENGINE = "native";

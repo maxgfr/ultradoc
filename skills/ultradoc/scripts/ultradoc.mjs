@@ -17040,6 +17040,235 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 import { existsSync as existsSync11, readFileSync as readFileSync12, writeFileSync as writeFileSync7, mkdirSync as mkdirSync7 } from "fs";
 import { join as join28, dirname as dirname5 } from "path";
 
+// src/sources/pdf/exec.ts
+import { spawn } from "child_process";
+var MAX_STDOUT_BYTES = 24 * 1024 * 1024;
+function binaryName(name2) {
+  return process.platform === "win32" && name2 === "npx" ? "npx.cmd" : name2;
+}
+function runWithInput(cmd, args2, input, timeoutMs) {
+  return new Promise((resolve8) => {
+    let child;
+    try {
+      child = spawn(binaryName(cmd), args2, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (e) {
+      resolve8({ ok: false, stdout: "", error: e.message });
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const done = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve8(r);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      done({ ok: false, stdout: "", error: `timed out after ${Math.round(timeoutMs / 1e3)}s` });
+    }, timeoutMs);
+    child.stdout?.on("data", (d) => {
+      if (size >= MAX_STDOUT_BYTES) return;
+      size += d.length;
+      chunks.push(d);
+    });
+    child.stderr?.on("data", () => {
+    });
+    child.on("error", (e) => {
+      done({ ok: false, stdout: "", error: e.code === "ENOENT" ? "not installed" : e.message });
+    });
+    child.on("close", (code) => {
+      const stdout = Buffer.concat(chunks).subarray(0, MAX_STDOUT_BYTES).toString("utf8");
+      if (code === 0) done({ ok: true, stdout });
+      else done({ ok: false, stdout, error: `exit ${code}` });
+    });
+    child.stdin?.on("error", () => {
+    });
+    child.stdin?.end(input);
+  });
+}
+
+// src/sources/pdf/quality.ts
+var MIN_CHARS_FOR_SHAPE_CHECKS = 200;
+var CONTROL_RATIO_MAX = 5e-3;
+var REPLACEMENT_RATIO_MAX = 5e-3;
+var LONGEST_RUN_MAX = 300;
+var LETTER_RATIO_MIN = 0.5;
+function isControlCode(c2) {
+  if (c2 === 9 || c2 === 10 || c2 === 13) return false;
+  return c2 < 32 || c2 >= 127 && c2 <= 159;
+}
+var REPLACEMENT_CODE = 65533;
+function scanRatios(t) {
+  let control = 0;
+  let replacement = 0;
+  for (let i2 = 0; i2 < t.length; i2++) {
+    const c2 = t.charCodeAt(i2);
+    if (c2 === REPLACEMENT_CODE) replacement++;
+    else if (isControlCode(c2)) control++;
+  }
+  return { control: control / t.length, replacement: replacement / t.length };
+}
+function assessPdfText(text) {
+  const t = text.trim();
+  if (!t) return { ok: false, reason: "no text layer (scanned or image-only PDF?)" };
+  const { control, replacement } = scanRatios(t);
+  if (control > CONTROL_RATIO_MAX) {
+    return { ok: false, reason: "binary/control characters in the text (undecodable PDF stream)" };
+  }
+  if (replacement > REPLACEMENT_RATIO_MAX) {
+    return { ok: false, reason: "replacement characters throughout (wrong character map)" };
+  }
+  if (t.length < MIN_CHARS_FOR_SHAPE_CHECKS) return { ok: true };
+  let longestRun = 0;
+  for (const w of t.split(/\s+/)) if (w.length > longestRun) longestRun = w.length;
+  const letters = (t.match(new RegExp("\\p{L}|\\p{N}", "gu"))?.length ?? 0) / t.replace(/\s+/g, "").length;
+  if (longestRun > LONGEST_RUN_MAX && letters < LETTER_RATIO_MIN) {
+    return { ok: false, reason: "unreadable text layer (garbled glyph encoding)" };
+  }
+  return { ok: true };
+}
+
+// src/sources/pdf/native.ts
+import { inflateSync, inflateRawSync } from "zlib";
+function decodePdfString(tok) {
+  if (tok[0] !== "(") return "";
+  const inner = tok.slice(1, -1);
+  const simple = { n: "\n", r: "\r", t: "	", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" };
+  return inner.replace(/\\([nrtbf()\\])/g, (_m, c2) => simple[c2] ?? c2).replace(/\\([0-7]{1,3})/g, (_m, o) => String.fromCharCode(parseInt(o, 8) & 255));
+}
+function decodeHexString(tok) {
+  const hex = tok.slice(1, -1).replace(/\s+/g, "");
+  let out2 = "";
+  for (let i2 = 0; i2 + 1 < hex.length; i2 += 2) out2 += String.fromCharCode(parseInt(hex.slice(i2, i2 + 2), 16));
+  if (hex.length % 2) out2 += String.fromCharCode(parseInt(hex[hex.length - 1] + "0", 16));
+  return out2;
+}
+function decodeString(tok) {
+  return tok[0] === "<" ? decodeHexString(tok) : decodePdfString(tok);
+}
+function decodeTJArray(tok) {
+  let out2 = "";
+  const re = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|-?\d+(?:\.\d+)?/g;
+  let m;
+  while (m = re.exec(tok)) {
+    const t = m[0];
+    if (t[0] === "(" || t[0] === "<") out2 += decodeString(t);
+    else if (Number(t) <= -100) out2 += " ";
+  }
+  return out2;
+}
+var TOKEN_RE = /\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|\[(?:\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|[^\]])*\]|\bT\*|\bTd\b|\bTD\b|\bTj\b|\bTJ\b|'|"/g;
+function extractTextOps(content) {
+  let out2 = "";
+  let operands = [];
+  const take = () => {
+    for (let i2 = operands.length - 1; i2 >= 0; i2--) {
+      const t = operands[i2];
+      if (t[0] === "(" || t[0] === "<") return decodeString(t);
+      if (t[0] === "[") return decodeTJArray(t);
+    }
+    return "";
+  };
+  TOKEN_RE.lastIndex = 0;
+  let m;
+  while (m = TOKEN_RE.exec(content)) {
+    const tok = m[0];
+    const c2 = tok[0];
+    if (c2 === "(" || c2 === "<" || c2 === "[") {
+      operands.push(tok);
+      continue;
+    }
+    if (tok === "Tj" || tok === "TJ") out2 += take() + " ";
+    else if (tok === "'" || tok === '"') out2 += "\n" + take() + " ";
+    else if (tok === "T*") out2 += "\n";
+    operands = [];
+  }
+  return out2;
+}
+function extractStreams(buf) {
+  const out2 = [];
+  const s = buf.toString("latin1");
+  const re = /stream\r?\n/g;
+  let m;
+  while (m = re.exec(s)) {
+    const start2 = m.index + m[0].length;
+    const end = s.indexOf("endstream", start2);
+    if (end < 0) continue;
+    let stop2 = end;
+    if (s[stop2 - 1] === "\n") stop2--;
+    if (s[stop2 - 1] === "\r") stop2--;
+    const chunk = buf.subarray(start2, stop2);
+    let data;
+    try {
+      data = inflateSync(chunk);
+    } catch {
+      try {
+        data = inflateRawSync(chunk);
+      } catch {
+        data = chunk;
+      }
+    }
+    out2.push(data.toString("latin1"));
+  }
+  return out2;
+}
+function pdfToText(buf) {
+  let out2 = "";
+  try {
+    for (const stream of extractStreams(buf)) {
+      if (/\b(Tj|TJ)\b/.test(stream) || /\)\s*'/.test(stream)) out2 += extractTextOps(stream) + "\n";
+    }
+  } catch {
+  }
+  return out2.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// src/sources/pdf/ladder.ts
+var PDF_EXTRACTORS = ["pdf-inspector", "firecrawl", "pdftotext", "native"];
+var NPX_TIMEOUT_MS = 9e4;
+var PDFTOTEXT_TIMEOUT_MS = 6e4;
+var dead = /* @__PURE__ */ new Set();
+function enabledExtractors(engines) {
+  if (engines) return engines;
+  const forced = process.env.ULTRADOC_PDF_ENGINE?.trim();
+  if (forced && PDF_EXTRACTORS.includes(forced)) return [forced];
+  if (process.env.ULTRADOC_NO_NPX) return PDF_EXTRACTORS.filter((e) => e !== "pdf-inspector");
+  return PDF_EXTRACTORS;
+}
+async function viaPdfInspector(bytes) {
+  const r = await runWithInput("npx", ["-y", "--prefer-offline", "@firecrawl/pdf-inspector", "-"], bytes, NPX_TIMEOUT_MS);
+  return r.ok ? r.stdout : void 0;
+}
+async function viaPdftotext(bytes) {
+  const r = await runWithInput("pdftotext", ["-layout", "-", "-"], bytes, PDFTOTEXT_TIMEOUT_MS);
+  return r.ok ? r.stdout : void 0;
+}
+async function extractPdf(bytes, opts = {}) {
+  let lastReason;
+  for (const id of enabledExtractors(opts.engines)) {
+    if (dead.has(id)) continue;
+    let text;
+    try {
+      if (id === "pdf-inspector") text = await viaPdfInspector(bytes);
+      else if (id === "pdftotext") text = await viaPdftotext(bytes);
+      else if (id === "firecrawl") text = opts.firecrawl ? await opts.firecrawl() : void 0;
+      else text = pdfToText(bytes);
+    } catch {
+      text = void 0;
+    }
+    if (text === void 0) {
+      if (id !== "firecrawl") dead.add(id);
+      continue;
+    }
+    const verdict = assessPdfText(text);
+    if (verdict.ok) return { text: text.trim(), via: id };
+    lastReason = verdict.reason;
+  }
+  return { text: "", reason: lastReason ?? "no PDF extractor available" };
+}
+
 // src/sources/firecrawl.ts
 var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
 var EXTRACTOR_FIRECRAWL = "firecrawl";
@@ -17147,6 +17376,8 @@ async function searchViaFirecrawl(query4, n, opts = {}) {
 
 // src/sources/fetch.ts
 var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
+var PDF_URL_RE = /\.pdf($|[?#])/i;
+var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
 var RETRY_MAX = 2;
 var RETRY_BASE_MS = 500;
 var RETRY_AFTER_CAP_MS = 1e4;
@@ -17192,6 +17423,28 @@ async function readCapped(res, max) {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
+async function readCappedBytes(res, max) {
+  const reader = res.body?.getReader?.();
+  if (!reader) return Buffer.from(await res.arrayBuffer()).subarray(0, max);
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    const remaining = max - total;
+    if (chunk.length >= remaining) {
+      chunks.push(chunk.subarray(0, remaining));
+      await reader.cancel().catch(() => {
+      });
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  return Buffer.concat(chunks);
+}
 async function httpGetOnce(url, opts) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
@@ -17209,6 +17462,10 @@ async function httpGetOnce(url, opts) {
     if (Number.isFinite(declared) && declared > max) {
       ctrl.abort();
       return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap`, rateLimited, retryAfterMs };
+    }
+    if (opts.binary) {
+      const bytes = await readCappedBytes(res, max);
+      return { ok: res.ok, status: res.status, body: "", bytes, contentType, rateLimited, retryAfterMs };
     }
     const body2 = await readCapped(res, max);
     return { ok: res.ok, status: res.status, body: body2, contentType, rateLimited, retryAfterMs };
@@ -17287,9 +17544,16 @@ function htmlToText(html) {
   return s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
 }
 async function nativeExtract(url) {
-  const res = await httpGet(url, { accept: "text/html,text/plain,*/*", retries: 2 });
+  const wantsPdf = PDF_URL_RE.test(url);
+  const res = await httpGet(url, wantsPdf ? PDF_FETCH_OPTS : { accept: "text/html,text/plain,*/*", retries: 2 });
   if (!res.ok) {
     return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
+  }
+  if (wantsPdf || /application\/pdf/i.test(res.contentType)) {
+    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS)).bytes;
+    const got = bytes ? await extractPdf(bytes) : { text: "", reason: "empty response body" };
+    if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text \u2014 ${got.reason}.` };
+    return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
   }
   const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
   const text = isHtml ? htmlToText(res.body) : res.body;
@@ -17915,6 +18179,12 @@ var FIRECRAWL_ENV = `# Tunables for the self-hosted Firecrawl stack (docker comp
 # THIS is what makes the API keyless. Turning it on would require a Supabase
 # project; there is no reason to for a localhost stack.
 USE_DB_AUTHENTICATION=false
+
+# Firecrawl's Rust PDF extractor, which is OFF by default upstream. Without it
+# Firecrawl falls back to pdf-parse (JS) for PDFs. Still keyless: this is the
+# local Rust path, not the MinerU / Fire PDF routes, which need API credentials.
+# ultradoc reaches this as rung 2 of the PDF ladder \u2014 see src/sources/pdf/.
+PDF_RUST_EXTRACT_ENABLE=true
 
 # Postgres credentials for the bundled nuq-postgres container. It is not
 # published on a host port, so these never leave the compose network.
@@ -19596,7 +19866,7 @@ import { existsSync as existsSync18, readFileSync as readFileSync18 } from "fs";
 import { basename as basename6, dirname as dirname9, join as join39, resolve as resolvePath, sep as sep3 } from "path";
 
 // src/citations.ts
-var TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
+var TOKEN_RE2 = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
   numbered: /^(issue|pr|discussion)#\d+$/,
@@ -19767,9 +20037,9 @@ function extractClaimUnits(text) {
 function citationTokensIn(text) {
   const masked = stripInlineCode(text);
   const out2 = [];
-  TOKEN_RE.lastIndex = 0;
+  TOKEN_RE2.lastIndex = 0;
   let m;
-  while (m = TOKEN_RE.exec(masked)) {
+  while (m = TOKEN_RE2.exec(masked)) {
     const tok = m[1].trim();
     if (isCitation(tok) && !out2.includes(tok)) out2.push(tok);
   }
@@ -19798,9 +20068,9 @@ function collectCitations(text) {
     for (const part of parts2) for (const t of citationTokensIn(part)) if (!tokens.includes(t)) tokens.push(t);
   }
   const all = [];
-  TOKEN_RE.lastIndex = 0;
+  TOKEN_RE2.lastIndex = 0;
   let m;
-  while (m = TOKEN_RE.exec(text)) {
+  while (m = TOKEN_RE2.exec(text)) {
     const tok = m[1].trim();
     if (isCitation(tok) && !all.includes(tok)) all.push(tok);
   }

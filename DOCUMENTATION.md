@@ -368,3 +368,21 @@ rebuilds the committed bundle, and cuts a GitHub Release. CI
 (`.github/workflows/ci.yml`) gates on typecheck + tests + reproducible bundle
 (`check:build`) + an offline smoke run, with a Node-18 floor job for the
 zero-dep bundle.
+
+## PDF sources
+
+A `.pdf` URL or an `application/pdf` response goes through an **extractor
+ladder** (`src/sources/pdf/`): `npx @firecrawl/pdf-inspector` (the PDF on stdin,
+in a child process) → the self-hosted Firecrawl → `pdftotext` → a built-in
+dependency-free reader — stopping at the first rung whose output passes a
+quality gate, and REFUSING rather than quoting a PDF none of them could read.
+
+Without it a PDF body was returned verbatim: its bytes decoded as UTF-8, cached,
+and quoted as documentation. The gate rejects text laced with C0/C1 control
+bytes or U+FFFD at ANY length — the built-in reader can emit 16 MB of
+image-stream garbage for a 12 MB paper, which every length-limited check waves
+through. The winning rung becomes the extractor identity, so it is part of the
+page-cache key.
+
+`ULTRADOC_NO_NPX=1` drops the npx rung; `ULTRADOC_PDF_ENGINE=<rung>` pins one.
+
