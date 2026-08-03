@@ -79,7 +79,14 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
 // cascades to SearXNG and DuckDuckGo server-side, so putting it in the default
 // cascade would just add a container dependency in front of engines `auto`
 // already tries directly.
-async function discover(query: string, engine: WebEngine, n: number, opts: FirecrawlOptions = {}): Promise<{ urls: string[]; via: string; notes: string[] }> {
+// Exported so the engine-cascade notes can be tested directly, matching the
+// sibling repos (construct exports its equivalent).
+export async function discover(
+  query: string,
+  engine: WebEngine,
+  n: number,
+  opts: FirecrawlOptions = {},
+): Promise<{ urls: string[]; via: string; notes: string[] }> {
   const notes: string[] = [];
   if (engine === "firecrawl") {
     const f = await searchViaFirecrawl(query, n, opts);
