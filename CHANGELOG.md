@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.17.0](https://github.com/maxgfr/ultradoc/compare/v2.16.0...v2.17.0) (2026-08-03)
+
+
+### Features
+
+* **pdf:** extract PDFs through a ladder instead of emitting raw bytes ([9a6cbed](https://github.com/maxgfr/ultradoc/commit/9a6cbed643782b1e2b8bb9ba92737eacfc9df37e))
+
 # [2.16.0](https://github.com/maxgfr/ultradoc/compare/v2.15.0...v2.16.0) (2026-08-02)
 
 
