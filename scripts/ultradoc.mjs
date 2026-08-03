@@ -17998,6 +17998,8 @@ var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's sem
 #   \`ultrasearch-* / construct-* / ultradoc-*\` containers still hold the ports
 #   and this file can no longer stop them. Remove them once:
 #     docker rm -f $(docker ps -aq --filter name='^(ultrasearch|construct|ultradoc)-')
+#   Their volumes are Firecrawl queue state and are safe to drop too:
+#     docker volume ls -q | grep -E '^(ultrasearch|construct|ultradoc)_' | xargs -r docker volume rm
 name: skills
 
 services:
@@ -18008,7 +18010,7 @@ services:
     ports:
       - "6333:6333"
     volumes:
-      - skills_qdrant:/qdrant/storage
+      - qdrant:/qdrant/storage
     restart: unless-stopped
     profiles: ["semantic", "all"]
     healthcheck:
@@ -18028,7 +18030,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - skills_ollama:/root/.ollama
+      - ollama:/root/.ollama
     restart: unless-stopped
     profiles: ["semantic", "all"]
     healthcheck:
@@ -18160,14 +18162,14 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     volumes:
-      - skills_firecrawl_pg:/var/lib/postgresql/data
+      - firecrawl_pg:/var/lib/postgresql/data
     restart: unless-stopped
     profiles: ["extract"]
 
 volumes:
-  skills_qdrant:
-  skills_ollama:
-  skills_firecrawl_pg:
+  qdrant:
+  ollama:
+  firecrawl_pg:
 `;
 var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for keyless, self-hosted web discovery. The important
 # bit is enabling the JSON output format so the CLI can query it
@@ -19120,12 +19122,14 @@ ${body2 || "(no body)"}`,
 
 // src/sources/web.ts
 var SEARXNG_BASE = process.env.ULTRADOC_SEARXNG || "http://localhost:8888";
+var searxngThrottled = [];
 async function viaSearxng(query4, n) {
   const url = `${SEARXNG_BASE.replace(/\/$/, "")}/search?q=${encodeURIComponent(query4)}&format=json`;
   const r = await httpGet(url, { accept: "application/json", timeoutMs: 8e3 });
   if (!r.ok) return null;
   try {
     const data = JSON.parse(r.body);
+    searxngThrottled = (Array.isArray(data.unresponsive_engines) ? data.unresponsive_engines : []).map((u) => Array.isArray(u) ? u[1] ? `${u[0]} (${u[1]})` : String(u[0]) : String(u)).filter(Boolean);
     const urls = (data.results ?? []).map((x) => x.url).filter(Boolean);
     return urls.slice(0, n);
   } catch {
@@ -19168,7 +19172,11 @@ async function discover(query4, engine, n, opts = {}) {
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query4, n);
     if (s?.length) return { urls: s, via: "searxng", notes };
-    if (engine === "searxng") notes.push(`SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`);
+    if (engine === "searxng") {
+      notes.push(
+        s === null ? `SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.` : searxngThrottled.length ? `SearXNG returned no results \u2014 its upstream engines are throttling this instance, which is transient: ${searxngThrottled.join(", ")}. Retry in a few minutes.` : "SearXNG returned no results."
+      );
+    }
   }
   if (engine === "ddg" || engine === "auto") {
     const d = await viaDuckDuckGo(query4, n);

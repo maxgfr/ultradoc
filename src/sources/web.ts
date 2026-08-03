@@ -10,12 +10,22 @@ const SEARXNG_BASE = process.env.ULTRADOC_SEARXNG || "http://localhost:8888";
 
 // Discovery via a LOCAL SearXNG instance (keyless, self-hosted, brought up by
 // `ultradoc semantic up`). Returns null when unreachable so we fall through.
+// SearXNG answers 200 with an EMPTY result list when its own upstreams have
+// throttled it, naming them in `unresponsive_engines` rather than failing. Those
+// names are carried out so a rate-limited instance is not reported as a query
+// with no hits — the first is transient and worth retrying, the second is not.
+let searxngThrottled: string[] = [];
+
 async function viaSearxng(query: string, n: number): Promise<string[] | null> {
   const url = `${SEARXNG_BASE.replace(/\/$/, "")}/search?q=${encodeURIComponent(query)}&format=json`;
   const r = await httpGet(url, { accept: "application/json", timeoutMs: 8000 });
   if (!r.ok) return null;
   try {
     const data = JSON.parse(r.body);
+    // `[["brave","Suspended: too many requests"],["duckduckgo","CAPTCHA"],…]`
+    searxngThrottled = (Array.isArray(data.unresponsive_engines) ? data.unresponsive_engines : [])
+      .map((u: any) => (Array.isArray(u) ? (u[1] ? `${u[0]} (${u[1]})` : String(u[0])) : String(u)))
+      .filter(Boolean);
     const urls = (data.results ?? []).map((x: any) => x.url).filter(Boolean);
     return urls.slice(0, n);
   } catch {
@@ -79,7 +89,18 @@ async function discover(query: string, engine: WebEngine, n: number, opts: Firec
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query, n);
     if (s?.length) return { urls: s, via: "searxng", notes };
-    if (engine === "searxng") notes.push(`SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`);
+    // null = unreachable/unparseable; [] = reachable but nothing came back. These
+    // were reported identically, which sent you restarting a container that was
+    // running fine.
+    if (engine === "searxng") {
+      notes.push(
+        s === null
+          ? `SearXNG unreachable at ${SEARXNG_BASE}. Run \`ultradoc semantic up\`.`
+          : searxngThrottled.length
+            ? `SearXNG returned no results — its upstream engines are throttling this instance, which is transient: ${searxngThrottled.join(", ")}. Retry in a few minutes.`
+            : "SearXNG returned no results.",
+      );
+    }
   }
   if (engine === "ddg" || engine === "auto") {
     const d = await viaDuckDuckGo(query, n);
