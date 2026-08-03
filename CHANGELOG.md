@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.17.1](https://github.com/maxgfr/ultradoc/compare/v2.17.0...v2.17.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **searxng:** say when the instance is throttled, not that the query is empty ([08a9fc4](https://github.com/maxgfr/ultradoc/commit/08a9fc464b475852c4cc3e6d21a843d1de62e8a1))
+
 # [2.17.0](https://github.com/maxgfr/ultradoc/compare/v2.16.0...v2.17.0) (2026-08-03)
 
 
