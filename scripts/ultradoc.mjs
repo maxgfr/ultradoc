@@ -17978,17 +17978,37 @@ var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's sem
 #   --profile search    \u2192 searxng (web discovery)
 #   --profile all       \u2192 everything above
 #   --profile extract   \u2192 firecrawl (content cleaning; \`ultradoc firecrawl up\`)
-name: ultradoc
+# \u2500\u2500 Shared with the sibling skills \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# ultrasearch, construct and ultradoc all need SearXNG and Firecrawl (and two of
+# them Qdrant and Ollama), and all bound the SAME host ports from three separate
+# compose projects \u2014 so only one could ever be up. Starting a second failed with
+# "port is already allocated", *after* leaving its sidecars running.
+#
+# They now share one project name, one set of container names and one set of
+# volumes, and the service definitions below are identical across the three. So
+# \`<any skill> firecrawl up\` targets the SAME containers: the second one is a
+# no-op instead of a collision, and the stack costs one machine's worth of RAM
+# rather than three.
+#
+# \u26A0 Keep the shared service blocks byte-identical across the three repos. Docker
+#   compares the resolved config: a divergence makes \`up\` from one repo RECREATE
+#   the other's running containers.
+#
+# \u26A0 Upgrading from a version that used per-skill container names? The old
+#   \`ultrasearch-* / construct-* / ultradoc-*\` containers still hold the ports
+#   and this file can no longer stop them. Remove them once:
+#     docker rm -f $(docker ps -aq --filter name='^(ultrasearch|construct|ultradoc)-')
+name: skills
 
 services:
   # Vector database \u2014 Apache-2.0, self-hosted, no key.
   qdrant:
     image: qdrant/qdrant:v1.18.2
-    container_name: ultradoc-qdrant
+    container_name: skills-qdrant
     ports:
       - "6333:6333"
     volumes:
-      - ultradoc_qdrant:/qdrant/storage
+      - skills_qdrant:/qdrant/storage
     restart: unless-stopped
     profiles: ["semantic", "all"]
     healthcheck:
@@ -18004,11 +18024,11 @@ services:
   # (\`ultradoc semantic up\` does this for you).
   ollama:
     image: ollama/ollama:0.30.7
-    container_name: ultradoc-ollama
+    container_name: skills-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ultradoc_ollama:/root/.ollama
+      - skills_ollama:/root/.ollama
     restart: unless-stopped
     profiles: ["semantic", "all"]
     healthcheck:
@@ -18023,7 +18043,7 @@ services:
   # Also backs Firecrawl's keyless /search through SEARXNG_ENDPOINT.
   searxng:
     image: searxng/searxng:2026.6.11-a1490676e
-    container_name: ultradoc-searxng
+    container_name: skills-searxng
     ports:
       - "8888:8080"
     environment:
@@ -18052,7 +18072,7 @@ services:
   #   docker compose --profile search --profile extract up -d --wait
   firecrawl:
     image: ghcr.io/firecrawl/firecrawl:2.10.5@sha256:8ce1af201332e1de046d70d5d516fbfe7f0f6229820d271d880873eeca531ea6
-    container_name: ultradoc-firecrawl
+    container_name: skills-firecrawl
     ports:
       - "3002:3002"
     env_file:
@@ -18100,7 +18120,7 @@ services:
   # Headless-browser sidecar \u2014 this is what makes JS-rendered pages extractable.
   firecrawl-playwright:
     image: ghcr.io/firecrawl/playwright-service:latest@sha256:8c50add7293201e575110e6c7489fa383a9dfc46f168936526a458e06ffc5c28
-    container_name: ultradoc-firecrawl-playwright
+    container_name: skills-firecrawl-playwright
     environment:
       - PORT=3000
       - BLOCK_MEDIA=true
@@ -18115,14 +18135,14 @@ services:
 
   firecrawl-redis:
     image: redis:alpine
-    container_name: ultradoc-firecrawl-redis
+    container_name: skills-firecrawl-redis
     command: redis-server --bind 0.0.0.0
     restart: unless-stopped
     profiles: ["extract"]
 
   firecrawl-rabbitmq:
     image: rabbitmq:3-management
-    container_name: ultradoc-firecrawl-rabbitmq
+    container_name: skills-firecrawl-rabbitmq
     restart: unless-stopped
     profiles: ["extract"]
     healthcheck:
@@ -18134,20 +18154,20 @@ services:
 
   firecrawl-postgres:
     image: ghcr.io/firecrawl/nuq-postgres:latest@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
-    container_name: ultradoc-firecrawl-postgres
+    container_name: skills-firecrawl-postgres
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     volumes:
-      - ultradoc_firecrawl_pg:/var/lib/postgresql/data
+      - skills_firecrawl_pg:/var/lib/postgresql/data
     restart: unless-stopped
     profiles: ["extract"]
 
 volumes:
-  ultradoc_qdrant:
-  ultradoc_ollama:
-  ultradoc_firecrawl_pg:
+  skills_qdrant:
+  skills_ollama:
+  skills_firecrawl_pg:
 `;
 var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for keyless, self-hosted web discovery. The important
 # bit is enabling the JSON output format so the CLI can query it
