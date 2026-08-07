@@ -1,8 +1,7 @@
 import { type EvidenceItem, VERSION } from "../types.js";
 import { buildMatcher } from "../util.js";
-import { extractPdf } from "./pdf/ladder.js";
-import { extractDocument } from "./doc/ladder.js";
-import { docFormatForUrl, docFormatForContentType } from "./doc/formats.js";
+import { extractPdf } from "./pdf.js";
+import { extractDocument, docFormatForUrl, docFormatForContentType } from "./doc.js";
 import {
   EXTRACTOR_FIRECRAWL,
   EXTRACTOR_NATIVE,

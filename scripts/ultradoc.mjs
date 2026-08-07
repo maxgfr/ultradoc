@@ -711,24 +711,24 @@ function diffHunks(dir, spec) {
   const map = /* @__PURE__ */ new Map();
   const res = sh("git", [...gitArgs(dir), "diff", "-M", "--unified=0", ...rangeArgs(spec)]);
   if (!res.ok) return map;
-  let current;
+  let current2;
   for (const line of res.stdout.split("\n")) {
     if (line.startsWith("+++ ")) {
       const p = line.slice(4).trim();
       if (p === "/dev/null") {
-        current = void 0;
+        current2 = void 0;
         continue;
       }
       const path = p.startsWith("b/") ? p.slice(2) : p;
-      current = map.get(path) ?? [];
-      map.set(path, current);
-    } else if (current && line.startsWith("@@")) {
+      current2 = map.get(path) ?? [];
+      map.set(path, current2);
+    } else if (current2 && line.startsWith("@@")) {
       const m = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
       if (!m) continue;
       const start2 = Number(m[1]);
       const count = m[2] === void 0 ? 1 : Number(m[2]);
-      if (count === 0) current.push({ start: Math.max(start2, 1), end: Math.max(start2, 1), approx: true });
-      else current.push({ start: start2, end: start2 + count - 1 });
+      if (count === 0) current2.push({ start: Math.max(start2, 1), end: Math.max(start2, 1), approx: true });
+      else current2.push({ start: start2, end: start2 + count - 1 });
     }
   }
   return map;
@@ -5834,8 +5834,8 @@ function resolveGrammarsTier(opts = {}) {
     join2(here, "..", "scripts", "grammars")
   ];
   for (const c2 of adjacent) if (existsSync(c2)) return withDirs("adjacent", c2);
-  const env = process.env.CODEINDEX_GRAMMARS_DIR;
-  if (env && env.trim() && existsSync(env)) return withDirs("env", env);
+  const env2 = process.env.CODEINDEX_GRAMMARS_DIR;
+  if (env2 && env2.trim() && existsSync(env2)) return withDirs("env", env2);
   if (existsSync(cacheDir)) return withDirs("cache", cacheDir);
   return { tier: "none", cacheDir, dirs: [] };
 }
@@ -11903,9 +11903,9 @@ var init_grep = __esm({
   }
 });
 function resolveEmbedModelDir(repo) {
-  const env = process.env.CODEINDEX_EMBED_DIR;
+  const env2 = process.env.CODEINDEX_EMBED_DIR;
   const candidates = [];
-  if (env) candidates.push(env);
+  if (env2) candidates.push(env2);
   if (repo) candidates.push(join16(repo, ".codeindex", DEFAULT_EMBED_DIRNAME));
   candidates.push(join16(process.cwd(), ".codeindex", DEFAULT_EMBED_DIRNAME));
   for (const c2 of candidates) {
@@ -11948,8 +11948,8 @@ function loadEmbedModel(dir) {
   return parseEmbedModel(raw, path);
 }
 function resolveEmbedPullUrl() {
-  const env = process.env.CODEINDEX_EMBED_URL;
-  if (env && env.trim()) return { url: env.trim() };
+  const env2 = process.env.CODEINDEX_EMBED_URL;
+  if (env2 && env2.trim()) return { url: env2.trim() };
   return { url: DEFAULT_EMBED_URL, sha256: EMBED_ASSET_SHA256 };
 }
 async function fetchEmbedModel(url, expectedSha256) {
@@ -12207,8 +12207,8 @@ function healthzUrl(base) {
 }
 function resolveTimeout(opts) {
   if (typeof opts.timeoutMs === "number") return opts.timeoutMs;
-  const env = Number(process.env.CODEINDEX_EMBED_TIMEOUT_MS);
-  return Number.isFinite(env) && env > 0 ? env : 3e4;
+  const env2 = Number(process.env.CODEINDEX_EMBED_TIMEOUT_MS);
+  return Number.isFinite(env2) && env2 > 0 ? env2 : 3e4;
 }
 async function embedViaEndpoint(texts, opts = {}) {
   const base = resolveEmbedEndpoint(opts);
@@ -14015,8 +14015,8 @@ function resolveEngineUrl() {
 }
 var WORKER_TIMEOUT_MS = 10 * 60 * 1e3;
 function workerCount(requested) {
-  const env = process.env["CODEINDEX_WORKERS"];
-  const raw = requested ?? (env !== void 0 && env !== "" ? Number(env) : void 0);
+  const env2 = process.env["CODEINDEX_WORKERS"];
+  const raw = requested ?? (env2 !== void 0 && env2 !== "" ? Number(env2) : void 0);
   if (raw !== void 0) return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
   let cores = 1;
   try {
@@ -14328,8 +14328,8 @@ init_loader();
 init_types();
 var DEFAULT_GRAMMARS_URL = `https://github.com/maxgfr/codeindex/releases/download/v${ENGINE_VERSION}/grammars-${ENGINE_VERSION}.tar.gz`;
 function resolveGrammarsPullTarget() {
-  const env = process.env.CODEINDEX_GRAMMARS_URL;
-  if (env && env.trim()) return { url: env.trim() };
+  const env2 = process.env.CODEINDEX_GRAMMARS_URL;
+  if (env2 && env2.trim()) return { url: env2.trim() };
   return { url: DEFAULT_GRAMMARS_URL, sha256Url: `${DEFAULT_GRAMMARS_URL}.sha256` };
 }
 async function fetchGrammarsTarball(url, expectedSha256) {
@@ -17464,103 +17464,53 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
 import { join as join29, dirname as dirname5 } from "path";
 
-// src/sources/pdf/exec.ts
-import { spawn } from "child_process";
-var PDF_INSPECTOR_SPEC = "@firecrawl/pdf-inspector@1";
-var ANYDOC_SPEC = "@firecrawl/anydoc@0.1";
-var MAX_STDOUT_BYTES = 24 * 1024 * 1024;
-function binaryName(name2) {
-  return process.platform === "win32" && name2 === "npx" ? "npx.cmd" : name2;
-}
-function runWithInput(cmd, args2, input, timeoutMs) {
-  return new Promise((resolve8) => {
-    let child;
-    try {
-      child = spawn(binaryName(cmd), args2, { stdio: ["pipe", "pipe", "pipe"] });
-    } catch (e) {
-      resolve8({ ok: false, stdout: "", error: e.message });
-      return;
-    }
-    const chunks = [];
-    let size = 0;
-    let settled = false;
-    const done = (r) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve8(r);
-    };
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      done({ ok: false, stdout: "", error: `timed out after ${Math.round(timeoutMs / 1e3)}s` });
-    }, timeoutMs);
-    child.stdout?.on("data", (d) => {
-      if (size >= MAX_STDOUT_BYTES) return;
-      size += d.length;
-      chunks.push(d);
-    });
-    child.stderr?.on("data", () => {
-    });
-    child.on("error", (e) => {
-      done({ ok: false, stdout: "", error: e.code === "ENOENT" ? "not installed" : e.message });
-    });
-    child.on("close", (code) => {
-      const stdout = Buffer.concat(chunks).subarray(0, MAX_STDOUT_BYTES).toString("utf8");
-      if (code === 0) done({ ok: true, stdout });
-      else done({ ok: false, stdout, error: `exit ${code}` });
-    });
-    child.stdin?.on("error", () => {
-    });
-    child.stdin?.end(input);
-  });
-}
-
-// src/sources/pdf/quality.ts
-var MIN_CHARS_FOR_SHAPE_CHECKS = 200;
-var CONTROL_RATIO_MAX = 5e-3;
-var REPLACEMENT_RATIO_MAX = 5e-3;
-var LONGEST_RUN_MAX = 300;
-var LETTER_RATIO_MIN = 0.5;
-function isControlCode(c2) {
-  if (c2 === 9 || c2 === 10 || c2 === 13) return false;
-  return c2 < 32 || c2 >= 127 && c2 <= 159;
-}
-var REPLACEMENT_CODE = 65533;
-function scanRatios(t) {
-  let control = 0;
-  let replacement = 0;
-  for (let i2 = 0; i2 < t.length; i2++) {
-    const c2 = t.charCodeAt(i2);
-    if (c2 === REPLACEMENT_CODE) replacement++;
-    else if (isControlCode(c2)) control++;
-  }
-  return { control: control / t.length, replacement: replacement / t.length };
-}
-function assessPdfText(text) {
-  return assessExtractedText(text, "no text layer (scanned or image-only PDF?)");
-}
-function assessExtractedText(text, emptyReason) {
-  const t = text.trim();
-  if (!t) return { ok: false, reason: emptyReason };
-  const { control, replacement } = scanRatios(t);
-  if (control > CONTROL_RATIO_MAX) {
-    return { ok: false, reason: "binary/control characters in the text (undecodable PDF stream)" };
-  }
-  if (replacement > REPLACEMENT_RATIO_MAX) {
-    return { ok: false, reason: "replacement characters throughout (wrong character map)" };
-  }
-  if (t.length < MIN_CHARS_FOR_SHAPE_CHECKS) return { ok: true };
-  let longestRun = 0;
-  for (const w of t.split(/\s+/)) if (w.length > longestRun) longestRun = w.length;
-  const letters = (t.match(new RegExp("\\p{L}|\\p{N}", "gu"))?.length ?? 0) / t.replace(/\s+/g, "").length;
-  if (longestRun > LONGEST_RUN_MAX && letters < LETTER_RATIO_MIN) {
-    return { ok: false, reason: "unreadable text layer (garbled glyph encoding)" };
-  }
-  return { ok: true };
-}
-
-// src/sources/pdf/native.ts
+// src/vendor/webindex-engine.mjs
 import { inflateSync, inflateRawSync } from "zlib";
+import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync12, rmSync as rmSync3, writeFileSync as writeFileSync7, existsSync as existsSync11 } from "fs";
+import { join as join28 } from "path";
+import { tmpdir as tmpdir3 } from "os";
+import { spawn } from "child_process";
+var DEFAULT_BRAND = {
+  name: "webindex",
+  envPrefix: "WEBINDEX",
+  cli: "webindex",
+  contactUrl: "https://github.com/maxgfr/webindex"
+};
+var current = { ...DEFAULT_BRAND };
+function configure(next) {
+  if (!next.envPrefix || !/^[A-Z][A-Z0-9_]*$/.test(next.envPrefix)) {
+    throw new Error(`webindex: envPrefix must be UPPER_SNAKE, got ${JSON.stringify(next.envPrefix)}`);
+  }
+  if (!next.name || !next.cli) {
+    throw new Error("webindex: configure() requires both `name` and `cli`");
+  }
+  current = { ...next };
+}
+function brand() {
+  return current;
+}
+function envName(suffix) {
+  return `${current.envPrefix}_${suffix}`;
+}
+function env(suffix) {
+  const raw = process.env[envName(suffix)];
+  if (typeof raw !== "string") return void 0;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed : void 0;
+}
+function envFlag(suffix) {
+  const v = env(suffix);
+  if (v === void 0) return false;
+  const lower = v.toLowerCase();
+  return lower !== "0" && lower !== "false" && lower !== "no" && lower !== "off";
+}
+function envInt2(suffix, def, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const raw = env(suffix);
+  if (raw === void 0) return def;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
 function decodePdfString(tok) {
   if (tok[0] !== "(") return "";
   const inner = tok.slice(1, -1);
@@ -17653,21 +17603,102 @@ function pdfToText(buf) {
   }
   return out2.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
-
-// src/sources/pdf/ocr.ts
-import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync12, rmSync as rmSync3, writeFileSync as writeFileSync7, existsSync as existsSync11 } from "fs";
-import { join as join28 } from "path";
-import { tmpdir as tmpdir3 } from "os";
+var MIN_CHARS_FOR_SHAPE_CHECKS = 200;
+var CONTROL_RATIO_MAX = 5e-3;
+var REPLACEMENT_RATIO_MAX = 5e-3;
+var LONGEST_RUN_MAX = 300;
+var LETTER_RATIO_MIN = 0.5;
+function isControlCode(c2) {
+  if (c2 === 9 || c2 === 10 || c2 === 13) return false;
+  return c2 < 32 || c2 >= 127 && c2 <= 159;
+}
+var REPLACEMENT_CODE = 65533;
+function scanRatios(t) {
+  let control = 0;
+  let replacement = 0;
+  for (let i2 = 0; i2 < t.length; i2++) {
+    const c2 = t.charCodeAt(i2);
+    if (c2 === REPLACEMENT_CODE) replacement++;
+    else if (isControlCode(c2)) control++;
+  }
+  return { control: control / t.length, replacement: replacement / t.length };
+}
+function assessPdfText(text) {
+  return assessExtractedText(text, "no text layer (scanned or image-only PDF?)");
+}
+function assessExtractedText(text, emptyReason) {
+  const t = text.trim();
+  if (!t) return { ok: false, reason: emptyReason };
+  const { control, replacement } = scanRatios(t);
+  if (control > CONTROL_RATIO_MAX) {
+    return { ok: false, reason: "binary/control characters in the text (undecodable PDF stream)" };
+  }
+  if (replacement > REPLACEMENT_RATIO_MAX) {
+    return { ok: false, reason: "replacement characters throughout (wrong character map)" };
+  }
+  if (t.length < MIN_CHARS_FOR_SHAPE_CHECKS) return { ok: true };
+  let longestRun = 0;
+  for (const w of t.split(/\s+/)) if (w.length > longestRun) longestRun = w.length;
+  const letters = (t.match(new RegExp("\\p{L}|\\p{N}", "gu"))?.length ?? 0) / t.replace(/\s+/g, "").length;
+  if (longestRun > LONGEST_RUN_MAX && letters < LETTER_RATIO_MIN) {
+    return { ok: false, reason: "unreadable text layer (garbled glyph encoding)" };
+  }
+  return { ok: true };
+}
+var PDF_INSPECTOR_SPEC = "@firecrawl/pdf-inspector@1";
+var ANYDOC_SPEC = "@firecrawl/anydoc@0.1";
+var MAX_STDOUT_BYTES = 24 * 1024 * 1024;
+function binaryName(name2) {
+  return process.platform === "win32" && name2 === "npx" ? "npx.cmd" : name2;
+}
+function runWithInput(cmd, args2, input, timeoutMs) {
+  return new Promise((resolve22) => {
+    let child;
+    try {
+      child = spawn(binaryName(cmd), args2, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (e) {
+      resolve22({ ok: false, stdout: "", error: e.message });
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const done = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve22(r);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      done({ ok: false, stdout: "", error: `timed out after ${Math.round(timeoutMs / 1e3)}s` });
+    }, timeoutMs);
+    child.stdout?.on("data", (d) => {
+      if (size >= MAX_STDOUT_BYTES) return;
+      size += d.length;
+      chunks.push(d);
+    });
+    child.stderr?.on("data", () => {
+    });
+    child.on("error", (e) => {
+      done({ ok: false, stdout: "", error: e.code === "ENOENT" ? "not installed" : e.message });
+    });
+    child.on("close", (code) => {
+      const stdout = Buffer.concat(chunks).subarray(0, MAX_STDOUT_BYTES).toString("utf8");
+      if (code === 0) done({ ok: true, stdout });
+      else done({ ok: false, stdout, error: `exit ${code}` });
+    });
+    child.stdin?.on("error", () => {
+    });
+    child.stdin?.end(input);
+  });
+}
 var DEFAULT_TIMEOUT_MS = 3e5;
 var DEFAULT_MAX_DOCS = 3;
 var DEFAULT_LANG = "eng";
-function envInt2(name2, fallback) {
-  const n = Number(process.env[name2]);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
 var spent = 0;
 function ocrBudgetLeft() {
-  return Math.max(0, envInt2("ULTRADOC_OCR_MAX", DEFAULT_MAX_DOCS) - spent);
+  return Math.max(0, envInt2("OCR_MAX", DEFAULT_MAX_DOCS) - spent);
 }
 async function ocrTools() {
   const probe = async (cmd, args2) => (await runWithInput(cmd, args2, Buffer.alloc(0), 2e4)).ok;
@@ -17678,18 +17709,13 @@ async function ocrPdf(bytes) {
   if (ocrBudgetLeft() <= 0) return void 0;
   const { copyablePdf, tesseract } = await ocrTools();
   if (!copyablePdf || !tesseract) return void 0;
-  const dir = mkdtempSync2(join28(tmpdir3(), "ultrasearch-ocr-"));
+  const dir = mkdtempSync2(join28(tmpdir3(), `${brand().name}-ocr-`));
   try {
     const input = join28(dir, "in.pdf");
     const output = join28(dir, "out.pdf");
     writeFileSync7(input, bytes);
-    const lang = process.env.ULTRADOC_OCR_LANG?.trim() || DEFAULT_LANG;
-    const r = await runWithInput(
-      "copyable-pdf",
-      ["-o", output, "-m", "-l", lang, input],
-      Buffer.alloc(0),
-      envInt2("ULTRADOC_OCR_TIMEOUT_MS", DEFAULT_TIMEOUT_MS)
-    );
+    const lang = env("OCR_LANG") || DEFAULT_LANG;
+    const r = await runWithInput("copyable-pdf", ["-o", output, "-m", "-l", lang, input], Buffer.alloc(0), envInt2("OCR_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
     spent++;
     if (!r.ok) return void 0;
     const md = output.replace(/\.pdf$/, ".md");
@@ -17700,17 +17726,15 @@ async function ocrPdf(bytes) {
     rmSync3(dir, { recursive: true, force: true });
   }
 }
-
-// src/sources/pdf/ladder.ts
 var PDF_EXTRACTORS = ["pdf-inspector", "anydoc", "firecrawl", "pdftotext", "native", "ocr"];
 var NPX_TIMEOUT_MS = 9e4;
 var PDFTOTEXT_TIMEOUT_MS = 6e4;
 var dead = /* @__PURE__ */ new Set();
 function enabledExtractors(engines) {
   if (engines) return engines;
-  const forced = process.env.ULTRADOC_PDF_ENGINE?.trim();
+  const forced = env("PDF_ENGINE");
   if (forced && PDF_EXTRACTORS.includes(forced)) return [forced];
-  if (process.env.ULTRADOC_NO_NPX) return PDF_EXTRACTORS.filter((e) => e !== "pdf-inspector" && e !== "anydoc");
+  if (envFlag("NO_NPX")) return PDF_EXTRACTORS.filter((e) => e !== "pdf-inspector" && e !== "anydoc");
   return PDF_EXTRACTORS;
 }
 async function viaAnydoc(bytes) {
@@ -17730,7 +17754,7 @@ async function extractPdf(bytes, opts = {}) {
   for (const id of enabledExtractors(opts.engines)) {
     if (dead.has(id)) continue;
     if (id === "ocr" && ocrBudgetLeft() <= 0) {
-      lastReason = "scanned PDF, and this run's OCR budget is spent (raise ULTRADOC_OCR_MAX)";
+      lastReason = `scanned PDF, and this run's OCR budget is spent (raise ${envName("OCR_MAX")})`;
       continue;
     }
     let text;
@@ -17754,48 +17778,6 @@ async function extractPdf(bytes, opts = {}) {
   }
   return { text: "", reason: lastReason ?? "no PDF extractor available" };
 }
-
-// src/sources/doc/ladder.ts
-var DOC_EXTRACTORS = ["anydoc", "firecrawl"];
-var NPX_TIMEOUT_MS2 = 9e4;
-var dead2 = /* @__PURE__ */ new Set();
-function enabledDocExtractors(engines) {
-  if (engines) return engines;
-  const forced = process.env.ULTRADOC_DOC_ENGINE?.trim();
-  if (forced === "none") return [];
-  if (forced && DOC_EXTRACTORS.includes(forced)) return [forced];
-  if (process.env.ULTRADOC_NO_NPX) return DOC_EXTRACTORS.filter((e) => e !== "anydoc");
-  return DOC_EXTRACTORS;
-}
-async function viaAnydoc2(bytes, format) {
-  const args2 = ["-y", "--prefer-offline", ANYDOC_SPEC, "-"];
-  if (format) args2.push("--format", format);
-  const r = await runWithInput("npx", args2, bytes, NPX_TIMEOUT_MS2);
-  return r.ok ? r.stdout : void 0;
-}
-async function extractDocument(bytes, fmt, opts = {}) {
-  let lastReason;
-  for (const id of enabledDocExtractors(opts.engines)) {
-    if (dead2.has(id)) continue;
-    let text;
-    try {
-      if (id === "anydoc") text = await viaAnydoc2(bytes, fmt.format);
-      else text = opts.firecrawl ? await opts.firecrawl() : void 0;
-    } catch {
-      text = void 0;
-    }
-    if (text === void 0) {
-      if (id !== "firecrawl") dead2.add(id);
-      continue;
-    }
-    const verdict = assessExtractedText(text, "the converter produced no text");
-    if (verdict.ok) return { text: text.trim(), via: id };
-    lastReason = verdict.reason;
-  }
-  return { text: "", reason: lastReason ?? "no document converter available" };
-}
-
-// src/sources/doc/formats.ts
 var BINARY = { textFallback: false };
 var CSV = { format: "csv", textFallback: true };
 var BY_EXTENSION = {
@@ -17850,6 +17832,82 @@ function docFormatForContentType(contentType) {
   const type = contentType.split(";")[0]?.trim().toLowerCase();
   return type ? BY_CONTENT_TYPE[type] : void 0;
 }
+var DOC_EXTRACTORS = ["anydoc", "firecrawl"];
+var NPX_TIMEOUT_MS2 = 9e4;
+var dead2 = /* @__PURE__ */ new Set();
+function enabledDocExtractors(engines) {
+  if (engines) return engines;
+  const forced = env("DOC_ENGINE");
+  if (forced === "none") return [];
+  if (forced && DOC_EXTRACTORS.includes(forced)) return [forced];
+  if (envFlag("NO_NPX")) return DOC_EXTRACTORS.filter((e) => e !== "anydoc");
+  return DOC_EXTRACTORS;
+}
+async function viaAnydoc2(bytes, format) {
+  const args2 = ["-y", "--prefer-offline", ANYDOC_SPEC, "-"];
+  if (format) args2.push("--format", format);
+  const r = await runWithInput("npx", args2, bytes, NPX_TIMEOUT_MS2);
+  return r.ok ? r.stdout : void 0;
+}
+async function extractDocument(bytes, fmt, opts = {}) {
+  let lastReason;
+  for (const id of enabledDocExtractors(opts.engines)) {
+    if (dead2.has(id)) continue;
+    let text;
+    try {
+      if (id === "anydoc") text = await viaAnydoc2(bytes, fmt.format);
+      else text = opts.firecrawl ? await opts.firecrawl() : void 0;
+    } catch {
+      text = void 0;
+    }
+    if (text === void 0) {
+      if (id !== "firecrawl") dead2.add(id);
+      continue;
+    }
+    const verdict = assessExtractedText(text, "the converter produced no text");
+    if (verdict.ok) return { text: text.trim(), via: id };
+    lastReason = verdict.reason;
+  }
+  return { text: "", reason: lastReason ?? "no document converter available" };
+}
+var ACCENT_CLASSES2 = {
+  a: "a\xE0\xE1\xE2\xE3\xE4\xE5\u0101\u0103\u0105",
+  c: "c\xE7\u0107\u0109\u010B\u010D",
+  d: "d\u010F\u0111",
+  e: "e\xE8\xE9\xEA\xEB\u0113\u0115\u0117\u0119\u011B",
+  g: "g\u011D\u011F\u0121\u0123",
+  i: "i\xEC\xED\xEE\xEF\u0129\u012B\u012D\u012F\u0131",
+  l: "l\u013A\u013C\u013E\u0140\u0142",
+  n: "n\xF1\u0144\u0146\u0148",
+  o: "o\xF2\xF3\xF4\xF5\xF6\xF8\u014D\u014F\u0151",
+  r: "r\u0155\u0157\u0159",
+  s: "s\u015B\u015D\u015F\u0161",
+  t: "t\u0163\u0165\u0167",
+  u: "u\xF9\xFA\xFB\xFC\u0169\u016B\u016D\u016F\u0171\u0173",
+  y: "y\xFD\xFF\u0177",
+  z: "z\u017A\u017C\u017E"
+};
+var BASE_OF2 = /* @__PURE__ */ new Map();
+for (const [base, cls] of Object.entries(ACCENT_CLASSES2)) {
+  for (const ch of cls) BASE_OF2.set(ch, base);
+}
+var SCRAPE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
+var DOC_FETCH_OPTS = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
+var MASK64 = (1n << 64n) - 1n;
+var DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
+var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
+var MAX_BODY_BYTES = 4 * 1024 * 1024;
+var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
+
+// src/engine.ts
+configure({
+  name: "ultradoc",
+  envPrefix: "ULTRADOC",
+  cli: "ultradoc",
+  contactUrl: "https://github.com/maxgfr/ultradoc"
+});
 
 // src/sources/firecrawl.ts
 var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
@@ -17959,8 +18017,8 @@ async function searchViaFirecrawl(query4, n, opts = {}) {
 // src/sources/fetch.ts
 var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 var PDF_URL_RE = /\.pdf($|[?#])/i;
-var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
-var DOC_FETCH_OPTS = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
+var PDF_FETCH_OPTS2 = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
+var DOC_FETCH_OPTS2 = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
 var RETRY_MAX = 2;
 var RETRY_BASE_MS = 500;
 var RETRY_AFTER_CAP_MS = 1e4;
@@ -18129,20 +18187,20 @@ function htmlToText(html) {
 async function nativeExtract(url) {
   const wantsPdf = PDF_URL_RE.test(url);
   const wantsDoc = wantsPdf ? void 0 : docFormatForUrl(url);
-  const fetchOpts = wantsPdf ? PDF_FETCH_OPTS : wantsDoc ? DOC_FETCH_OPTS : { accept: "text/html,text/plain,*/*", retries: 2 };
+  const fetchOpts = wantsPdf ? PDF_FETCH_OPTS2 : wantsDoc ? DOC_FETCH_OPTS2 : { accept: "text/html,text/plain,*/*", retries: 2 };
   const res = await httpGet(url, fetchOpts);
   if (!res.ok) {
     return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
   if (wantsPdf || /application\/pdf/i.test(res.contentType)) {
-    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS)).bytes;
+    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS2)).bytes;
     const got = bytes ? await extractPdf(bytes) : { text: "", reason: "empty response body" };
     if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text \u2014 ${got.reason}.` };
     return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
   }
   const docFmt = wantsDoc ?? docFormatForContentType(res.contentType);
   if (docFmt) {
-    const bytes = res.bytes ?? (await httpGet(url, DOC_FETCH_OPTS)).bytes;
+    const bytes = res.bytes ?? (await httpGet(url, DOC_FETCH_OPTS2)).bytes;
     const got = bytes ? await extractDocument(bytes, docFmt) : { text: "", reason: "empty response body" };
     if (!got.text && docFmt.textFallback && bytes?.length) return { text: bytes.toString("utf8"), extractor: EXTRACTOR_NATIVE };
     if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text \u2014 ${got.reason}.` };
@@ -22357,17 +22415,17 @@ function handleCacheClean(args2) {
 }
 
 // src/mcp/protocol.ts
-var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
-var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
+var PROTOCOL_VERSIONS3 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+var LATEST_PROTOCOL3 = PROTOCOL_VERSIONS3[PROTOCOL_VERSIONS3.length - 1];
 var ASSUMED_HTTP_PROTOCOL = "2025-03-26";
 var ANNOTATIONS_SINCE2 = "2025-03-26";
 var RICH_TOOLS_SINCE2 = "2025-06-18";
 var DEFAULT_MAX_RESPONSE_BYTES2 = 1e6;
 function isProtocolVersion(v) {
-  return typeof v === "string" && PROTOCOL_VERSIONS2.includes(v);
+  return typeof v === "string" && PROTOCOL_VERSIONS3.includes(v);
 }
 function negotiateProtocol2(requested) {
-  return isProtocolVersion(requested) ? requested : LATEST_PROTOCOL2;
+  return isProtocolVersion(requested) ? requested : LATEST_PROTOCOL3;
 }
 function validateArgs2(schema, args2) {
   for (const key of schema.required) {
@@ -22894,7 +22952,7 @@ var ERR_INTERNAL = -32603;
 function createServer(opts = {}) {
   const serverInfo = { name: opts.serverName ?? "ultradoc", version: VERSION };
   const maxBytes = opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES2;
-  let protocol = LATEST_PROTOCOL2;
+  let protocol = LATEST_PROTOCOL3;
   const cancelled = /* @__PURE__ */ new Set();
   const CANCELLED_MAX = 1024;
   const listTools = () => toolsFor2(protocol, { defaultRepo: opts.defaultRepo, allowWrite: opts.allowWrite });
@@ -23099,7 +23157,7 @@ function reportInternal(send) {
 // src/mcp/http.ts
 import { createServer as createHttpServer } from "http";
 var MCP_PATH = "/mcp";
-var MAX_BODY_BYTES = 4 * 1024 * 1024;
+var MAX_BODY_BYTES2 = 4 * 1024 * 1024;
 var CORS_HEADERS = "content-type, accept, mcp-protocol-version, mcp-session-id, authorization, last-event-id";
 var LOOPBACK_BIND = /* @__PURE__ */ new Set(["127.0.0.1", "::1", "localhost"]);
 function startHttpServer(opts = {}) {
@@ -23194,7 +23252,7 @@ async function route(req, res, opts) {
     raw = await readBody(req);
   } catch (e) {
     if (e.message === "too large") {
-      sendJson(res, 413, { error: `request body exceeds ${MAX_BODY_BYTES} bytes` }, origin);
+      sendJson(res, 413, { error: `request body exceeds ${MAX_BODY_BYTES2} bytes` }, origin);
       return;
     }
     sendJson(res, 400, { error: `could not read request body: ${e.message}` }, origin);
@@ -23237,24 +23295,24 @@ function sendJson(res, status, body2, origin, extra = {}) {
   });
   res.end(text);
 }
-var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
+var DRAIN_LIMIT2 = MAX_BODY_BYTES2 * 8;
 function readBody(req) {
   return new Promise((resolve8, reject) => {
     const chunks = [];
     let size = 0;
     let over = false;
     const declared = Number(req.headers["content-length"]);
-    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) over = true;
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES2) over = true;
     req.on("data", (c2) => {
       size += c2.length;
       if (over) {
-        if (size > DRAIN_LIMIT) {
+        if (size > DRAIN_LIMIT2) {
           req.destroy();
           reject(new Error("too large"));
         }
         return;
       }
-      if (size > MAX_BODY_BYTES) {
+      if (size > MAX_BODY_BYTES2) {
         over = true;
         chunks.length = 0;
         return;
