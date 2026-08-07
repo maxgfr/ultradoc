@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.20.0](https://github.com/maxgfr/ultradoc/compare/v2.19.1...v2.20.0) (2026-08-07)
+
+
+### Features
+
+* **pdf:** read scanned PDFs with copyable-pdf, the ladder's OCR rung ([038e258](https://github.com/maxgfr/ultradoc/commit/038e2588a9e84c0d8fb868e858f55ed8db00ada3))
+
 ## [2.19.1](https://github.com/maxgfr/ultradoc/compare/v2.19.0...v2.19.1) (2026-08-07)
 
 
