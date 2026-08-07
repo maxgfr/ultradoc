@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.19.1](https://github.com/maxgfr/ultradoc/compare/v2.19.0...v2.19.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **pdf,doc:** pin the npx extractor rungs instead of floating on latest ([e5ed825](https://github.com/maxgfr/ultradoc/commit/e5ed82594a7b5b5169f8410d01e54b53a0c8355b))
+
 # [2.19.0](https://github.com/maxgfr/ultradoc/compare/v2.18.0...v2.19.0) (2026-08-07)
 
 
