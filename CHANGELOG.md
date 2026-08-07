@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.19.0](https://github.com/maxgfr/ultradoc/compare/v2.18.0...v2.19.0) (2026-08-07)
+
+
+### Features
+
+* **doc:** read office documents instead of quoting their bytes ([b73076b](https://github.com/maxgfr/ultradoc/commit/b73076b0d624634b58289c14f12cd443b1fabdc7))
+
 # [2.18.0](https://github.com/maxgfr/ultradoc/compare/v2.17.1...v2.18.0) (2026-08-06)
 
 
