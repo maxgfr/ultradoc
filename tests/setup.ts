@@ -18,3 +18,9 @@ process.env.ULTRADOC_FIRECRAWL = "off";
 // offline, deterministic suite. Pin it to the built-in reader; the cases that
 // exercise other rungs pass `engines` themselves.
 process.env.ULTRADOC_PDF_ENGINE = "native";
+
+// The office-document ladder shells out to npx (anydoc) too, and unlike the PDF
+// one it has no built-in last rung to pin it to — so `none` disables it. The
+// tests that exercise a rung pass `engines` themselves. This also keeps the
+// default honest: an office document nothing can read must REFUSE.
+process.env.ULTRADOC_DOC_ENGINE = "none";

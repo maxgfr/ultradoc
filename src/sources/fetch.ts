@@ -1,6 +1,8 @@
 import { type EvidenceItem, VERSION } from "../types.js";
 import { buildMatcher } from "../util.js";
 import { extractPdf } from "./pdf/ladder.js";
+import { extractDocument } from "./doc/ladder.js";
+import { docFormatForUrl, docFormatForContentType } from "./doc/formats.js";
 import {
   EXTRACTOR_FIRECRAWL,
   EXTRACTOR_NATIVE,
@@ -18,6 +20,9 @@ const UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
 const PDF_URL_RE = /\.pdf($|[?#])/i;
 // 16 MB: papers and specs routinely exceed the 4 MB default for HTML.
 const PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 } as const;
+// Office documents are binary too: the default text fetch decodes them as UTF-8,
+// which is lossy and irreversible. Same ceiling as PDFs.
+const DOC_FETCH_OPTS = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 } as const;
 
 export interface HttpResult {
   ok: boolean;
@@ -266,7 +271,9 @@ export interface ExtractResult {
 // back to.
 async function nativeExtract(url: string): Promise<ExtractResult> {
   const wantsPdf = PDF_URL_RE.test(url);
-  const res = await httpGet(url, wantsPdf ? PDF_FETCH_OPTS : { accept: "text/html,text/plain,*/*", retries: 2 });
+  const wantsDoc = wantsPdf ? undefined : docFormatForUrl(url);
+  const fetchOpts = wantsPdf ? PDF_FETCH_OPTS : wantsDoc ? DOC_FETCH_OPTS : { accept: "text/html,text/plain,*/*", retries: 2 };
+  const res = await httpGet(url, fetchOpts);
   if (!res.ok) {
     return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
   }
@@ -279,6 +286,20 @@ async function nativeExtract(url: string): Promise<ExtractResult> {
     if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text — ${got.reason}.` };
     // The rung is the extractor identity, and so part of the page-cache key: a
     // pdf-inspector copy and a pdftotext copy are different documents.
+    return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
+  }
+  // An office document is not text either, and for exactly the reason spelled
+  // out above: .docx/.pptx/.xlsx are ZIP containers, .doc/.xls/.ppt are OLE
+  // streams, and the isHtml test below hands their decoded bytes back verbatim
+  // to be cached and quoted as documentation.
+  const docFmt = wantsDoc ?? docFormatForContentType(res.contentType);
+  if (docFmt) {
+    const bytes = res.bytes ?? (await httpGet(url, DOC_FETCH_OPTS)).bytes;
+    const got = bytes ? await extractDocument(bytes, docFmt) : { text: "", reason: "empty response body" };
+    // CSV is already readable as plain text, so it keeps its raw body rather
+    // than being refused when no converter is available.
+    if (!got.text && docFmt.textFallback && bytes?.length) return { text: bytes.toString("utf8"), extractor: EXTRACTOR_NATIVE };
+    if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text — ${got.reason}.` };
     return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
   }
   const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
