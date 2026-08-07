@@ -24,3 +24,8 @@ process.env.ULTRADOC_PDF_ENGINE = "native";
 // tests that exercise a rung pass `engines` themselves. This also keeps the
 // default honest: an office document nothing can read must REFUSE.
 process.env.ULTRADOC_DOC_ENGINE = "none";
+
+// OCR shells out to copyable-pdf + tesseract and rasterises at 300 DPI:
+// machine-dependent, and seconds per page. A budget of 0 switches the rung off
+// for the suite; tests/pdf-ocr.test.ts drives it with the subprocess stubbed.
+process.env.ULTRADOC_OCR_MAX = "0";

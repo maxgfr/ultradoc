@@ -387,6 +387,15 @@ quoted as documentation, as kilobytes of replacement characters, silently. anydo
 Node 20+, so an unavailable converter is a normal outcome rather than a
 misconfiguration; `ULTRADOC_DOC_ENGINE=none` disables the ladder.
 
+**Scanned PDFs** — no text layer at all, so every rung above fails — are
+rescued by a final OCR rung: [`copyable-pdf`](https://github.com/maxgfr/copyable-pdf)
++ `tesseract`, when both are installed. It is last because it is the only
+expensive one (~2.7s per page at 300 DPI) and is budgeted per process
+(`ULTRADOC_OCR_MAX`, default 3, `0` disables). Both binaries are checked before
+the tool is spawned: asked for a missing tesseract, copyable-pdf offers to run
+`brew install` / `sudo apt-get install -y` and waits on stdin, and a research
+run must never install a system package as a side effect.
+
 Without it a PDF body was returned verbatim: its bytes decoded as UTF-8, cached,
 and quoted as documentation. The gate rejects text laced with C0/C1 control
 bytes or U+FFFD at ANY length — the built-in reader can emit 16 MB of
