@@ -16004,1474 +16004,22 @@ ${HELP}`);
 var VERSION = "2.20.0";
 
 // src/clone.ts
-import { existsSync as existsSync9, statSync as statSync6, mkdirSync as mkdirSync4, readdirSync as readdirSync4, renameSync as renameSync3 } from "fs";
-import { resolve as resolve3, join as join22, basename as basename3 } from "path";
-import { tmpdir as tmpdir2 } from "os";
+import { existsSync as existsSync10, statSync as statSync7, mkdirSync as mkdirSync4, readdirSync as readdirSync5, renameSync as renameSync3 } from "fs";
+import { resolve as resolve4, join as join23, basename as basename4 } from "path";
+import { tmpdir as tmpdir3 } from "os";
 
 // src/util.ts
 import { spawnSync as spawnSync2 } from "child_process";
-import { renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync5 } from "fs";
-var tmpCounter = 0;
-function writeFileAtomic(path, data) {
-  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
-  try {
-    writeFileSync5(tmp, data);
-    renameSync2(tmp, path);
-  } catch (e) {
-    try {
-      unlinkSync(tmp);
-    } catch {
-    }
-    throw e;
-  }
-}
-function sh2(cmd, args2, opts = {}) {
-  const res = spawnSync2(cmd, args2, {
-    cwd: opts.cwd,
-    input: opts.input,
-    encoding: "utf8",
-    timeout: opts.timeoutMs ?? 12e4,
-    maxBuffer: 64 * 1024 * 1024,
-    env: opts.env ?? process.env
-  });
-  const missing = !!res.error && res.error.code === "ENOENT";
-  return {
-    ok: !res.error && res.status === 0,
-    status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? (res.error ? String(res.error.message) : ""),
-    missing
-  };
-}
-var whichCache2 = /* @__PURE__ */ new Map();
-function have2(cmd) {
-  const cached = whichCache2.get(cmd);
-  if (cached !== void 0) return cached;
-  const probe = sh2(process.platform === "win32" ? "where" : "which", [cmd]);
-  const found = probe.ok && probe.stdout.trim().length > 0;
-  whichCache2.set(cmd, found);
-  return found;
-}
-function slugify2(input) {
-  return input.toLowerCase().replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120);
-}
-function looksLikeTestFile(rel2) {
-  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel2)) return true;
-  const base = (rel2.split("/").pop() ?? "").toLowerCase();
-  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
-}
-function escapeRegExp2(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-var STOPWORDS2 = /* @__PURE__ */ new Set([
-  "the",
-  "a",
-  "an",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "been",
-  "being",
-  "do",
-  "does",
-  "did",
-  "how",
-  "what",
-  "why",
-  "when",
-  "where",
-  "which",
-  "who",
-  "whom",
-  "this",
-  "that",
-  "these",
-  "those",
-  "of",
-  "in",
-  "on",
-  "to",
-  "for",
-  "with",
-  "and",
-  "or",
-  "but",
-  "if",
-  "then",
-  "else",
-  "than",
-  "as",
-  "at",
-  "by",
-  "from",
-  "into",
-  "about",
-  "it",
-  "its",
-  "i",
-  "you",
-  "we",
-  "they",
-  "he",
-  "she",
-  "there",
-  "here",
-  "can",
-  "could",
-  "should",
-  "would",
-  "will",
-  "shall",
-  "may",
-  "might",
-  "must",
-  "have",
-  "has",
-  "had",
-  "not",
-  "no",
-  "yes",
-  "so",
-  "such",
-  "only",
-  "any",
-  "some",
-  "all",
-  "get",
-  "set",
-  "use",
-  "used",
-  "using",
-  "work",
-  "works",
-  "working",
-  "handle",
-  "handled",
-  "happen",
-  "happens",
-  "default",
-  "value",
-  "values",
-  "please",
-  "explain",
-  "tell",
-  "me",
-  "my",
-  "our",
-  // French question scaffolding — questions about French-language repos are a
-  // supported use case, and short function words otherwise eat the keyword
-  // budget and substring-match everywhere ("est" hits "request", "test", …).
-  "le",
-  "la",
-  "les",
-  "de",
-  "des",
-  "du",
-  "un",
-  "une",
-  "est",
-  "sont",
-  "que",
-  "qui",
-  "quoi",
-  "quel",
-  "quelle",
-  "quels",
-  "quelles",
-  "pour",
-  "dans",
-  "avec",
-  "entre",
-  "sur",
-  "par",
-  "pas",
-  "plus",
-  "et",
-  "ou",
-  "o\xF9",
-  "ce",
-  "cette",
-  "ces",
-  "se",
-  "sa",
-  "son",
-  "ses",
-  "leur",
-  "leurs",
-  "comment",
-  "pourquoi",
-  "quand",
-  "fait",
-  "faire",
-  "peut",
-  "doit",
-  "\xEAtre",
-  "avoir",
-  "il",
-  "elle",
-  "nous",
-  "vous",
-  "ils",
-  "elles",
-  "au",
-  "aux",
-  "si",
-  "ne"
-]);
-function keywords2(question) {
-  const seen = /* @__PURE__ */ new Set();
-  const out2 = [];
-  for (const raw of question.split(/[^\p{L}\p{N}_]+/u)) {
-    if (!raw) continue;
-    const lower = raw.toLowerCase();
-    if (raw.length < 2) continue;
-    if (STOPWORDS2.has(lower)) continue;
-    if (seen.has(lower)) continue;
-    seen.add(lower);
-    out2.push(raw);
-  }
-  return out2;
-}
-function rankedKeywords2(question) {
-  const base = keywords2(question);
-  const score = (raw) => {
-    let s = 0;
-    if (/\d/.test(raw)) s += 3;
-    if (/[A-Z]/.test(raw) && !/^[A-Z0-9]+$/.test(raw)) s += 2;
-    if (/_/.test(raw)) s += 2;
-    if (raw.length >= 8) s += 1.5;
-    else if (raw.length >= 5) s += 0.5;
-    return s;
-  };
-  return base.map((k, i2) => ({ k, s: score(k), i: i2 })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.k);
-}
-var ACCENT_CLASSES = {
-  a: "a\xE0\xE1\xE2\xE3\xE4\xE5\u0101\u0103\u0105",
-  c: "c\xE7\u0107\u0109\u010B\u010D",
-  d: "d\u010F\u0111",
-  e: "e\xE8\xE9\xEA\xEB\u0113\u0115\u0117\u0119\u011B",
-  g: "g\u011D\u011F\u0121\u0123",
-  i: "i\xEC\xED\xEE\xEF\u0129\u012B\u012D\u012F\u0131",
-  l: "l\u013A\u013C\u013E\u0140\u0142",
-  n: "n\xF1\u0144\u0146\u0148",
-  o: "o\xF2\xF3\xF4\xF5\xF6\xF8\u014D\u014F\u0151",
-  r: "r\u0155\u0157\u0159",
-  s: "s\u015B\u015D\u015F\u0161",
-  t: "t\u0163\u0165\u0167",
-  u: "u\xF9\xFA\xFB\xFC\u0169\u016B\u016D\u016F\u0171\u0173",
-  y: "y\xFD\xFF\u0177",
-  z: "z\u017A\u017C\u017E"
-};
-var BASE_OF = /* @__PURE__ */ new Map();
-for (const [base, cls] of Object.entries(ACCENT_CLASSES)) {
-  for (const ch of cls) BASE_OF.set(ch, base);
-}
-function baseChar(ch) {
-  const known = BASE_OF.get(ch);
-  if (known) return known;
-  const stripped = ch.normalize("NFD").replace(new RegExp("\\p{M}+", "gu"), "");
-  return stripped.length === 1 ? stripped : ch;
-}
-function deaccent(s) {
-  let out2 = "";
-  for (const ch of s) out2 += baseChar(ch);
-  return out2;
-}
-function foldPlural(t) {
-  if (t.length > 4 && t.endsWith("ies")) return t.slice(0, -3) + "y";
-  if (t.length > 4 && /(?:[sxz]|[cs]h)es$/.test(t)) return t.slice(0, -2);
-  if (t.length > 3 && t.endsWith("s") && !/(?:ss|us|is)$/.test(t)) return t.slice(0, -1);
-  return t;
-}
-function foldTerm(raw) {
-  return foldPlural(deaccent(raw.toLowerCase()));
-}
-function subtokens2(raw) {
-  const spaced = raw.replace(new RegExp("([\\p{Ll}\\p{N}])(\\p{Lu})", "gu"), "$1 $2").replace(new RegExp("(\\p{Lu}+)(\\p{Lu}\\p{Ll})", "gu"), "$1 $2").replace(new RegExp("(\\p{L})(\\p{N})", "gu"), "$1 $2").replace(new RegExp("(\\p{N})(\\p{L})", "gu"), "$1 $2");
-  const parts2 = spaced.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  if (parts2.length < 2) return [];
-  const out2 = [];
-  for (const p of parts2) {
-    const lower = p.toLowerCase();
-    if (lower.length < 3 || STOPWORDS2.has(lower)) continue;
-    if (!out2.includes(lower)) out2.push(lower);
-    if (out2.length >= 4) break;
-  }
-  return out2;
-}
-var MAX_PATTERNS = 24;
-var VARIANT_PRIORITY = { original: 0, folded: 1, subtoken: 2 };
-function expandTokens(tokens, max = 8) {
-  const byCanonical = /* @__PURE__ */ new Map();
-  for (const raw of tokens) {
-    if (byCanonical.size >= max) break;
-    const canonical = foldTerm(raw);
-    if (!canonical || byCanonical.has(canonical)) continue;
-    const plain = deaccent(raw.toLowerCase());
-    const variants = [{ text: raw.toLowerCase(), kind: "original" }];
-    if (canonical !== plain) variants.push({ text: canonical, kind: "folded" });
-    if (plain.length > 4 && plain.endsWith("ies")) variants.push({ text: plain.slice(0, -1), kind: "folded" });
-    for (const sub of subtokens2(raw)) variants.push({ text: sub, kind: "subtoken" });
-    byCanonical.set(canonical, { canonical, original: raw, variants });
-  }
-  const all = [...byCanonical.values()].flatMap((ek, kwIdx) => ek.variants.map((v) => ({ ek, v, kwIdx })));
-  all.sort((a, b) => VARIANT_PRIORITY[a.v.kind] - VARIANT_PRIORITY[b.v.kind] || a.kwIdx - b.kwIdx);
-  const seen = /* @__PURE__ */ new Set();
-  const kept = /* @__PURE__ */ new Set();
-  for (const { v } of all) {
-    if (kept.size >= MAX_PATTERNS) break;
-    const key = deaccent(v.text);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    kept.add(v);
-  }
-  for (const ek of byCanonical.values()) ek.variants = ek.variants.filter((v) => kept.has(v));
-  return [...byCanonical.values()];
-}
-function accentPattern(text) {
-  let out2 = "";
-  for (const ch of text) {
-    const cls = ACCENT_CLASSES[baseChar(ch)];
-    out2 += cls ? `[${cls}]` : escapeRegExp2(ch);
-  }
-  return out2;
-}
-function makeMatcher(expanded) {
-  const canonicalByVariant = /* @__PURE__ */ new Map();
-  const patterns = [];
-  const regexes = [];
-  for (const ek of expanded) {
-    for (const v of ek.variants) {
-      const key = foldTerm(v.text);
-      const prio = VARIANT_PRIORITY[v.kind];
-      const prev = canonicalByVariant.get(key);
-      if (!prev || prio < prev.prio) canonicalByVariant.set(key, { canonical: ek.canonical, prio });
-      const source = accentPattern(v.text);
-      patterns.push({ source, canonical: ek.canonical });
-      regexes.push({ re: new RegExp(source, "i"), canonical: ek.canonical });
-    }
-  }
-  return {
-    expanded,
-    canonicals: expanded.map((e) => e.canonical),
-    patterns,
-    canonicalOf: (span) => canonicalByVariant.get(foldTerm(span))?.canonical,
-    matchLine: (line) => {
-      const hit = /* @__PURE__ */ new Set();
-      for (const { re, canonical } of regexes) {
-        if (!hit.has(canonical) && re.test(line)) hit.add(canonical);
-      }
-      return hit;
-    }
-  };
-}
-function buildMatcher(question, max = 8) {
-  return makeMatcher(expandTokens(keywords2(question), max));
-}
-function matcherFromTokens(tokens, max = 8) {
-  return makeMatcher(expandTokens(tokens.filter(Boolean), max));
-}
-function rrf2(lists, keyOf2, k = 60) {
-  const score = /* @__PURE__ */ new Map();
-  for (const list of lists) {
-    list.forEach((item, idx) => {
-      const key = keyOf2(item);
-      score.set(key, (score.get(key) ?? 0) + 1 / (k + idx + 1));
-    });
-  }
-  return score;
-}
-async function mapLimit(items, limit, fn) {
-  const n = items.length;
-  const out2 = new Array(n);
-  const width = Math.max(1, Math.min(limit, n || 1));
-  let next = 0;
-  async function worker() {
-    while (true) {
-      const i2 = next++;
-      if (i2 >= n) return;
-      out2[i2] = await fn(items[i2], i2);
-    }
-  }
-  await Promise.all(Array.from({ length: width }, () => worker()));
-  return out2;
-}
-
-// src/config.ts
-import { homedir as homedir2, tmpdir } from "os";
-import { join as join21 } from "path";
-function envInt(name2, def, min = 1) {
-  const raw = process.env[name2];
-  if (raw === void 0) return def;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
-}
-function envStr(name2, def) {
-  const raw = process.env[name2]?.trim();
-  return raw ? raw : def;
-}
-var LIMITS = {
-  maxFiles: envInt("ULTRADOC_MAX_FILES", 2e4),
-  // files walked/indexed
-  maxFileBytes: envInt("ULTRADOC_MAX_FILE_BYTES", 1048576),
-  // per-file read cap
-  symbolsPerFile: envInt("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
-  // symbols kept per file
-  // Call sites kept per declared symbol name. Bounds index.json on repos where
-  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
-  // keeps the evidence (a handful of sites is all a citation ever needs) and
-  // the cap is reported in stats rather than silently applied.
-  callSitesPerSymbol: envInt("ULTRADOC_MAX_CALL_SITES", 30),
-  releasesFetched: envInt("ULTRADOC_MAX_RELEASES", 20),
-  // GitHub releases fetched
-  docPackages: envInt("ULTRADOC_MAX_DOC_PACKAGES", 6),
-  // monorepo packages given doc sections
-  docModules: envInt("ULTRADOC_MAX_DOC_MODULES", 5),
-  // subsystems given their own doc section
-  verifyPairs: envInt("ULTRADOC_MAX_VERIFY", 40),
-  // claim↔evidence pairs (CLI --max-verify wins)
-  embedChunks: envInt("ULTRADOC_MAX_CHUNKS", 800),
-  // semantic chunks embedded per repo
-  embedConcurrency: envInt("ULTRADOC_EMBED_CONCURRENCY", 4)
-  // parallel embed requests
-};
-function extdocsTtlMs() {
-  return envInt("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
-}
-var CACHE_DIR_NAME = ".ultradoc";
-function cacheRoot() {
-  const override = process.env.ULTRADOC_CACHE_DIR?.trim();
-  if (override) return override;
-  const home = homedir2();
-  if (!home) return join21(tmpdir(), "ultradoc");
-  if (process.platform === "darwin") return join21(home, "Library", "Caches", "ultradoc");
-  if (process.platform === "win32") return join21(process.env.LOCALAPPDATA?.trim() || join21(home, "AppData", "Local"), "ultradoc");
-  return join21(process.env.XDG_CACHE_HOME?.trim() || join21(home, ".cache"), "ultradoc");
-}
-
-// src/clone.ts
-function migrateLegacyClone(dir, slug) {
-  if (existsSync9(dir)) return;
-  const legacy = join22(tmpdir2(), "ultradoc", slug);
-  if (legacy === dir || !existsSync9(join22(legacy, ".git"))) return;
-  try {
-    mkdirSync4(cacheRoot(), { recursive: true });
-    renameSync3(legacy, dir);
-  } catch {
-  }
-}
-function resolveRepo(raw) {
-  const trimmed = raw.trim();
-  const asPath = resolve3(trimmed);
-  if (existsSync9(asPath) && statSync6(asPath).isDirectory()) {
-    return {
-      raw: trimmed,
-      host: "local",
-      isLocal: true,
-      slug: "local-" + slugify2(basename3(asPath) + "-" + asPath)
-    };
-  }
-  let host;
-  let path;
-  const scp = /^git@([^:]+):(.+)$/.exec(trimmed);
-  const url = /^https?:\/\/([^/]+)\/(.+)$/.exec(trimmed);
-  const hostPath = /^([a-z0-9.-]+\.[a-z]{2,})\/(.+)$/i.exec(trimmed);
-  if (scp) {
-    host = scp[1];
-    path = scp[2];
-  } else if (url) {
-    host = url[1];
-    path = url[2];
-  } else if (hostPath) {
-    host = hostPath[1];
-    path = hostPath[2];
-  } else {
-    host = "github.com";
-    path = trimmed;
-  }
-  path = path.replace(/\.git$/, "").replace(/\/+$/, "");
-  const segments = path.split("/").filter(Boolean);
-  const repo = segments.length ? segments[segments.length - 1] : void 0;
-  const owner = segments.length > 1 ? segments.slice(0, -1).join("/") : void 0;
-  const cloneUrl = /^https?:\/\//.test(trimmed) || scp ? trimmed : `https://${host}/${path}.git`;
-  const webUrl = `https://${host}/${path}`;
-  return {
-    raw: trimmed,
-    host,
-    owner,
-    repo,
-    cloneUrl: cloneUrl.endsWith(".git") ? cloneUrl : `${cloneUrl}.git`,
-    webUrl,
-    isLocal: false,
-    slug: slugify2(`${host}/${path}`)
-  };
-}
-function ensureClone(ref, opts = {}) {
-  if (ref.isLocal) return resolve3(ref.raw);
-  const dir = join22(cacheRoot(), ref.slug);
-  migrateLegacyClone(dir, ref.slug);
-  const alreadyCloned = existsSync9(join22(dir, ".git"));
-  if (alreadyCloned && !opts.refresh) return dir;
-  if (alreadyCloned && opts.refresh) {
-    sh2("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { timeoutMs: 18e4 });
-    sh2("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: 6e4 });
-    return dir;
-  }
-  mkdirSync4(cacheRoot(), { recursive: true });
-  const args2 = ["clone", "--depth", "1", "--filter=blob:none"];
-  if (opts.branch) args2.push("--branch", opts.branch);
-  args2.push(ref.cloneUrl, dir);
-  const res = sh2("git", args2, { timeoutMs: 3e5 });
-  if (!res.ok) {
-    const fallback = sh2("git", ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir], { timeoutMs: 3e5 });
-    if (!fallback.ok) {
-      throw new Error(`git clone failed for ${ref.cloneUrl}
-${(res.stderr || fallback.stderr).trim()}`);
-    }
-  }
-  if (!existsSync9(dir) || readdirSync4(dir).length === 0) {
-    throw new Error(`clone produced an empty tree at ${dir}`);
-  }
-  return dir;
-}
-var deepened = /* @__PURE__ */ new Map();
-function ensureHistoryDepth(dir) {
-  const cached = deepened.get(dir);
-  if (cached) return cached;
-  let out2;
-  const probe = sh2("git", ["-C", dir, "rev-parse", "--is-shallow-repository"]);
-  const filter = sh2("git", ["-C", dir, "config", "remote.origin.partialclonefilter"]);
-  const shallow = probe.ok && probe.stdout.trim() === "true";
-  const partial = filter.ok && filter.stdout.trim() !== "";
-  if (!probe.ok) {
-    out2 = { ok: false, note: "Not a git working tree \u2014 no commit history available." };
-  } else if (!shallow && !partial) {
-    out2 = { ok: true };
-  } else {
-    if (partial) sh2("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
-    const args2 = ["-C", dir, "fetch", "--quiet", ...partial ? ["--refetch"] : [], ...shallow ? ["--unshallow"] : [], "origin"];
-    const full = sh2("git", args2, { timeoutMs: 3e5 });
-    if (full.ok) {
-      out2 = { ok: true };
-    } else if (shallow && !partial) {
-      const deepen = sh2("git", ["-C", dir, "fetch", "--quiet", "--deepen=500", "origin"], {
-        timeoutMs: 18e4
-      });
-      out2 = deepen.ok ? { ok: true, note: "History deepened to ~500 commits (full unshallow failed); older changes may be missing." } : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
-    } else {
-      out2 = { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
-    }
-  }
-  deepened.set(dir, out2);
-  return out2;
-}
-function headCommit2(dir) {
-  const res = sh2("git", ["-C", dir, "rev-parse", "--short", "HEAD"]);
-  return res.ok ? res.stdout.trim() : void 0;
-}
-function sameCommit(a, b) {
-  if (!a || !b) return false;
-  return a === b || a.startsWith(b) || b.startsWith(a);
-}
-function originUrl(dir) {
-  const res = sh2("git", ["-C", dir, "remote", "get-url", "origin"]);
-  return res.ok && res.stdout.trim() ? res.stdout.trim() : void 0;
-}
-
-// src/index/structural.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync11 } from "fs";
-import { join as join25 } from "path";
-
-// src/lang/registry.ts
-function languageOf2(ext) {
-  return languageOf(ext);
-}
-
-// src/index/scan.ts
-import { join as join23 } from "path";
-var memo = /* @__PURE__ */ new Map();
-function scanOptions2(root, maxFiles) {
-  return {
-    maxFiles: maxFiles ?? LIMITS.maxFiles,
-    maxBytes: LIMITS.maxFileBytes,
-    // Exclude ultradoc's own cache dir by absolute path — the engine only knows
-    // to skip its own.
-    out: join23(root, CACHE_DIR_NAME)
-  };
-}
-function publishScan(root, scan2) {
-  memo.set(root, scan2);
-}
-function repoScan(root) {
-  const hit = memo.get(root);
-  if (hit) return hit;
-  const scan2 = scanRepo(root, scanOptions2(root));
-  memo.set(root, scan2);
-  return scan2;
-}
-
-// src/sources/doc-discovery.ts
-import { join as join24 } from "path";
-
-// src/walk.ts
-function walkDetailed(root, opts = {}) {
-  const res = walk(root, {
-    maxFileBytes: opts.maxFileBytes ?? LIMITS.maxFileBytes,
-    maxFiles: opts.maxFiles ?? LIMITS.maxFiles
-  });
-  return {
-    files: res.files.filter((f) => f.rel !== ".ultradoc" && !f.rel.startsWith(".ultradoc/")),
-    truncated: res.capped
-  };
-}
-function walk2(root, opts = {}) {
-  return walkDetailed(root, opts).files;
-}
-
-// src/sources/doc-discovery.ts
-var DOC_DIR2 = /(^|\/)(docs?|documentation|website|guides?|book|manual|handbook|reference)$/i;
-function discoverDocsRoot(docFiles) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const rel2 of docFiles) {
-    const parts2 = rel2.split("/");
-    for (const depth of [1, 2]) {
-      if (parts2.length <= depth) continue;
-      const dir = parts2.slice(0, depth).join("/");
-      if (DOC_DIR2.test(dir)) counts.set(dir, (counts.get(dir) ?? 0) + 1);
-    }
-  }
-  let best;
-  let bestN = 1;
-  for (const [k, v] of counts) {
-    if (v > bestN || v === bestN && best && k.length < best.length) {
-      best = k;
-      bestN = v;
-    }
-  }
-  return best;
-}
-var KNOWN_DOC_HOST = /readthedocs\.(io|org)|\.gitbook\.io|mintlify|docusaurus|\.readme\.io/i;
-var HOSTED = /\.github\.io|\.netlify\.app|\.vercel\.app|\.pages\.dev/i;
-var DOC_SUBDOMAIN = /^https?:\/\/docs?\./i;
-var DOC_PATH = /(^|\/)(docs?|documentation|guide|guides|manual|handbook|reference|learn)(\/|$|#|\?)/i;
-var URL_RE = /https?:\/\/[^\s)"'<>`\]]+/g;
-function scoreDocUrl(url, context2) {
-  let s = 0;
-  if (DOC_SUBDOMAIN.test(url)) s += 5;
-  if (KNOWN_DOC_HOST.test(url)) s += 5;
-  if (DOC_PATH.test(url)) s += 3;
-  if (HOSTED.test(url) && DOC_PATH.test(url)) s += 1;
-  if (/\b(documentation|docs|guide|manual|reference|api docs)\b/i.test(context2)) s += 2;
-  const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
-  const depth = (path.match(/\//g) ?? []).length;
-  if (depth >= 3) s -= Math.min(2, (depth - 2) * 0.5);
-  return s;
-}
-function clean(url) {
-  return url.replace(/[.,;]+$/, "").replace(/\)+$/, "");
-}
-function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
-  const candidates = [];
-  const names = projectNames.filter((n) => n && n.length >= 3).map((n) => n.toLowerCase());
-  const related = (url) => names.some((n) => url.toLowerCase().includes(n));
-  const add = (url, context2, bonus = 0) => {
-    const u = clean(url);
-    if (!/^https?:\/\//.test(u)) return;
-    candidates.push({ url: u, score: scoreDocUrl(u, context2) + bonus + (related(u) ? 3 : 0) });
-  };
-  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
-  if (readme) {
-    const text = readText(join24(repoDir, readme)).slice(0, 4e4);
-    let m;
-    const link = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
-    while (m = link.exec(text)) add(m[2], m[1]);
-    for (const line of text.split("\n")) {
-      if (!/\b(doc|documentation|guide|manual|reference)\b/i.test(line)) continue;
-      const urls = line.match(URL_RE);
-      if (urls) for (const u of urls) add(u, line);
-    }
-  }
-  for (const cfg of configFiles) {
-    const base = cfg.split("/").pop().toLowerCase();
-    const text = readText(join24(repoDir, cfg));
-    if (!text) continue;
-    if (base === "package.json" || base === "composer.json") {
-      try {
-        const j = JSON.parse(text);
-        if (typeof j.homepage === "string") add(j.homepage, "homepage", 1);
-        if (typeof j.documentation === "string") add(j.documentation, "documentation", 8);
-        const docs = j.support?.docs ?? j.support?.documentation;
-        if (typeof docs === "string") add(docs, "documentation", 8);
-      } catch {
-      }
-    } else if (base === "pyproject.toml" || base === "setup.cfg") {
-      const m = /^\s*Documentation\s*=\s*["']?(https?:\/\/[^"'\s]+)/im.exec(text);
-      if (m) add(m[1], "documentation", 8);
-    }
-  }
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
-  return best && best.score >= 4 ? best.url : void 0;
-}
-
-// src/index/workspaces.ts
-function discoverWorkspaces(root) {
-  return detectWorkspaces(root).packages.map((p) => ({ name: p.name, dir: p.dir, description: p.description })).sort((a, b) => a.dir.localeCompare(b.dir));
-}
-function resolvePackage(packages, query4) {
-  const q = query4.toLowerCase().replace(/\/+$/, "");
-  const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
-  if (exact) return exact;
-  const short = packages.filter((p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q);
-  if (short.length === 1) return short[0];
-  if (short.length > 1) return void 0;
-  const loose = packages.filter((p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q));
-  return loose.length === 1 ? loose[0] : void 0;
-}
-
-// src/index/structural.ts
-var SCHEMA_VERSION2 = 5;
-var DOC_BASENAME2 = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
-var DOC_EXT2 = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
-var DOC_DIR3 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
-var CONFIG_BASENAME2 = /* @__PURE__ */ new Set([
-  "package.json",
-  "pnpm-workspace.yaml",
-  "tsconfig.json",
-  "pyproject.toml",
-  "setup.py",
-  "setup.cfg",
-  "requirements.txt",
-  "pipfile",
-  "go.mod",
-  "cargo.toml",
-  "gemfile",
-  "pom.xml",
-  "build.gradle",
-  "build.gradle.kts",
-  "composer.json",
-  "mix.exs",
-  "pubspec.yaml",
-  "build.sbt",
-  "dockerfile",
-  "docker-compose.yml",
-  "makefile",
-  ".env.example",
-  "manifest.json"
-]);
-function indexDir(root) {
-  return join25(root, ".ultradoc");
-}
-function indexPath(root) {
-  return join25(indexDir(root), "index.json");
-}
-function isDoc2(rel2, ext) {
-  const base = rel2.split("/").pop().toLowerCase();
-  return DOC_EXT2.has(ext) || DOC_BASENAME2.test(base) || DOC_DIR3.test(rel2);
-}
-function isConfig2(rel2) {
-  return CONFIG_BASENAME2.has(rel2.split("/").pop().toLowerCase());
-}
-function buildCallSites(files, declared) {
-  const byName = /* @__PURE__ */ new Map();
-  let capHits = 0;
-  for (const f of files) {
-    for (const c2 of f.calls ?? []) {
-      if (!declared.has(c2.name)) continue;
-      let sites = byName.get(c2.name);
-      if (!sites) {
-        sites = [];
-        byName.set(c2.name, sites);
-      }
-      if (sites.length >= LIMITS.callSitesPerSymbol) continue;
-      sites.push([f.rel, c2.line]);
-    }
-  }
-  const callSites = {};
-  for (const name2 of [...byName.keys()].sort()) {
-    const sites = byName.get(name2);
-    if (sites.length >= LIMITS.callSitesPerSymbol) capHits++;
-    callSites[name2] = sites;
-  }
-  return { callSites, capHits };
-}
-function buildIndex(root, slug, opts = {}) {
-  const scan2 = scanRepo(root, scanOptions2(root, opts.maxFiles));
-  if (!scan2.capped && opts.maxFiles === void 0) publishScan(root, scan2);
-  const languages = {};
-  const symbols = [];
-  const docFiles = [];
-  const configFiles = [];
-  const topDirs = {};
-  const exts = /* @__PURE__ */ new Set();
-  let symbolCapHits = 0;
-  for (const f of scan2.files) {
-    const lang = languageOf2(f.ext);
-    languages[lang] = (languages[lang] ?? 0) + 1;
-    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) : ".";
-    topDirs[top] = (topDirs[top] ?? 0) + 1;
-    if (isDoc2(f.rel, f.ext)) docFiles.push(f.rel);
-    if (isConfig2(f.rel)) configFiles.push(f.rel);
-    if (f.kind === "code") exts.add(f.ext);
-    if (f.symbols.length > LIMITS.symbolsPerFile) symbolCapHits++;
-    for (const s of f.symbols.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
-  }
-  const { callSites, capHits: callSiteCapHits } = buildCallSites(scan2.files, new Set(symbols.map((s) => s.name)));
-  const sortedDocs = docFiles.sort();
-  const sortedConfigs = configFiles.sort();
-  const index = {
-    slug,
-    root,
-    commit: headCommit2(root),
-    builtAt: (/* @__PURE__ */ new Date()).toISOString(),
-    fileCount: scan2.files.length,
-    languages,
-    symbols,
-    docFiles: sortedDocs,
-    configFiles: sortedConfigs,
-    // Discover the canonical docs folder + official docs URL once, from the
-    // repo's own README/manifests, and cache them so questions cost no extra work.
-    docsRoot: discoverDocsRoot(sortedDocs),
-    docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
-    // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
-    // questions can be scoped to one package with --package.
-    packages: discoverWorkspaces(root),
-    topDirs,
-    callSites,
-    // Recorded, never inferred later: an index built without the grammars has
-    // no endLine and no nested methods, and every consumer must be able to say
-    // so rather than present a regex-tier index as complete.
-    stats: {
-      truncated: scan2.capped,
-      symbolCapHits,
-      astTier: grammarKeysForExts(exts).some((k) => grammarReady(k)),
-      callSiteCapHits
-    },
-    schemaVersion: SCHEMA_VERSION2
-  };
-  try {
-    mkdirSync5(indexDir(root), { recursive: true });
-    writeFileAtomic(indexPath(root), JSON.stringify(index));
-  } catch {
-  }
-  return index;
-}
-function loadIndex(root) {
-  const p = indexPath(root);
-  if (!existsSync10(p)) return void 0;
-  try {
-    const idx = JSON.parse(readFileSync11(p, "utf8"));
-    if (idx.schemaVersion !== SCHEMA_VERSION2) return void 0;
-    const head = headCommit2(root);
-    if (idx.commit && head && !sameCommit(idx.commit, head)) return void 0;
-    return idx;
-  } catch {
-    return void 0;
-  }
-}
-function ensureIndex(root, slug, opts = {}) {
-  if (!opts.refresh) {
-    const existing = loadIndex(root);
-    if (existing) return existing;
-  }
-  return buildIndex(root, slug, { maxFiles: opts.maxFiles, project: opts.project });
-}
-
-// src/dossier.ts
-import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync6 } from "fs";
-import { join as join26 } from "path";
-var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
-var SOURCE_LABEL = {
-  code: "Code",
-  docs: "Documentation",
-  release: "Releases & Changelog",
-  history: "Git History",
-  issue: "Issues",
-  pr: "Pull / Merge Requests",
-  discussion: "Discussions",
-  so: "StackOverflow",
-  web: "Web"
-};
-function rank(s) {
-  const i2 = SOURCE_ORDER.indexOf(s);
-  return i2 < 0 ? 99 : i2;
-}
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-function runId(d = /* @__PURE__ */ new Date()) {
-  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-function defaultRunDir(repoDir, d) {
-  return join26(indexDir(repoDir), "runs", runId(d));
-}
-function assignIds2(results) {
-  const flat = results.flatMap((r) => r.items);
-  flat.sort((a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
-  return flat.map((it, i2) => ({ id: `E${i2 + 1}`, ...it }));
-}
-function renderEvidenceMarkdown(evidence, meta) {
-  const out2 = [];
-  out2.push(`# Evidence dossier`);
-  out2.push("");
-  out2.push(`**Question:** ${meta.question}`);
-  out2.push(
-    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}${meta.pkg ? ` \xB7 **package:** ${meta.pkg}` : ""}`
-  );
-  out2.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
-  out2.push("");
-  out2.push(
-    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
-  );
-  out2.push("");
-  if (meta.notes.length) {
-    out2.push(`## Retrieval notes`);
-    out2.push("");
-    out2.push(`_What this run could not reach \u2014 read these before the evidence; they bound what you may claim._`);
-    out2.push("");
-    for (const n of meta.notes) out2.push(`- ${n}`);
-    out2.push("");
-  }
-  if (evidence.length === 0) {
-    out2.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
-  }
-  for (const source of SOURCE_ORDER) {
-    const items = evidence.filter((e) => e.source === source);
-    if (items.length === 0) continue;
-    out2.push(`## ${SOURCE_LABEL[source]}`);
-    out2.push("");
-    for (const it of items) {
-      out2.push(`### [${it.id}] ${it.title}`);
-      const meta1 = [`ref: \`${it.ref}\``, it.location ? `loc: \`${it.location}\`` : "", `score: ${it.score}`].filter(Boolean).join(" \xB7 ");
-      out2.push(meta1);
-      if (it.url) out2.push(`url: ${it.url}`);
-      out2.push("");
-      out2.push("```");
-      out2.push(it.snippet);
-      out2.push("```");
-      out2.push("");
-    }
-  }
-  return out2.join("\n");
-}
-function writeDossier(dir, evidence, meta) {
-  mkdirSync6(dir, { recursive: true });
-  const evidenceJson = join26(dir, "evidence.json");
-  const evidenceMd = join26(dir, "EVIDENCE.md");
-  const metaJson = join26(dir, "meta.json");
-  writeFileSync6(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync6(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync6(metaJson, JSON.stringify(meta, null, 2));
-  return { dir, evidenceJson, evidenceMd, metaJson };
-}
-
-// src/index/search.ts
-import { statSync as statSync7 } from "fs";
-import { join as join27 } from "path";
-
-// src/index/bm25.ts
-function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
-  const scores = /* @__PURE__ */ new Map();
-  const avgLen = docs.length ? docs.reduce((s, d) => s + d.len, 0) / docs.length : 1;
-  for (const d of docs) {
-    let s = 0;
-    for (const t of terms) {
-      const f = d.tf.get(t) ?? 0;
-      if (f === 0) continue;
-      const n = df.get(t) ?? 0;
-      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
-      s += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (d.len / (avgLen || 1)))));
-    }
-    if (s > 0) scores.set(d.key, s);
-  }
-  return scores;
-}
-
-// src/index/excerpt.ts
-var MAX_EXCERPT_LINES = 30;
-var EXCERPT_PAD = 8;
-function expandWindow(lines, start2, end, anchor) {
-  const blank = (n) => /^\s*$/.test(lines[n - 1] ?? "");
-  let s = Math.max(1, start2);
-  let e = Math.min(lines.length, end);
-  while (s > 1 && start2 - s < EXCERPT_PAD && !blank(s - 1)) s--;
-  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
-  if (e - s + 1 > MAX_EXCERPT_LINES) {
-    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
-    let ne = ns + MAX_EXCERPT_LINES - 1;
-    if (ne > e) {
-      ne = e;
-      ns = ne - MAX_EXCERPT_LINES + 1;
-    }
-    s = ns;
-    e = ne;
-  }
-  return { start: s, end: e };
-}
-function enclosingSymbol2(fileSyms, line) {
-  let best;
-  for (const s of fileSyms) {
-    if (s.endLine === void 0 || s.line > line || s.endLine < line) continue;
-    if (!best || s.endLine - s.line < best.endLine - best.line) best = s;
-  }
-  return best;
-}
-function symbolLabel(s) {
-  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
-}
-function symbolsByFile(symbols) {
-  const byFile = /* @__PURE__ */ new Map();
-  for (const s of symbols) {
-    const arr = byFile.get(s.file);
-    if (arr) arr.push(s);
-    else byFile.set(s.file, [s]);
-  }
-  return byFile;
-}
-function codeItem(args2) {
-  const { ref, index, rel: rel2, lines, start: start2, end, label, score, meta } = args2;
-  return {
-    source: "code",
-    title: `${rel2} \u2014 ${label}`,
-    ref: rel2,
-    location: `${rel2}:${start2}-${end}`,
-    score: Number(score.toFixed(3)),
-    snippet: lines.slice(start2 - 1, end).join("\n"),
-    url: ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${rel2}#L${start2}-L${end}`,
-    ...meta ? { meta } : {}
-  };
-}
-
-// src/index/search.ts
-var MAX_KEYWORDS = 8;
-var RANKING = {
-  BM25_K1: 1.2,
-  // b=0.3: code corpora mix tiny config files with huge implementation files,
-  // and full-strength length normalization (b=0.75) buries the big files where
-  // the answer lives (e.g. matomo's js/piwik.js).
-  BM25_B: 0.3,
-  LOW_SIGNAL_PENALTY: 0.45,
-  // tests/docs/examples down-weight
-  STEM_EXACT_BOOST: 1.3,
-  // file stem == a query keyword (retry.ts for "retry")
-  STEM_SUBTOKEN_BOOST: 1.15,
-  // file stem shares a subtoken with a keyword
-  EXPORTED_BOOST: 1.5,
-  // an exported symbol outranks a private one
-  SCORE_SCALE: 1e3,
-  // readability of the reported score; ordering unchanged
-  // Per-file contribution of its 1st/2nd/3rd best-matching symbol, so a file
-  // that defines several relevant symbols outranks one with a single weak match.
-  SYMBOL_DECAY: [1, 0.5, 0.25],
-  // Call-site awareness: how many identifier keywords are probed as call
-  // targets, the score of a distant call-site excerpt relative to its file's
-  // primary excerpt, and how close a call region must be to the definition to
-  // fold into one excerpt instead of a second item.
-  CALLSITE_MAX_NAMES: 4,
-  CALLSITE_SECOND_ITEM_FACTOR: 0.95,
-  CALLSITE_MERGE_GAP: 12,
-  // Rare-literal guarantee: a query keyword matching in at most RARE_TERM_DF
-  // files is a near-unique literal (error string, regex fragment, data-file
-  // entry) — its holder must surface even when rank fusion buries it, and at
-  // most RARE_PIN_MAX holders may displace normally-ranked items.
-  RARE_TERM_DF: 3,
-  RARE_PIN_MAX: 2
-};
-var MAX_LINES_PER_FILE = 40;
-function lexicalSearch(root, matcher, scope) {
-  const byFile = /* @__PURE__ */ new Map();
-  if (!matcher.patterns.length) return byFile;
-  const pattern = matcher.patterns.map((p) => `(?:${p.source})`).join("|");
-  const hits = grepRepo(root, pattern, {
-    ignoreCase: true,
-    maxHits: Number.MAX_SAFE_INTEGER,
-    globs: scope ? [`${scope}/**`] : void 0
-  });
-  const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "gi"), canonical: p.canonical }));
-  for (const h of hits) {
-    if (h.file === ".ultradoc" || h.file.startsWith(".ultradoc/")) continue;
-    let fh = byFile.get(h.file);
-    if (!fh) {
-      fh = { rel: h.file, matchedKw: /* @__PURE__ */ new Set(), kwCounts: /* @__PURE__ */ new Map(), lines: [] };
-      byFile.set(h.file, fh);
-    }
-    if (fh.lines.length >= MAX_LINES_PER_FILE) continue;
-    for (const p of res) {
-      const n = (h.text.match(p.re) ?? []).length;
-      if (n > 0) {
-        fh.matchedKw.add(p.canonical);
-        fh.kwCounts.set(p.canonical, (fh.kwCounts.get(p.canonical) ?? 0) + n);
-      }
-    }
-    fh.lines.push({ line: h.line, text: h.text.slice(0, 400) });
-  }
-  return byFile;
-}
-function regionsFor(fh, matcher, gap = 8) {
-  const sorted = [...fh.lines].sort((a, b) => a.line - b.line);
-  const regions = [];
-  let cur = null;
-  for (const h of sorted) {
-    if (cur && h.line - cur.end <= gap) {
-      cur.end = h.line;
-      cur.lines.push(h);
-    } else {
-      if (cur) regions.push(scoreRegion(cur, matcher));
-      cur = { start: h.line, end: h.line, lines: [h] };
-    }
-  }
-  if (cur) regions.push(scoreRegion(cur, matcher));
-  return regions;
-}
-function scoreRegion(cur, matcher) {
-  const covered = /* @__PURE__ */ new Set();
-  let anchor = cur.start;
-  let best = -1;
-  for (const h of cur.lines) {
-    const here = matcher.matchLine(h.text);
-    for (const c2 of here) covered.add(c2);
-    if (here.size > best) {
-      best = here.size;
-      anchor = h.line;
-    }
-  }
-  return { start: cur.start, end: cur.end, anchor, kwCount: covered.size };
-}
-function scoreSymbol(sym, matcher) {
-  const name2 = foldTerm(sym.name);
-  let s = 0;
-  for (const ek of matcher.expanded) {
-    let best = 0;
-    for (const v of ek.variants) {
-      const vt = foldTerm(v.text);
-      let vs = 0;
-      if (name2 === vt) vs = 6;
-      else if (name2.startsWith(vt) || vt.startsWith(name2)) vs = 3;
-      else if (name2.includes(vt) || vt.includes(name2)) vs = 1.5;
-      if (v.kind === "subtoken") vs *= 0.5;
-      if (vs > best) best = vs;
-    }
-    s += best;
-  }
-  if (s === 0) return 0;
-  return sym.exported ? s * RANKING.EXPORTED_BOOST : s;
-}
-function symbolScores(index, matcher) {
-  const perFile = /* @__PURE__ */ new Map();
-  for (const sym of index.symbols) {
-    const s = scoreSymbol(sym, matcher);
-    if (s === 0) continue;
-    const arr = perFile.get(sym.file) ?? [];
-    arr.push({ score: s, sym });
-    perFile.set(sym.file, arr);
-  }
-  const byFile = /* @__PURE__ */ new Map();
-  for (const [file, arr] of perFile) {
-    arr.sort((a, b) => b.score - a.score);
-    let fileScore = 0;
-    for (let i2 = 0; i2 < arr.length && i2 < RANKING.SYMBOL_DECAY.length; i2++) fileScore += arr[i2].score * RANKING.SYMBOL_DECAY[i2];
-    byFile.set(file, { score: fileScore, sym: arr[0].sym });
-  }
-  return byFile;
-}
-function callableNames(matcher, index) {
-  const declared = new Set(index.symbols.map((s) => foldTerm(s.name)));
-  const out2 = [];
-  for (const ek of matcher.expanded) {
-    if (out2.length >= RANKING.CALLSITE_MAX_NAMES) break;
-    const orig = ek.original;
-    if (!/^[A-Za-z_$][\w$]*$/.test(orig)) continue;
-    const identifierShaped = /[a-z][A-Z]/.test(orig) || orig.includes("_");
-    if ((identifierShaped || declared.has(foldTerm(orig))) && !out2.includes(orig)) out2.push(orig);
-  }
-  return out2;
-}
-function astCallHits(index, names, inScope) {
-  const byFile = /* @__PURE__ */ new Map();
-  for (const name2 of names) {
-    for (const [rel2, line] of index.callSites?.[name2] ?? []) {
-      if (!inScope(rel2)) continue;
-      let entry = byFile.get(rel2);
-      if (!entry) {
-        entry = { lines: /* @__PURE__ */ new Set(), counts: /* @__PURE__ */ new Map() };
-        byFile.set(rel2, entry);
-      }
-      entry.lines.add(line);
-      entry.counts.set(name2, (entry.counts.get(name2) ?? 0) + 1);
-    }
-  }
-  return byFile;
-}
-function callSiteHits(fh, compiled, declLines) {
-  const lines = /* @__PURE__ */ new Set();
-  const counts = /* @__PURE__ */ new Map();
-  for (const h of fh.lines) {
-    if (declLines.has(h.line)) continue;
-    for (const c2 of compiled) {
-      if (c2.re.test(h.text)) {
-        lines.add(h.line);
-        counts.set(c2.name, (counts.get(c2.name) ?? 0) + 1);
-        break;
-      }
-    }
-  }
-  return { lines, counts };
-}
-function mergeLines(sorted, gap) {
-  const regions = [];
-  let cur = null;
-  for (const l of sorted) {
-    if (cur && l - cur.end <= gap) cur.end = l;
-    else {
-      if (cur) regions.push(cur);
-      cur = { start: l, end: l };
-    }
-  }
-  if (cur) regions.push(cur);
-  return regions;
-}
-function searchCode(root, ref, index, question, perSource, scope) {
-  const notes = [];
-  const inScope = (rel2) => !scope || rel2.startsWith(scope + "/");
-  let matcher = buildMatcher(question, MAX_KEYWORDS);
-  if (matcher.expanded.length === 0) {
-    notes.push("No distinctive keywords in the question; code search may be weak.");
-    matcher = matcherFromTokens(question.split(/\s+/), MAX_KEYWORDS);
-  }
-  if (matcher.expanded.length === 0) return { items: [], notes };
-  const usedRg = have2("rg");
-  if (!usedRg) notes.push("ripgrep not found \u2014 used the slower built-in scanner.");
-  const lexical = lexicalSearch(root, matcher, scope);
-  const symbols = symbolScores(index, matcher);
-  const names = callableNames(matcher, index);
-  const callHits = /* @__PURE__ */ new Map();
-  let callRank = [];
-  if (names.length) {
-    const indexed = names.filter((n) => (index.callSites?.[n]?.length ?? 0) > 0);
-    const textual = names.filter((n) => !indexed.includes(n));
-    const merged = astCallHits(index, indexed, inScope);
-    if (textual.length) {
-      const compiled = textual.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp2(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
-      const nameSet = new Set(textual.map(foldTerm));
-      const declByFile = /* @__PURE__ */ new Map();
-      for (const s of index.symbols) {
-        if (!nameSet.has(foldTerm(s.name))) continue;
-        const set = declByFile.get(s.file) ?? /* @__PURE__ */ new Set();
-        set.add(s.line);
-        declByFile.set(s.file, set);
-      }
-      for (const [rel2, fh] of lexical) {
-        if (!inScope(rel2)) continue;
-        const hit = callSiteHits(fh, compiled, declByFile.get(rel2) ?? /* @__PURE__ */ new Set());
-        if (!hit.lines.size) continue;
-        const entry = merged.get(rel2);
-        if (!entry) {
-          merged.set(rel2, hit);
-          continue;
-        }
-        for (const l of hit.lines) entry.lines.add(l);
-        for (const [n, c2] of hit.counts) entry.counts.set(n, (entry.counts.get(n) ?? 0) + c2);
-      }
-    }
-    for (const [rel2, entry] of merged) {
-      const name2 = [...entry.counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
-      callHits.set(rel2, { lines: [...entry.lines].sort((a, b) => a - b), name: name2 });
-    }
-    callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
-  }
-  const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
-  const canonicals = matcher.canonicals;
-  const df = /* @__PURE__ */ new Map();
-  for (const fh of lexical.values()) {
-    for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
-  }
-  const missed = matcher.expanded.filter((ek) => (df.get(ek.canonical) ?? 0) <= RANKING.RARE_TERM_DF && ek.variants.some((v) => v.kind !== "subtoken"));
-  if (missed.length) {
-    let merged = false;
-    for (const ek of missed) {
-      const rescueMatcher = {
-        ...matcher,
-        expanded: [ek],
-        canonicals: [ek.canonical],
-        patterns: ek.variants.filter((v) => v.kind !== "subtoken").map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical }))
-      };
-      const extra = lexicalSearch(root, rescueMatcher, scope);
-      for (const [rel2, fh] of extra) {
-        if (!inScope(rel2)) continue;
-        const cur = lexical.get(rel2);
-        if (!cur) {
-          lexical.set(rel2, fh);
-          files.add(rel2);
-          merged = true;
-          continue;
-        }
-        for (const kw of fh.matchedKw) cur.matchedKw.add(kw);
-        for (const [kw, n] of fh.kwCounts) cur.kwCounts.set(kw, Math.max(cur.kwCounts.get(kw) ?? 0, n));
-        const seen = new Set(cur.lines.map((l) => l.line));
-        for (const l of fh.lines) if (!seen.has(l.line)) cur.lines.push(l);
-        merged = true;
-      }
-    }
-    if (merged) {
-      df.clear();
-      for (const fh of lexical.values()) {
-        for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
-      }
-    }
-  }
-  const candidates = [...files].filter((rel2) => lexical.has(rel2)).map((rel2) => {
-    let len = 1e3;
-    try {
-      len = Math.max(1, statSync7(join27(root, rel2)).size / 5);
-    } catch {
-    }
-    return { key: rel2, tf: lexical.get(rel2).kwCounts, len };
-  });
-  const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, RANKING.BM25_K1, RANKING.BM25_B);
-  const lexRank = [...lexScores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
-  const symRank = [...symbols.entries()].filter(([rel2]) => files.has(rel2)).sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
-  const fused = rrf2(callRank.length ? [lexRank, symRank, callRank] : [lexRank, symRank], (rel2) => rel2);
-  const docSet = new Set(index.docFiles);
-  const canonSet = new Set(canonicals);
-  const scored = [];
-  for (const rel2 of files) {
-    const base = fused.get(rel2) ?? 0;
-    if (base <= 0) continue;
-    const lowSignal = /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel2) || docSet.has(rel2);
-    const stem = (rel2.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
-    const stemParts = [foldTerm(stem), ...subtokens2(stem).map(foldTerm)];
-    const nameBoost = canonSet.has(stemParts[0]) ? RANKING.STEM_EXACT_BOOST : stemParts.some((p) => canonSet.has(p)) ? RANKING.STEM_SUBTOKEN_BOOST : 1;
-    const score = base * RANKING.SCORE_SCALE * (lowSignal ? RANKING.LOW_SIGNAL_PENALTY : 1) * nameBoost;
-    scored.push({ rel: rel2, score, fh: lexical.get(rel2), sym: symbols.get(rel2)?.sym });
-  }
-  scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
-  const symsByFile = symbolsByFile(index.symbols);
-  const items = [];
-  for (const f of scored) {
-    if (items.length >= perSource) break;
-    const content = readText(join27(root, f.rel));
-    if (!content) continue;
-    const lines = content.split(/\r?\n/);
-    const call = callHits.get(f.rel);
-    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
-    for (let wi = 0; wi < windows.length; wi++) {
-      if (items.length >= perSource) break;
-      const win = windows[wi];
-      const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
-      const label = win.callSite ? `${win.label}${call?.name ? ` (${call.name})` : ""}` : win.label;
-      items.push(
-        codeItem({
-          ref,
-          index,
-          rel: f.rel,
-          lines,
-          start: win.start,
-          end: win.end,
-          label,
-          score,
-          meta: {
-            matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
-            symbol: f.sym?.name,
-            // The declaration's full range when the excerpt clipped it, so a
-            // reader knows the citation shows the head of a longer body.
-            ...win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {},
-            ...win.callSite ? { callSite: true } : {}
-          }
-        })
-      );
-    }
-  }
-  const pins = [];
-  for (const kw of canonicals) {
-    if (pins.length >= RANKING.RARE_PIN_MAX) break;
-    const n = df.get(kw) ?? 0;
-    if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
-    const direct = matcher.expanded.find((ek) => ek.canonical === kw)?.variants.filter((v) => v.kind !== "subtoken") ?? [];
-    if (!direct.length) continue;
-    const res = direct.map((v) => new RegExp(accentPattern(v.text), "i"));
-    const covered = items.some((i2) => i2.snippet.split(/\r?\n/).some((ln) => res.some((re) => re.test(ln))));
-    if (covered) continue;
-    const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
-    if (!best) continue;
-    pins.push({ f: best, kw, n, res });
-  }
-  if (pins.length) {
-    items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
-    for (const { f, kw, n, res } of pins) {
-      const content = readText(join27(root, f.rel));
-      if (!content) continue;
-      const lines = content.split(/\r?\n/);
-      const anchor = f.fh.lines.find((l) => {
-        const full = lines[l.line - 1] ?? l.text;
-        return res.some((re) => re.test(full));
-      })?.line ?? f.fh.lines[0].line;
-      const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
-      items.push(
-        codeItem({
-          ref,
-          index,
-          rel: f.rel,
-          lines,
-          start: w.start,
-          end: w.end,
-          label: `rare-term match (${kw})`,
-          score: f.score,
-          meta: { matchedKeywords: [...f.fh.matchedKw], pinnedRareTerm: kw }
-        })
-      );
-      notes.push(`Query term "${kw}" matches only ${n} file(s); pinned ${f.rel} into the results.`);
-    }
-  }
-  return { items, notes, fallback: usedRg ? void 0 : "js-scan" };
-}
-var SYMBOL_FALLBACK_LINES = 18;
-function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
-  let primary;
-  if (sym) {
-    const bodyEnd = sym.endLine ?? sym.line + SYMBOL_FALLBACK_LINES;
-    const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, bodyEnd), sym.line);
-    primary = { start: w.start, end: w.end, label: symbolLabel(sym) };
-    if (sym.endLine !== void 0 && (w.start > sym.line || w.end < sym.endLine)) {
-      primary.span = { start: sym.line, end: sym.endLine };
-    }
-  } else if (fh) {
-    const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0];
-    const w = expandWindow(lines, region.start, region.end, region.anchor);
-    const host = enclosingSymbol2(fileSyms, region.anchor);
-    primary = { start: w.start, end: w.end, label: host ? `in ${symbolLabel(host)}` : "match" };
-  } else {
-    primary = { start: 1, end: Math.min(lines.length, 20), label: "match" };
-  }
-  if (!callLines.length) return [primary];
-  const sorted = [...new Set(callLines)].sort((a, b) => a - b);
-  const regions = mergeLines(sorted, RANKING.CALLSITE_MERGE_GAP);
-  const best = regions.map((r) => ({ r, count: sorted.filter((l) => l >= r.start && l <= r.end).length })).sort((a, b) => b.count - a.count || a.r.start - b.r.start)[0].r;
-  const gap = best.start > primary.end ? best.start - primary.end : primary.start > best.end ? primary.start - best.end : 0;
-  const mergedStart = Math.min(primary.start, best.start);
-  const mergedEnd = Math.max(primary.end, best.end);
-  if (gap <= RANKING.CALLSITE_MERGE_GAP && mergedEnd - mergedStart + 1 <= MAX_EXCERPT_LINES) {
-    const w = expandWindow(lines, mergedStart, mergedEnd, sym?.line ?? best.start);
-    return [{ start: w.start, end: w.end, label: primary.label, ...primary.span ? { span: primary.span } : {} }];
-  }
-  const cw = expandWindow(lines, best.start, best.end, best.start);
-  const caller = enclosingSymbol2(fileSyms, best.start);
-  return [primary, { start: cw.start, end: cw.end, label: caller ? `call site in ${symbolLabel(caller)}` : "call site", callSite: true }];
-}
-
-// src/index/semantic/qdrant.ts
-import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
-import { join as join29, dirname as dirname6 } from "path";
+import { renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync6 } from "fs";
 
 // src/vendor/webindex-engine.mjs
 import { inflateSync, inflateRawSync } from "zlib";
-import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync12, rmSync as rmSync3, writeFileSync as writeFileSync7, existsSync as existsSync11 } from "fs";
-import { join as join28 } from "path";
-import { tmpdir as tmpdir3 } from "os";
+import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync11, rmSync as rmSync3, writeFileSync as writeFileSync5, existsSync as existsSync9 } from "fs";
+import { join as join21 } from "path";
+import { tmpdir } from "os";
 import { spawn } from "child_process";
-import { existsSync as existsSync32, readdirSync as readdirSync5, readFileSync as readFileSync32, realpathSync as realpathSync2, statSync as statSync8 } from "fs";
-import { basename as basename4, dirname as dirname5, join as join32, resolve as resolve4, sep as sep3 } from "path";
+import { existsSync as existsSync32, readdirSync as readdirSync4, readFileSync as readFileSync32, realpathSync as realpathSync2, statSync as statSync6 } from "fs";
+import { basename as basename3, dirname as dirname5, join as join32, resolve as resolve3, sep as sep3 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 import { createInterface as createInterface2 } from "readline";
 import { createServer as createHttpServer } from "http";
@@ -17509,7 +16057,7 @@ function envFlag(suffix) {
   const lower = v.toLowerCase();
   return lower !== "0" && lower !== "false" && lower !== "no" && lower !== "off";
 }
-function envInt2(suffix, def, min = 0, max = Number.MAX_SAFE_INTEGER) {
+function envInt(suffix, def, min = 0, max = Number.MAX_SAFE_INTEGER) {
   const raw = env(suffix);
   if (raw === void 0) return def;
   const n = Number(raw);
@@ -17703,7 +16251,7 @@ var DEFAULT_MAX_DOCS = 3;
 var DEFAULT_LANG = "eng";
 var spent = 0;
 function ocrBudgetLeft() {
-  return Math.max(0, envInt2("OCR_MAX", DEFAULT_MAX_DOCS) - spent);
+  return Math.max(0, envInt("OCR_MAX", DEFAULT_MAX_DOCS) - spent);
 }
 async function ocrTools() {
   const probe = async (cmd, args2) => (await runWithInput(cmd, args2, Buffer.alloc(0), 2e4)).ok;
@@ -17714,17 +16262,17 @@ async function ocrPdf(bytes) {
   if (ocrBudgetLeft() <= 0) return void 0;
   const { copyablePdf, tesseract } = await ocrTools();
   if (!copyablePdf || !tesseract) return void 0;
-  const dir = mkdtempSync2(join28(tmpdir3(), `${brand().name}-ocr-`));
+  const dir = mkdtempSync2(join21(tmpdir(), `${brand().name}-ocr-`));
   try {
-    const input = join28(dir, "in.pdf");
-    const output = join28(dir, "out.pdf");
-    writeFileSync7(input, bytes);
+    const input = join21(dir, "in.pdf");
+    const output = join21(dir, "out.pdf");
+    writeFileSync5(input, bytes);
     const lang = env("OCR_LANG") || DEFAULT_LANG;
-    const r = await runWithInput("copyable-pdf", ["-o", output, "-m", "-l", lang, input], Buffer.alloc(0), envInt2("OCR_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
+    const r = await runWithInput("copyable-pdf", ["-o", output, "-m", "-l", lang, input], Buffer.alloc(0), envInt("OCR_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
     spent++;
     if (!r.ok) return void 0;
     const md = output.replace(/\.pdf$/, ".md");
-    return existsSync11(md) ? readFileSync12(md, "utf8") : void 0;
+    return existsSync9(md) ? readFileSync11(md, "utf8") : void 0;
   } catch {
     return void 0;
   } finally {
@@ -17875,7 +16423,197 @@ async function extractDocument(bytes, fmt, opts = {}) {
   }
   return { text: "", reason: lastReason ?? "no document converter available" };
 }
-var ACCENT_CLASSES2 = {
+function escapeRegExp2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+var STOPWORDS2 = /* @__PURE__ */ new Set([
+  "the",
+  "a",
+  "an",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "do",
+  "does",
+  "did",
+  "how",
+  "what",
+  "why",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "this",
+  "that",
+  "these",
+  "those",
+  "of",
+  "in",
+  "on",
+  "to",
+  "for",
+  "with",
+  "and",
+  "or",
+  "but",
+  "if",
+  "then",
+  "else",
+  "than",
+  "as",
+  "at",
+  "by",
+  "from",
+  "into",
+  "about",
+  "it",
+  "its",
+  "i",
+  "you",
+  "we",
+  "they",
+  "he",
+  "she",
+  "there",
+  "here",
+  "can",
+  "could",
+  "should",
+  "would",
+  "will",
+  "shall",
+  "may",
+  "might",
+  "must",
+  "have",
+  "has",
+  "had",
+  "not",
+  "no",
+  "yes",
+  "so",
+  "such",
+  "only",
+  "any",
+  "some",
+  "all",
+  "get",
+  "set",
+  "use",
+  "used",
+  "using",
+  "work",
+  "works",
+  "working",
+  "handle",
+  "handled",
+  "happen",
+  "happens",
+  "default",
+  "value",
+  "values",
+  "please",
+  "explain",
+  "tell",
+  "me",
+  "my",
+  "our",
+  "le",
+  "la",
+  "les",
+  "de",
+  "des",
+  "du",
+  "un",
+  "une",
+  "est",
+  "sont",
+  "que",
+  "qui",
+  "quoi",
+  "quel",
+  "quelle",
+  "quels",
+  "quelles",
+  "pour",
+  "dans",
+  "avec",
+  "entre",
+  "sur",
+  "par",
+  "pas",
+  "plus",
+  "et",
+  "ou",
+  "o\xF9",
+  "ce",
+  "cette",
+  "ces",
+  "se",
+  "sa",
+  "son",
+  "ses",
+  "leur",
+  "leurs",
+  "comment",
+  "pourquoi",
+  "quand",
+  "fait",
+  "faire",
+  "peut",
+  "doit",
+  "\xEAtre",
+  "avoir",
+  "il",
+  "elle",
+  "nous",
+  "vous",
+  "ils",
+  "elles",
+  "au",
+  "aux",
+  "si",
+  "ne"
+]);
+function isStopword(term) {
+  const t = term.toLowerCase();
+  if (STOPWORDS2.has(t)) return true;
+  const extra = brand().extraStopwords;
+  return extra ? extra.some((w) => w.toLowerCase() === t) : false;
+}
+function keywords2(question) {
+  const seen = /* @__PURE__ */ new Set();
+  const out2 = [];
+  for (const raw of question.split(/[^\p{L}\p{N}_]+/u)) {
+    if (!raw) continue;
+    const lower = raw.toLowerCase();
+    if (raw.length < 2) continue;
+    if (isStopword(lower)) continue;
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out2.push(raw);
+  }
+  return out2;
+}
+function rankedKeywords2(question) {
+  const base = keywords2(question);
+  const score = (raw) => {
+    let s = 0;
+    if (/\d/.test(raw)) s += 3;
+    if (/[A-Z]/.test(raw) && !/^[A-Z0-9]+$/.test(raw)) s += 2;
+    if (/_/.test(raw)) s += 2;
+    if (raw.length >= 8) s += 1.5;
+    else if (raw.length >= 5) s += 0.5;
+    return s;
+  };
+  return base.map((k, i2) => ({ k, s: score(k), i: i2 })).sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.k);
+}
+var ACCENT_CLASSES = {
   a: "a\xE0\xE1\xE2\xE3\xE4\xE5\u0101\u0103\u0105",
   c: "c\xE7\u0107\u0109\u010B\u010D",
   d: "d\u010F\u0111",
@@ -17892,9 +16630,107 @@ var ACCENT_CLASSES2 = {
   y: "y\xFD\xFF\u0177",
   z: "z\u017A\u017C\u017E"
 };
-var BASE_OF2 = /* @__PURE__ */ new Map();
-for (const [base, cls] of Object.entries(ACCENT_CLASSES2)) {
-  for (const ch of cls) BASE_OF2.set(ch, base);
+var BASE_OF = /* @__PURE__ */ new Map();
+for (const [base, cls] of Object.entries(ACCENT_CLASSES)) {
+  for (const ch of cls) BASE_OF.set(ch, base);
+}
+function baseChar(ch) {
+  const known = BASE_OF.get(ch);
+  if (known) return known;
+  const stripped = ch.normalize("NFD").replace(new RegExp("\\p{M}+", "gu"), "");
+  return stripped.length === 1 ? stripped : ch;
+}
+function deaccent(s) {
+  let out2 = "";
+  for (const ch of s) out2 += baseChar(ch);
+  return out2;
+}
+function foldPlural(t) {
+  if (t.length > 4 && t.endsWith("ies")) return t.slice(0, -3) + "y";
+  if (t.length > 4 && /(?:[sxz]|[cs]h)es$/.test(t)) return t.slice(0, -2);
+  if (t.length > 3 && t.endsWith("s") && !/(?:ss|us|is)$/.test(t)) return t.slice(0, -1);
+  return t;
+}
+function foldTerm(raw) {
+  return foldPlural(deaccent(raw.toLowerCase()));
+}
+function subtokens2(raw) {
+  const spaced = raw.replace(new RegExp("([\\p{Ll}\\p{N}])(\\p{Lu})", "gu"), "$1 $2").replace(new RegExp("(\\p{Lu}+)(\\p{Lu}\\p{Ll})", "gu"), "$1 $2").replace(new RegExp("(\\p{L})(\\p{N})", "gu"), "$1 $2").replace(new RegExp("(\\p{N})(\\p{L})", "gu"), "$1 $2");
+  const parts2 = spaced.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (parts2.length < 2) return [];
+  const out2 = [];
+  for (const p of parts2) {
+    const lower = p.toLowerCase();
+    if (lower.length < 3 || isStopword(lower)) continue;
+    if (!out2.includes(lower)) out2.push(lower);
+    if (out2.length >= 4) break;
+  }
+  return out2;
+}
+var MAX_PATTERNS = 24;
+var VARIANT_PRIORITY = { original: 0, folded: 1, subtoken: 2 };
+function expandTokens(tokens, max = 8) {
+  const byCanonical = /* @__PURE__ */ new Map();
+  for (const raw of tokens) {
+    if (byCanonical.size >= max) break;
+    const canonical = foldTerm(raw);
+    if (!canonical || byCanonical.has(canonical)) continue;
+    const plain = deaccent(raw.toLowerCase());
+    const variants = [{ text: raw.toLowerCase(), kind: "original" }];
+    if (canonical !== plain) variants.push({ text: canonical, kind: "folded" });
+    if (plain.length > 4 && plain.endsWith("ies")) variants.push({ text: plain.slice(0, -1), kind: "folded" });
+    for (const sub of subtokens2(raw)) variants.push({ text: sub, kind: "subtoken" });
+    byCanonical.set(canonical, { canonical, original: raw, variants });
+  }
+  const all = [...byCanonical.values()].flatMap((ek, kwIdx) => ek.variants.map((v) => ({ ek, v, kwIdx })));
+  all.sort((a, b) => VARIANT_PRIORITY[a.v.kind] - VARIANT_PRIORITY[b.v.kind] || a.kwIdx - b.kwIdx);
+  const seen = /* @__PURE__ */ new Set();
+  const kept = /* @__PURE__ */ new Set();
+  for (const { v } of all) {
+    if (kept.size >= MAX_PATTERNS) break;
+    const key = deaccent(v.text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.add(v);
+  }
+  for (const ek of byCanonical.values()) ek.variants = ek.variants.filter((v) => kept.has(v));
+  return [...byCanonical.values()];
+}
+function accentPattern(text) {
+  let out2 = "";
+  for (const ch of text) {
+    const cls = ACCENT_CLASSES[baseChar(ch)];
+    out2 += cls ? `[${cls}]` : escapeRegExp2(ch);
+  }
+  return out2;
+}
+function makeMatcher(expanded) {
+  const regexes = [];
+  for (const ek of expanded) {
+    for (const v of ek.variants) {
+      regexes.push({ re: new RegExp(accentPattern(v.text), "i"), canonical: ek.canonical });
+    }
+  }
+  const patterns = expanded.flatMap((ek) => ek.variants.map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical })));
+  return {
+    expanded,
+    canonicals: expanded.map((e) => e.canonical),
+    patterns,
+    canonicalOf: (span) => regexes.find(({ re }) => new RegExp(`^(?:${re.source})$`, "i").test(span))?.canonical,
+    matchLine: (line) => {
+      const hit = /* @__PURE__ */ new Set();
+      for (const { re, canonical } of regexes) {
+        if (!hit.has(canonical) && re.test(line)) hit.add(canonical);
+      }
+      return hit;
+    }
+  };
+}
+function buildMatcher(question, max = 8) {
+  return makeMatcher(expandTokens(keywords2(question), max));
+}
+function matcherFromTokens(tokens, max = 8) {
+  return makeMatcher(expandTokens(tokens.filter(Boolean), max));
 }
 var SCRAPE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
 var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
@@ -17988,7 +16824,7 @@ var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
   const here = moduleDir ?? dirname5(fileURLToPath3(import.meta.url));
   const name2 = brand().name;
-  const candidates = [resolve4(here, ".."), resolve4(here, "..", "skills", name2), resolve4(here, "..", "..", "skills", name2)];
+  const candidates = [resolve3(here, ".."), resolve3(here, "..", "skills", name2), resolve3(here, "..", "..", "skills", name2)];
   return candidates.find((dir) => existsSync32(join32(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
@@ -17997,9 +16833,9 @@ function listResources(moduleDir) {
   const out2 = [describe(root, "SKILL.md", `${skillName()}: the skill`)];
   const refDir = join32(root, "references");
   if (!existsSync32(refDir)) return out2;
-  for (const file of readdirSync5(refDir).sort()) {
+  for (const file of readdirSync4(refDir).sort()) {
     if (!file.endsWith(".md")) continue;
-    out2.push(describe(root, join32("references", file), `${skillName()} reference: ${basename4(file, ".md")}`));
+    out2.push(describe(root, join32("references", file), `${skillName()} reference: ${basename3(file, ".md")}`));
   }
   return out2;
 }
@@ -18011,7 +16847,7 @@ function readResource(uri, moduleDir) {
   if (!root) throw new ResourceError("no skill payload found next to this build \u2014 nothing to read");
   const rel2 = uri.slice(URI_SCHEME.length);
   if (!rel2) throw new ResourceError("empty resource path");
-  const target = resolve4(root, rel2);
+  const target = resolve3(root, rel2);
   const rootReal = realpathSync2(root);
   let targetReal;
   try {
@@ -18022,7 +16858,7 @@ function readResource(uri, moduleDir) {
   if (targetReal !== rootReal && !targetReal.startsWith(rootReal + sep3)) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
-  if (!statSync8(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
+  if (!statSync6(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
   return { uri, mimeType: "text/markdown", text: readFileSync32(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
@@ -18443,8 +17279,1155 @@ configure({
   name: "ultradoc",
   envPrefix: "ULTRADOC",
   cli: "ultradoc",
-  contactUrl: "https://github.com/maxgfr/ultradoc"
+  contactUrl: "https://github.com/maxgfr/ultradoc",
+  // Two words on top of the engine's shared list, and the reason this skill can
+  // use the shared keyword machinery at all. ultradoc reads source repositories,
+  // where "test" and "request" appear in nearly every file — keeping them as
+  // keywords would score every document alike. The rest of the matcher is
+  // byte-for-byte the engine's.
+  extraStopwords: ["request", "test"]
 });
+
+// src/util.ts
+var tmpCounter = 0;
+function writeFileAtomic(path, data) {
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
+  try {
+    writeFileSync6(tmp, data);
+    renameSync2(tmp, path);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+    }
+    throw e;
+  }
+}
+function sh2(cmd, args2, opts = {}) {
+  const res = spawnSync2(cmd, args2, {
+    cwd: opts.cwd,
+    input: opts.input,
+    encoding: "utf8",
+    timeout: opts.timeoutMs ?? 12e4,
+    maxBuffer: 64 * 1024 * 1024,
+    env: opts.env ?? process.env
+  });
+  const missing = !!res.error && res.error.code === "ENOENT";
+  return {
+    ok: !res.error && res.status === 0,
+    status: res.status,
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? (res.error ? String(res.error.message) : ""),
+    missing
+  };
+}
+var whichCache2 = /* @__PURE__ */ new Map();
+function have2(cmd) {
+  const cached = whichCache2.get(cmd);
+  if (cached !== void 0) return cached;
+  const probe = sh2(process.platform === "win32" ? "where" : "which", [cmd]);
+  const found = probe.ok && probe.stdout.trim().length > 0;
+  whichCache2.set(cmd, found);
+  return found;
+}
+function slugify2(input) {
+  return input.toLowerCase().replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120);
+}
+function looksLikeTestFile(rel2) {
+  if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel2)) return true;
+  const base = (rel2.split("/").pop() ?? "").toLowerCase();
+  return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
+}
+function rrf2(lists, keyOf2, k = 60) {
+  const score = /* @__PURE__ */ new Map();
+  for (const list of lists) {
+    list.forEach((item, idx) => {
+      const key = keyOf2(item);
+      score.set(key, (score.get(key) ?? 0) + 1 / (k + idx + 1));
+    });
+  }
+  return score;
+}
+async function mapLimit(items, limit, fn) {
+  const n = items.length;
+  const out2 = new Array(n);
+  const width = Math.max(1, Math.min(limit, n || 1));
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i2 = next++;
+      if (i2 >= n) return;
+      out2[i2] = await fn(items[i2], i2);
+    }
+  }
+  await Promise.all(Array.from({ length: width }, () => worker()));
+  return out2;
+}
+
+// src/config.ts
+import { homedir as homedir2, tmpdir as tmpdir2 } from "os";
+import { join as join22 } from "path";
+function envInt2(name2, def, min = 1) {
+  const raw = process.env[name2];
+  if (raw === void 0) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
+}
+function envStr(name2, def) {
+  const raw = process.env[name2]?.trim();
+  return raw ? raw : def;
+}
+var LIMITS = {
+  maxFiles: envInt2("ULTRADOC_MAX_FILES", 2e4),
+  // files walked/indexed
+  maxFileBytes: envInt2("ULTRADOC_MAX_FILE_BYTES", 1048576),
+  // per-file read cap
+  symbolsPerFile: envInt2("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
+  // symbols kept per file
+  // Call sites kept per declared symbol name. Bounds index.json on repos where
+  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
+  // keeps the evidence (a handful of sites is all a citation ever needs) and
+  // the cap is reported in stats rather than silently applied.
+  callSitesPerSymbol: envInt2("ULTRADOC_MAX_CALL_SITES", 30),
+  releasesFetched: envInt2("ULTRADOC_MAX_RELEASES", 20),
+  // GitHub releases fetched
+  docPackages: envInt2("ULTRADOC_MAX_DOC_PACKAGES", 6),
+  // monorepo packages given doc sections
+  docModules: envInt2("ULTRADOC_MAX_DOC_MODULES", 5),
+  // subsystems given their own doc section
+  verifyPairs: envInt2("ULTRADOC_MAX_VERIFY", 40),
+  // claim↔evidence pairs (CLI --max-verify wins)
+  embedChunks: envInt2("ULTRADOC_MAX_CHUNKS", 800),
+  // semantic chunks embedded per repo
+  embedConcurrency: envInt2("ULTRADOC_EMBED_CONCURRENCY", 4)
+  // parallel embed requests
+};
+function extdocsTtlMs() {
+  return envInt2("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
+}
+var CACHE_DIR_NAME = ".ultradoc";
+function cacheRoot() {
+  const override = process.env.ULTRADOC_CACHE_DIR?.trim();
+  if (override) return override;
+  const home = homedir2();
+  if (!home) return join22(tmpdir2(), "ultradoc");
+  if (process.platform === "darwin") return join22(home, "Library", "Caches", "ultradoc");
+  if (process.platform === "win32") return join22(process.env.LOCALAPPDATA?.trim() || join22(home, "AppData", "Local"), "ultradoc");
+  return join22(process.env.XDG_CACHE_HOME?.trim() || join22(home, ".cache"), "ultradoc");
+}
+
+// src/clone.ts
+function migrateLegacyClone(dir, slug) {
+  if (existsSync10(dir)) return;
+  const legacy = join23(tmpdir3(), "ultradoc", slug);
+  if (legacy === dir || !existsSync10(join23(legacy, ".git"))) return;
+  try {
+    mkdirSync4(cacheRoot(), { recursive: true });
+    renameSync3(legacy, dir);
+  } catch {
+  }
+}
+function resolveRepo(raw) {
+  const trimmed = raw.trim();
+  const asPath = resolve4(trimmed);
+  if (existsSync10(asPath) && statSync7(asPath).isDirectory()) {
+    return {
+      raw: trimmed,
+      host: "local",
+      isLocal: true,
+      slug: "local-" + slugify2(basename4(asPath) + "-" + asPath)
+    };
+  }
+  let host;
+  let path;
+  const scp = /^git@([^:]+):(.+)$/.exec(trimmed);
+  const url = /^https?:\/\/([^/]+)\/(.+)$/.exec(trimmed);
+  const hostPath = /^([a-z0-9.-]+\.[a-z]{2,})\/(.+)$/i.exec(trimmed);
+  if (scp) {
+    host = scp[1];
+    path = scp[2];
+  } else if (url) {
+    host = url[1];
+    path = url[2];
+  } else if (hostPath) {
+    host = hostPath[1];
+    path = hostPath[2];
+  } else {
+    host = "github.com";
+    path = trimmed;
+  }
+  path = path.replace(/\.git$/, "").replace(/\/+$/, "");
+  const segments = path.split("/").filter(Boolean);
+  const repo = segments.length ? segments[segments.length - 1] : void 0;
+  const owner = segments.length > 1 ? segments.slice(0, -1).join("/") : void 0;
+  const cloneUrl = /^https?:\/\//.test(trimmed) || scp ? trimmed : `https://${host}/${path}.git`;
+  const webUrl = `https://${host}/${path}`;
+  return {
+    raw: trimmed,
+    host,
+    owner,
+    repo,
+    cloneUrl: cloneUrl.endsWith(".git") ? cloneUrl : `${cloneUrl}.git`,
+    webUrl,
+    isLocal: false,
+    slug: slugify2(`${host}/${path}`)
+  };
+}
+function ensureClone(ref, opts = {}) {
+  if (ref.isLocal) return resolve4(ref.raw);
+  const dir = join23(cacheRoot(), ref.slug);
+  migrateLegacyClone(dir, ref.slug);
+  const alreadyCloned = existsSync10(join23(dir, ".git"));
+  if (alreadyCloned && !opts.refresh) return dir;
+  if (alreadyCloned && opts.refresh) {
+    sh2("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { timeoutMs: 18e4 });
+    sh2("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: 6e4 });
+    return dir;
+  }
+  mkdirSync4(cacheRoot(), { recursive: true });
+  const args2 = ["clone", "--depth", "1", "--filter=blob:none"];
+  if (opts.branch) args2.push("--branch", opts.branch);
+  args2.push(ref.cloneUrl, dir);
+  const res = sh2("git", args2, { timeoutMs: 3e5 });
+  if (!res.ok) {
+    const fallback = sh2("git", ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir], { timeoutMs: 3e5 });
+    if (!fallback.ok) {
+      throw new Error(`git clone failed for ${ref.cloneUrl}
+${(res.stderr || fallback.stderr).trim()}`);
+    }
+  }
+  if (!existsSync10(dir) || readdirSync5(dir).length === 0) {
+    throw new Error(`clone produced an empty tree at ${dir}`);
+  }
+  return dir;
+}
+var deepened = /* @__PURE__ */ new Map();
+function ensureHistoryDepth(dir) {
+  const cached = deepened.get(dir);
+  if (cached) return cached;
+  let out2;
+  const probe = sh2("git", ["-C", dir, "rev-parse", "--is-shallow-repository"]);
+  const filter = sh2("git", ["-C", dir, "config", "remote.origin.partialclonefilter"]);
+  const shallow = probe.ok && probe.stdout.trim() === "true";
+  const partial = filter.ok && filter.stdout.trim() !== "";
+  if (!probe.ok) {
+    out2 = { ok: false, note: "Not a git working tree \u2014 no commit history available." };
+  } else if (!shallow && !partial) {
+    out2 = { ok: true };
+  } else {
+    if (partial) sh2("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
+    const args2 = ["-C", dir, "fetch", "--quiet", ...partial ? ["--refetch"] : [], ...shallow ? ["--unshallow"] : [], "origin"];
+    const full = sh2("git", args2, { timeoutMs: 3e5 });
+    if (full.ok) {
+      out2 = { ok: true };
+    } else if (shallow && !partial) {
+      const deepen = sh2("git", ["-C", dir, "fetch", "--quiet", "--deepen=500", "origin"], {
+        timeoutMs: 18e4
+      });
+      out2 = deepen.ok ? { ok: true, note: "History deepened to ~500 commits (full unshallow failed); older changes may be missing." } : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
+    } else {
+      out2 = { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
+    }
+  }
+  deepened.set(dir, out2);
+  return out2;
+}
+function headCommit2(dir) {
+  const res = sh2("git", ["-C", dir, "rev-parse", "--short", "HEAD"]);
+  return res.ok ? res.stdout.trim() : void 0;
+}
+function sameCommit(a, b) {
+  if (!a || !b) return false;
+  return a === b || a.startsWith(b) || b.startsWith(a);
+}
+function originUrl(dir) {
+  const res = sh2("git", ["-C", dir, "remote", "get-url", "origin"]);
+  return res.ok && res.stdout.trim() ? res.stdout.trim() : void 0;
+}
+
+// src/index/structural.ts
+import { existsSync as existsSync11, mkdirSync as mkdirSync5, readFileSync as readFileSync12 } from "fs";
+import { join as join26 } from "path";
+
+// src/lang/registry.ts
+function languageOf2(ext) {
+  return languageOf(ext);
+}
+
+// src/index/scan.ts
+import { join as join24 } from "path";
+var memo = /* @__PURE__ */ new Map();
+function scanOptions2(root, maxFiles) {
+  return {
+    maxFiles: maxFiles ?? LIMITS.maxFiles,
+    maxBytes: LIMITS.maxFileBytes,
+    // Exclude ultradoc's own cache dir by absolute path — the engine only knows
+    // to skip its own.
+    out: join24(root, CACHE_DIR_NAME)
+  };
+}
+function publishScan(root, scan2) {
+  memo.set(root, scan2);
+}
+function repoScan(root) {
+  const hit = memo.get(root);
+  if (hit) return hit;
+  const scan2 = scanRepo(root, scanOptions2(root));
+  memo.set(root, scan2);
+  return scan2;
+}
+
+// src/sources/doc-discovery.ts
+import { join as join25 } from "path";
+
+// src/walk.ts
+function walkDetailed(root, opts = {}) {
+  const res = walk(root, {
+    maxFileBytes: opts.maxFileBytes ?? LIMITS.maxFileBytes,
+    maxFiles: opts.maxFiles ?? LIMITS.maxFiles
+  });
+  return {
+    files: res.files.filter((f) => f.rel !== ".ultradoc" && !f.rel.startsWith(".ultradoc/")),
+    truncated: res.capped
+  };
+}
+function walk2(root, opts = {}) {
+  return walkDetailed(root, opts).files;
+}
+
+// src/sources/doc-discovery.ts
+var DOC_DIR2 = /(^|\/)(docs?|documentation|website|guides?|book|manual|handbook|reference)$/i;
+function discoverDocsRoot(docFiles) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const rel2 of docFiles) {
+    const parts2 = rel2.split("/");
+    for (const depth of [1, 2]) {
+      if (parts2.length <= depth) continue;
+      const dir = parts2.slice(0, depth).join("/");
+      if (DOC_DIR2.test(dir)) counts.set(dir, (counts.get(dir) ?? 0) + 1);
+    }
+  }
+  let best;
+  let bestN = 1;
+  for (const [k, v] of counts) {
+    if (v > bestN || v === bestN && best && k.length < best.length) {
+      best = k;
+      bestN = v;
+    }
+  }
+  return best;
+}
+var KNOWN_DOC_HOST = /readthedocs\.(io|org)|\.gitbook\.io|mintlify|docusaurus|\.readme\.io/i;
+var HOSTED = /\.github\.io|\.netlify\.app|\.vercel\.app|\.pages\.dev/i;
+var DOC_SUBDOMAIN = /^https?:\/\/docs?\./i;
+var DOC_PATH = /(^|\/)(docs?|documentation|guide|guides|manual|handbook|reference|learn)(\/|$|#|\?)/i;
+var URL_RE = /https?:\/\/[^\s)"'<>`\]]+/g;
+function scoreDocUrl(url, context2) {
+  let s = 0;
+  if (DOC_SUBDOMAIN.test(url)) s += 5;
+  if (KNOWN_DOC_HOST.test(url)) s += 5;
+  if (DOC_PATH.test(url)) s += 3;
+  if (HOSTED.test(url) && DOC_PATH.test(url)) s += 1;
+  if (/\b(documentation|docs|guide|manual|reference|api docs)\b/i.test(context2)) s += 2;
+  const path = url.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+  const depth = (path.match(/\//g) ?? []).length;
+  if (depth >= 3) s -= Math.min(2, (depth - 2) * 0.5);
+  return s;
+}
+function clean(url) {
+  return url.replace(/[.,;]+$/, "").replace(/\)+$/, "");
+}
+function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
+  const candidates = [];
+  const names = projectNames.filter((n) => n && n.length >= 3).map((n) => n.toLowerCase());
+  const related = (url) => names.some((n) => url.toLowerCase().includes(n));
+  const add = (url, context2, bonus = 0) => {
+    const u = clean(url);
+    if (!/^https?:\/\//.test(u)) return;
+    candidates.push({ url: u, score: scoreDocUrl(u, context2) + bonus + (related(u) ? 3 : 0) });
+  };
+  const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
+  if (readme) {
+    const text = readText(join25(repoDir, readme)).slice(0, 4e4);
+    let m;
+    const link = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+    while (m = link.exec(text)) add(m[2], m[1]);
+    for (const line of text.split("\n")) {
+      if (!/\b(doc|documentation|guide|manual|reference)\b/i.test(line)) continue;
+      const urls = line.match(URL_RE);
+      if (urls) for (const u of urls) add(u, line);
+    }
+  }
+  for (const cfg of configFiles) {
+    const base = cfg.split("/").pop().toLowerCase();
+    const text = readText(join25(repoDir, cfg));
+    if (!text) continue;
+    if (base === "package.json" || base === "composer.json") {
+      try {
+        const j = JSON.parse(text);
+        if (typeof j.homepage === "string") add(j.homepage, "homepage", 1);
+        if (typeof j.documentation === "string") add(j.documentation, "documentation", 8);
+        const docs = j.support?.docs ?? j.support?.documentation;
+        if (typeof docs === "string") add(docs, "documentation", 8);
+      } catch {
+      }
+    } else if (base === "pyproject.toml" || base === "setup.cfg") {
+      const m = /^\s*Documentation\s*=\s*["']?(https?:\/\/[^"'\s]+)/im.exec(text);
+      if (m) add(m[1], "documentation", 8);
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  return best && best.score >= 4 ? best.url : void 0;
+}
+
+// src/index/workspaces.ts
+function discoverWorkspaces(root) {
+  return detectWorkspaces(root).packages.map((p) => ({ name: p.name, dir: p.dir, description: p.description })).sort((a, b) => a.dir.localeCompare(b.dir));
+}
+function resolvePackage(packages, query4) {
+  const q = query4.toLowerCase().replace(/\/+$/, "");
+  const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
+  if (exact) return exact;
+  const short = packages.filter((p) => p.name.toLowerCase().split("/").pop() === q || p.dir.toLowerCase().split("/").pop() === q);
+  if (short.length === 1) return short[0];
+  if (short.length > 1) return void 0;
+  const loose = packages.filter((p) => p.name.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q));
+  return loose.length === 1 ? loose[0] : void 0;
+}
+
+// src/index/structural.ts
+var SCHEMA_VERSION2 = 5;
+var DOC_BASENAME2 = /^(readme|changelog|contributing|history|news|authors|notice|security|code_of_conduct|faq|getting[-_]?started|usage|guide|tutorial)\b/i;
+var DOC_EXT2 = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc", ".txt"]);
+var DOC_DIR3 = /^(docs?|documentation|wiki|guides?|website|site|book)\//i;
+var CONFIG_BASENAME2 = /* @__PURE__ */ new Set([
+  "package.json",
+  "pnpm-workspace.yaml",
+  "tsconfig.json",
+  "pyproject.toml",
+  "setup.py",
+  "setup.cfg",
+  "requirements.txt",
+  "pipfile",
+  "go.mod",
+  "cargo.toml",
+  "gemfile",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "composer.json",
+  "mix.exs",
+  "pubspec.yaml",
+  "build.sbt",
+  "dockerfile",
+  "docker-compose.yml",
+  "makefile",
+  ".env.example",
+  "manifest.json"
+]);
+function indexDir(root) {
+  return join26(root, ".ultradoc");
+}
+function indexPath(root) {
+  return join26(indexDir(root), "index.json");
+}
+function isDoc2(rel2, ext) {
+  const base = rel2.split("/").pop().toLowerCase();
+  return DOC_EXT2.has(ext) || DOC_BASENAME2.test(base) || DOC_DIR3.test(rel2);
+}
+function isConfig2(rel2) {
+  return CONFIG_BASENAME2.has(rel2.split("/").pop().toLowerCase());
+}
+function buildCallSites(files, declared) {
+  const byName = /* @__PURE__ */ new Map();
+  let capHits = 0;
+  for (const f of files) {
+    for (const c2 of f.calls ?? []) {
+      if (!declared.has(c2.name)) continue;
+      let sites = byName.get(c2.name);
+      if (!sites) {
+        sites = [];
+        byName.set(c2.name, sites);
+      }
+      if (sites.length >= LIMITS.callSitesPerSymbol) continue;
+      sites.push([f.rel, c2.line]);
+    }
+  }
+  const callSites = {};
+  for (const name2 of [...byName.keys()].sort()) {
+    const sites = byName.get(name2);
+    if (sites.length >= LIMITS.callSitesPerSymbol) capHits++;
+    callSites[name2] = sites;
+  }
+  return { callSites, capHits };
+}
+function buildIndex(root, slug, opts = {}) {
+  const scan2 = scanRepo(root, scanOptions2(root, opts.maxFiles));
+  if (!scan2.capped && opts.maxFiles === void 0) publishScan(root, scan2);
+  const languages = {};
+  const symbols = [];
+  const docFiles = [];
+  const configFiles = [];
+  const topDirs = {};
+  const exts = /* @__PURE__ */ new Set();
+  let symbolCapHits = 0;
+  for (const f of scan2.files) {
+    const lang = languageOf2(f.ext);
+    languages[lang] = (languages[lang] ?? 0) + 1;
+    const top = f.rel.includes("/") ? f.rel.slice(0, f.rel.indexOf("/")) : ".";
+    topDirs[top] = (topDirs[top] ?? 0) + 1;
+    if (isDoc2(f.rel, f.ext)) docFiles.push(f.rel);
+    if (isConfig2(f.rel)) configFiles.push(f.rel);
+    if (f.kind === "code") exts.add(f.ext);
+    if (f.symbols.length > LIMITS.symbolsPerFile) symbolCapHits++;
+    for (const s of f.symbols.slice(0, LIMITS.symbolsPerFile)) symbols.push(s);
+  }
+  const { callSites, capHits: callSiteCapHits } = buildCallSites(scan2.files, new Set(symbols.map((s) => s.name)));
+  const sortedDocs = docFiles.sort();
+  const sortedConfigs = configFiles.sort();
+  const index = {
+    slug,
+    root,
+    commit: headCommit2(root),
+    builtAt: (/* @__PURE__ */ new Date()).toISOString(),
+    fileCount: scan2.files.length,
+    languages,
+    symbols,
+    docFiles: sortedDocs,
+    configFiles: sortedConfigs,
+    // Discover the canonical docs folder + official docs URL once, from the
+    // repo's own README/manifests, and cache them so questions cost no extra work.
+    docsRoot: discoverDocsRoot(sortedDocs),
+    docsUrl: discoverDocsUrl(root, sortedDocs, sortedConfigs, opts.project ?? []),
+    // Workspace packages (yarn/npm/pnpm/lerna/Cargo/go.work) so monorepo
+    // questions can be scoped to one package with --package.
+    packages: discoverWorkspaces(root),
+    topDirs,
+    callSites,
+    // Recorded, never inferred later: an index built without the grammars has
+    // no endLine and no nested methods, and every consumer must be able to say
+    // so rather than present a regex-tier index as complete.
+    stats: {
+      truncated: scan2.capped,
+      symbolCapHits,
+      astTier: grammarKeysForExts(exts).some((k) => grammarReady(k)),
+      callSiteCapHits
+    },
+    schemaVersion: SCHEMA_VERSION2
+  };
+  try {
+    mkdirSync5(indexDir(root), { recursive: true });
+    writeFileAtomic(indexPath(root), JSON.stringify(index));
+  } catch {
+  }
+  return index;
+}
+function loadIndex(root) {
+  const p = indexPath(root);
+  if (!existsSync11(p)) return void 0;
+  try {
+    const idx = JSON.parse(readFileSync12(p, "utf8"));
+    if (idx.schemaVersion !== SCHEMA_VERSION2) return void 0;
+    const head = headCommit2(root);
+    if (idx.commit && head && !sameCommit(idx.commit, head)) return void 0;
+    return idx;
+  } catch {
+    return void 0;
+  }
+}
+function ensureIndex(root, slug, opts = {}) {
+  if (!opts.refresh) {
+    const existing = loadIndex(root);
+    if (existing) return existing;
+  }
+  return buildIndex(root, slug, { maxFiles: opts.maxFiles, project: opts.project });
+}
+
+// src/dossier.ts
+import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync7 } from "fs";
+import { join as join27 } from "path";
+var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
+var SOURCE_LABEL = {
+  code: "Code",
+  docs: "Documentation",
+  release: "Releases & Changelog",
+  history: "Git History",
+  issue: "Issues",
+  pr: "Pull / Merge Requests",
+  discussion: "Discussions",
+  so: "StackOverflow",
+  web: "Web"
+};
+function rank(s) {
+  const i2 = SOURCE_ORDER.indexOf(s);
+  return i2 < 0 ? 99 : i2;
+}
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+function runId(d = /* @__PURE__ */ new Date()) {
+  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function defaultRunDir(repoDir, d) {
+  return join27(indexDir(repoDir), "runs", runId(d));
+}
+function assignIds2(results) {
+  const flat = results.flatMap((r) => r.items);
+  flat.sort((a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
+  return flat.map((it, i2) => ({ id: `E${i2 + 1}`, ...it }));
+}
+function renderEvidenceMarkdown(evidence, meta) {
+  const out2 = [];
+  out2.push(`# Evidence dossier`);
+  out2.push("");
+  out2.push(`**Question:** ${meta.question}`);
+  out2.push(
+    `**Repo:** ${meta.repo}${meta.commit ? ` @ ${meta.commit}` : ""}${meta.ref ? ` (ref: ${meta.ref})` : ""} \xB7 **host:** ${meta.host}${meta.pkg ? ` \xB7 **package:** ${meta.pkg}` : ""}`
+  );
+  out2.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
+  out2.push("");
+  out2.push(
+    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
+  );
+  out2.push("");
+  if (meta.notes.length) {
+    out2.push(`## Retrieval notes`);
+    out2.push("");
+    out2.push(`_What this run could not reach \u2014 read these before the evidence; they bound what you may claim._`);
+    out2.push("");
+    for (const n of meta.notes) out2.push(`- ${n}`);
+    out2.push("");
+  }
+  if (evidence.length === 0) {
+    out2.push(`_No evidence was retrieved. Broaden the question, add sources, or check connectivity._`);
+  }
+  for (const source of SOURCE_ORDER) {
+    const items = evidence.filter((e) => e.source === source);
+    if (items.length === 0) continue;
+    out2.push(`## ${SOURCE_LABEL[source]}`);
+    out2.push("");
+    for (const it of items) {
+      out2.push(`### [${it.id}] ${it.title}`);
+      const meta1 = [`ref: \`${it.ref}\``, it.location ? `loc: \`${it.location}\`` : "", `score: ${it.score}`].filter(Boolean).join(" \xB7 ");
+      out2.push(meta1);
+      if (it.url) out2.push(`url: ${it.url}`);
+      out2.push("");
+      out2.push("```");
+      out2.push(it.snippet);
+      out2.push("```");
+      out2.push("");
+    }
+  }
+  return out2.join("\n");
+}
+function writeDossier(dir, evidence, meta) {
+  mkdirSync6(dir, { recursive: true });
+  const evidenceJson = join27(dir, "evidence.json");
+  const evidenceMd = join27(dir, "EVIDENCE.md");
+  const metaJson = join27(dir, "meta.json");
+  writeFileSync7(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync7(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync7(metaJson, JSON.stringify(meta, null, 2));
+  return { dir, evidenceJson, evidenceMd, metaJson };
+}
+
+// src/index/search.ts
+import { statSync as statSync8 } from "fs";
+import { join as join28 } from "path";
+
+// src/index/bm25.ts
+function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
+  const scores = /* @__PURE__ */ new Map();
+  const avgLen = docs.length ? docs.reduce((s, d) => s + d.len, 0) / docs.length : 1;
+  for (const d of docs) {
+    let s = 0;
+    for (const t of terms) {
+      const f = d.tf.get(t) ?? 0;
+      if (f === 0) continue;
+      const n = df.get(t) ?? 0;
+      const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
+      s += idf * (f * (k1 + 1) / (f + k1 * (1 - b + b * (d.len / (avgLen || 1)))));
+    }
+    if (s > 0) scores.set(d.key, s);
+  }
+  return scores;
+}
+
+// src/index/excerpt.ts
+var MAX_EXCERPT_LINES = 30;
+var EXCERPT_PAD = 8;
+function expandWindow(lines, start2, end, anchor) {
+  const blank = (n) => /^\s*$/.test(lines[n - 1] ?? "");
+  let s = Math.max(1, start2);
+  let e = Math.min(lines.length, end);
+  while (s > 1 && start2 - s < EXCERPT_PAD && !blank(s - 1)) s--;
+  while (e < lines.length && e - end < EXCERPT_PAD && !blank(e + 1)) e++;
+  if (e - s + 1 > MAX_EXCERPT_LINES) {
+    let ns = Math.max(s, anchor - Math.floor(MAX_EXCERPT_LINES / 3));
+    let ne = ns + MAX_EXCERPT_LINES - 1;
+    if (ne > e) {
+      ne = e;
+      ns = ne - MAX_EXCERPT_LINES + 1;
+    }
+    s = ns;
+    e = ne;
+  }
+  return { start: s, end: e };
+}
+function enclosingSymbol2(fileSyms, line) {
+  let best;
+  for (const s of fileSyms) {
+    if (s.endLine === void 0 || s.line > line || s.endLine < line) continue;
+    if (!best || s.endLine - s.line < best.endLine - best.line) best = s;
+  }
+  return best;
+}
+function symbolLabel(s) {
+  return s.parent ? `${s.kind} ${s.parent}.${s.name}` : `${s.kind} ${s.name}`;
+}
+function symbolsByFile(symbols) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const s of symbols) {
+    const arr = byFile.get(s.file);
+    if (arr) arr.push(s);
+    else byFile.set(s.file, [s]);
+  }
+  return byFile;
+}
+function codeItem(args2) {
+  const { ref, index, rel: rel2, lines, start: start2, end, label, score, meta } = args2;
+  return {
+    source: "code",
+    title: `${rel2} \u2014 ${label}`,
+    ref: rel2,
+    location: `${rel2}:${start2}-${end}`,
+    score: Number(score.toFixed(3)),
+    snippet: lines.slice(start2 - 1, end).join("\n"),
+    url: ref.isLocal ? void 0 : `${ref.webUrl}/blob/${index.commit ?? "HEAD"}/${rel2}#L${start2}-L${end}`,
+    ...meta ? { meta } : {}
+  };
+}
+
+// src/index/search.ts
+var MAX_KEYWORDS = 8;
+var RANKING = {
+  BM25_K1: 1.2,
+  // b=0.3: code corpora mix tiny config files with huge implementation files,
+  // and full-strength length normalization (b=0.75) buries the big files where
+  // the answer lives (e.g. matomo's js/piwik.js).
+  BM25_B: 0.3,
+  LOW_SIGNAL_PENALTY: 0.45,
+  // tests/docs/examples down-weight
+  STEM_EXACT_BOOST: 1.3,
+  // file stem == a query keyword (retry.ts for "retry")
+  STEM_SUBTOKEN_BOOST: 1.15,
+  // file stem shares a subtoken with a keyword
+  EXPORTED_BOOST: 1.5,
+  // an exported symbol outranks a private one
+  SCORE_SCALE: 1e3,
+  // readability of the reported score; ordering unchanged
+  // Per-file contribution of its 1st/2nd/3rd best-matching symbol, so a file
+  // that defines several relevant symbols outranks one with a single weak match.
+  SYMBOL_DECAY: [1, 0.5, 0.25],
+  // Call-site awareness: how many identifier keywords are probed as call
+  // targets, the score of a distant call-site excerpt relative to its file's
+  // primary excerpt, and how close a call region must be to the definition to
+  // fold into one excerpt instead of a second item.
+  CALLSITE_MAX_NAMES: 4,
+  CALLSITE_SECOND_ITEM_FACTOR: 0.95,
+  CALLSITE_MERGE_GAP: 12,
+  // Rare-literal guarantee: a query keyword matching in at most RARE_TERM_DF
+  // files is a near-unique literal (error string, regex fragment, data-file
+  // entry) — its holder must surface even when rank fusion buries it, and at
+  // most RARE_PIN_MAX holders may displace normally-ranked items.
+  RARE_TERM_DF: 3,
+  RARE_PIN_MAX: 2
+};
+var MAX_LINES_PER_FILE = 40;
+function lexicalSearch(root, matcher, scope) {
+  const byFile = /* @__PURE__ */ new Map();
+  if (!matcher.patterns.length) return byFile;
+  const pattern = matcher.patterns.map((p) => `(?:${p.source})`).join("|");
+  const hits = grepRepo(root, pattern, {
+    ignoreCase: true,
+    maxHits: Number.MAX_SAFE_INTEGER,
+    globs: scope ? [`${scope}/**`] : void 0
+  });
+  const res = matcher.patterns.map((p) => ({ re: new RegExp(p.source, "gi"), canonical: p.canonical }));
+  for (const h of hits) {
+    if (h.file === ".ultradoc" || h.file.startsWith(".ultradoc/")) continue;
+    let fh = byFile.get(h.file);
+    if (!fh) {
+      fh = { rel: h.file, matchedKw: /* @__PURE__ */ new Set(), kwCounts: /* @__PURE__ */ new Map(), lines: [] };
+      byFile.set(h.file, fh);
+    }
+    if (fh.lines.length >= MAX_LINES_PER_FILE) continue;
+    for (const p of res) {
+      const n = (h.text.match(p.re) ?? []).length;
+      if (n > 0) {
+        fh.matchedKw.add(p.canonical);
+        fh.kwCounts.set(p.canonical, (fh.kwCounts.get(p.canonical) ?? 0) + n);
+      }
+    }
+    fh.lines.push({ line: h.line, text: h.text.slice(0, 400) });
+  }
+  return byFile;
+}
+function regionsFor(fh, matcher, gap = 8) {
+  const sorted = [...fh.lines].sort((a, b) => a.line - b.line);
+  const regions = [];
+  let cur = null;
+  for (const h of sorted) {
+    if (cur && h.line - cur.end <= gap) {
+      cur.end = h.line;
+      cur.lines.push(h);
+    } else {
+      if (cur) regions.push(scoreRegion(cur, matcher));
+      cur = { start: h.line, end: h.line, lines: [h] };
+    }
+  }
+  if (cur) regions.push(scoreRegion(cur, matcher));
+  return regions;
+}
+function scoreRegion(cur, matcher) {
+  const covered = /* @__PURE__ */ new Set();
+  let anchor = cur.start;
+  let best = -1;
+  for (const h of cur.lines) {
+    const here = matcher.matchLine(h.text);
+    for (const c2 of here) covered.add(c2);
+    if (here.size > best) {
+      best = here.size;
+      anchor = h.line;
+    }
+  }
+  return { start: cur.start, end: cur.end, anchor, kwCount: covered.size };
+}
+function scoreSymbol(sym, matcher) {
+  const name2 = foldTerm(sym.name);
+  let s = 0;
+  for (const ek of matcher.expanded) {
+    let best = 0;
+    for (const v of ek.variants) {
+      const vt = foldTerm(v.text);
+      let vs = 0;
+      if (name2 === vt) vs = 6;
+      else if (name2.startsWith(vt) || vt.startsWith(name2)) vs = 3;
+      else if (name2.includes(vt) || vt.includes(name2)) vs = 1.5;
+      if (v.kind === "subtoken") vs *= 0.5;
+      if (vs > best) best = vs;
+    }
+    s += best;
+  }
+  if (s === 0) return 0;
+  return sym.exported ? s * RANKING.EXPORTED_BOOST : s;
+}
+function symbolScores(index, matcher) {
+  const perFile = /* @__PURE__ */ new Map();
+  for (const sym of index.symbols) {
+    const s = scoreSymbol(sym, matcher);
+    if (s === 0) continue;
+    const arr = perFile.get(sym.file) ?? [];
+    arr.push({ score: s, sym });
+    perFile.set(sym.file, arr);
+  }
+  const byFile = /* @__PURE__ */ new Map();
+  for (const [file, arr] of perFile) {
+    arr.sort((a, b) => b.score - a.score);
+    let fileScore = 0;
+    for (let i2 = 0; i2 < arr.length && i2 < RANKING.SYMBOL_DECAY.length; i2++) fileScore += arr[i2].score * RANKING.SYMBOL_DECAY[i2];
+    byFile.set(file, { score: fileScore, sym: arr[0].sym });
+  }
+  return byFile;
+}
+function callableNames(matcher, index) {
+  const declared = new Set(index.symbols.map((s) => foldTerm(s.name)));
+  const out2 = [];
+  for (const ek of matcher.expanded) {
+    if (out2.length >= RANKING.CALLSITE_MAX_NAMES) break;
+    const orig = ek.original;
+    if (!/^[A-Za-z_$][\w$]*$/.test(orig)) continue;
+    const identifierShaped = /[a-z][A-Z]/.test(orig) || orig.includes("_");
+    if ((identifierShaped || declared.has(foldTerm(orig))) && !out2.includes(orig)) out2.push(orig);
+  }
+  return out2;
+}
+function astCallHits(index, names, inScope) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const name2 of names) {
+    for (const [rel2, line] of index.callSites?.[name2] ?? []) {
+      if (!inScope(rel2)) continue;
+      let entry = byFile.get(rel2);
+      if (!entry) {
+        entry = { lines: /* @__PURE__ */ new Set(), counts: /* @__PURE__ */ new Map() };
+        byFile.set(rel2, entry);
+      }
+      entry.lines.add(line);
+      entry.counts.set(name2, (entry.counts.get(name2) ?? 0) + 1);
+    }
+  }
+  return byFile;
+}
+function callSiteHits(fh, compiled, declLines) {
+  const lines = /* @__PURE__ */ new Set();
+  const counts = /* @__PURE__ */ new Map();
+  for (const h of fh.lines) {
+    if (declLines.has(h.line)) continue;
+    for (const c2 of compiled) {
+      if (c2.re.test(h.text)) {
+        lines.add(h.line);
+        counts.set(c2.name, (counts.get(c2.name) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  return { lines, counts };
+}
+function mergeLines(sorted, gap) {
+  const regions = [];
+  let cur = null;
+  for (const l of sorted) {
+    if (cur && l - cur.end <= gap) cur.end = l;
+    else {
+      if (cur) regions.push(cur);
+      cur = { start: l, end: l };
+    }
+  }
+  if (cur) regions.push(cur);
+  return regions;
+}
+function searchCode(root, ref, index, question, perSource, scope) {
+  const notes = [];
+  const inScope = (rel2) => !scope || rel2.startsWith(scope + "/");
+  let matcher = buildMatcher(question, MAX_KEYWORDS);
+  if (matcher.expanded.length === 0) {
+    notes.push("No distinctive keywords in the question; code search may be weak.");
+    matcher = matcherFromTokens(question.split(/\s+/), MAX_KEYWORDS);
+  }
+  if (matcher.expanded.length === 0) return { items: [], notes };
+  const usedRg = have2("rg");
+  if (!usedRg) notes.push("ripgrep not found \u2014 used the slower built-in scanner.");
+  const lexical = lexicalSearch(root, matcher, scope);
+  const symbols = symbolScores(index, matcher);
+  const names = callableNames(matcher, index);
+  const callHits = /* @__PURE__ */ new Map();
+  let callRank = [];
+  if (names.length) {
+    const indexed = names.filter((n) => (index.callSites?.[n]?.length ?? 0) > 0);
+    const textual = names.filter((n) => !indexed.includes(n));
+    const merged = astCallHits(index, indexed, inScope);
+    if (textual.length) {
+      const compiled = textual.map((n) => ({ name: n, re: new RegExp(`\\b${escapeRegExp2(n)}\\s*(?:\\?\\.)?\\s*\\(`) }));
+      const nameSet = new Set(textual.map(foldTerm));
+      const declByFile = /* @__PURE__ */ new Map();
+      for (const s of index.symbols) {
+        if (!nameSet.has(foldTerm(s.name))) continue;
+        const set = declByFile.get(s.file) ?? /* @__PURE__ */ new Set();
+        set.add(s.line);
+        declByFile.set(s.file, set);
+      }
+      for (const [rel2, fh] of lexical) {
+        if (!inScope(rel2)) continue;
+        const hit = callSiteHits(fh, compiled, declByFile.get(rel2) ?? /* @__PURE__ */ new Set());
+        if (!hit.lines.size) continue;
+        const entry = merged.get(rel2);
+        if (!entry) {
+          merged.set(rel2, hit);
+          continue;
+        }
+        for (const l of hit.lines) entry.lines.add(l);
+        for (const [n, c2] of hit.counts) entry.counts.set(n, (entry.counts.get(n) ?? 0) + c2);
+      }
+    }
+    for (const [rel2, entry] of merged) {
+      const name2 = [...entry.counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+      callHits.set(rel2, { lines: [...entry.lines].sort((a, b) => a - b), name: name2 });
+    }
+    callRank = [...callHits.entries()].sort((a, b) => b[1].lines.length - a[1].lines.length || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
+  }
+  const files = new Set([...lexical.keys(), ...symbols.keys()].filter(inScope));
+  const canonicals = matcher.canonicals;
+  const df = /* @__PURE__ */ new Map();
+  for (const fh of lexical.values()) {
+    for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+  }
+  const missed = matcher.expanded.filter((ek) => (df.get(ek.canonical) ?? 0) <= RANKING.RARE_TERM_DF && ek.variants.some((v) => v.kind !== "subtoken"));
+  if (missed.length) {
+    let merged = false;
+    for (const ek of missed) {
+      const rescueMatcher = {
+        ...matcher,
+        expanded: [ek],
+        canonicals: [ek.canonical],
+        patterns: ek.variants.filter((v) => v.kind !== "subtoken").map((v) => ({ source: accentPattern(v.text), canonical: ek.canonical }))
+      };
+      const extra = lexicalSearch(root, rescueMatcher, scope);
+      for (const [rel2, fh] of extra) {
+        if (!inScope(rel2)) continue;
+        const cur = lexical.get(rel2);
+        if (!cur) {
+          lexical.set(rel2, fh);
+          files.add(rel2);
+          merged = true;
+          continue;
+        }
+        for (const kw of fh.matchedKw) cur.matchedKw.add(kw);
+        for (const [kw, n] of fh.kwCounts) cur.kwCounts.set(kw, Math.max(cur.kwCounts.get(kw) ?? 0, n));
+        const seen = new Set(cur.lines.map((l) => l.line));
+        for (const l of fh.lines) if (!seen.has(l.line)) cur.lines.push(l);
+        merged = true;
+      }
+    }
+    if (merged) {
+      df.clear();
+      for (const fh of lexical.values()) {
+        for (const kw of fh.kwCounts.keys()) df.set(kw, (df.get(kw) ?? 0) + 1);
+      }
+    }
+  }
+  const candidates = [...files].filter((rel2) => lexical.has(rel2)).map((rel2) => {
+    let len = 1e3;
+    try {
+      len = Math.max(1, statSync8(join28(root, rel2)).size / 5);
+    } catch {
+    }
+    return { key: rel2, tf: lexical.get(rel2).kwCounts, len };
+  });
+  const lexScores = bm25(candidates, canonicals, Math.max(index.fileCount, lexical.size), df, RANKING.BM25_K1, RANKING.BM25_B);
+  const lexRank = [...lexScores.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
+  const symRank = [...symbols.entries()].filter(([rel2]) => files.has(rel2)).sort((a, b) => b[1].score - a[1].score || a[0].localeCompare(b[0])).map(([rel2]) => rel2);
+  const fused = rrf2(callRank.length ? [lexRank, symRank, callRank] : [lexRank, symRank], (rel2) => rel2);
+  const docSet = new Set(index.docFiles);
+  const canonSet = new Set(canonicals);
+  const scored = [];
+  for (const rel2 of files) {
+    const base = fused.get(rel2) ?? 0;
+    if (base <= 0) continue;
+    const lowSignal = /(^|\/)(test|tests|__tests__|spec|specs|fixtures?|examples?|benchmark|benchmarks)\//i.test(rel2) || docSet.has(rel2);
+    const stem = (rel2.split("/").pop() ?? "").replace(/\.[^.]+$/, "");
+    const stemParts = [foldTerm(stem), ...subtokens2(stem).map(foldTerm)];
+    const nameBoost = canonSet.has(stemParts[0]) ? RANKING.STEM_EXACT_BOOST : stemParts.some((p) => canonSet.has(p)) ? RANKING.STEM_SUBTOKEN_BOOST : 1;
+    const score = base * RANKING.SCORE_SCALE * (lowSignal ? RANKING.LOW_SIGNAL_PENALTY : 1) * nameBoost;
+    scored.push({ rel: rel2, score, fh: lexical.get(rel2), sym: symbols.get(rel2)?.sym });
+  }
+  scored.sort((a, b) => b.score - a.score || a.rel.localeCompare(b.rel));
+  const symsByFile = symbolsByFile(index.symbols);
+  const items = [];
+  for (const f of scored) {
+    if (items.length >= perSource) break;
+    const content = readText(join28(root, f.rel));
+    if (!content) continue;
+    const lines = content.split(/\r?\n/);
+    const call = callHits.get(f.rel);
+    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
+    for (let wi = 0; wi < windows.length; wi++) {
+      if (items.length >= perSource) break;
+      const win = windows[wi];
+      const score = wi === 0 ? f.score : f.score * RANKING.CALLSITE_SECOND_ITEM_FACTOR;
+      const label = win.callSite ? `${win.label}${call?.name ? ` (${call.name})` : ""}` : win.label;
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: win.start,
+          end: win.end,
+          label,
+          score,
+          meta: {
+            matchedKeywords: f.fh ? [...f.fh.matchedKw] : [],
+            symbol: f.sym?.name,
+            // The declaration's full range when the excerpt clipped it, so a
+            // reader knows the citation shows the head of a longer body.
+            ...win.span ? { symbolSpan: `${win.span.start}-${win.span.end}` } : {},
+            ...win.callSite ? { callSite: true } : {}
+          }
+        })
+      );
+    }
+  }
+  const pins = [];
+  for (const kw of canonicals) {
+    if (pins.length >= RANKING.RARE_PIN_MAX) break;
+    const n = df.get(kw) ?? 0;
+    if (n < 1 || n > RANKING.RARE_TERM_DF) continue;
+    const direct = matcher.expanded.find((ek) => ek.canonical === kw)?.variants.filter((v) => v.kind !== "subtoken") ?? [];
+    if (!direct.length) continue;
+    const res = direct.map((v) => new RegExp(accentPattern(v.text), "i"));
+    const covered = items.some((i2) => i2.snippet.split(/\r?\n/).some((ln) => res.some((re) => re.test(ln))));
+    if (covered) continue;
+    const best = scored.find((f) => f.fh?.matchedKw.has(kw) && !pins.some((p) => p.f.rel === f.rel));
+    if (!best) continue;
+    pins.push({ f: best, kw, n, res });
+  }
+  if (pins.length) {
+    items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
+    for (const { f, kw, n, res } of pins) {
+      const content = readText(join28(root, f.rel));
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      const anchor = f.fh.lines.find((l) => {
+        const full = lines[l.line - 1] ?? l.text;
+        return res.some((re) => re.test(full));
+      })?.line ?? f.fh.lines[0].line;
+      const w = expandWindow(lines, Math.max(1, anchor - 2), Math.min(lines.length, anchor + 4), anchor);
+      items.push(
+        codeItem({
+          ref,
+          index,
+          rel: f.rel,
+          lines,
+          start: w.start,
+          end: w.end,
+          label: `rare-term match (${kw})`,
+          score: f.score,
+          meta: { matchedKeywords: [...f.fh.matchedKw], pinnedRareTerm: kw }
+        })
+      );
+      notes.push(`Query term "${kw}" matches only ${n} file(s); pinned ${f.rel} into the results.`);
+    }
+  }
+  return { items, notes, fallback: usedRg ? void 0 : "js-scan" };
+}
+var SYMBOL_FALLBACK_LINES = 18;
+function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
+  let primary;
+  if (sym) {
+    const bodyEnd = sym.endLine ?? sym.line + SYMBOL_FALLBACK_LINES;
+    const w = expandWindow(lines, Math.max(1, sym.line - 1), Math.min(lines.length, bodyEnd), sym.line);
+    primary = { start: w.start, end: w.end, label: symbolLabel(sym) };
+    if (sym.endLine !== void 0 && (w.start > sym.line || w.end < sym.endLine)) {
+      primary.span = { start: sym.line, end: sym.endLine };
+    }
+  } else if (fh) {
+    const region = regionsFor(fh, matcher).sort((a, b) => b.kwCount - a.kwCount || a.start - b.start)[0];
+    const w = expandWindow(lines, region.start, region.end, region.anchor);
+    const host = enclosingSymbol2(fileSyms, region.anchor);
+    primary = { start: w.start, end: w.end, label: host ? `in ${symbolLabel(host)}` : "match" };
+  } else {
+    primary = { start: 1, end: Math.min(lines.length, 20), label: "match" };
+  }
+  if (!callLines.length) return [primary];
+  const sorted = [...new Set(callLines)].sort((a, b) => a - b);
+  const regions = mergeLines(sorted, RANKING.CALLSITE_MERGE_GAP);
+  const best = regions.map((r) => ({ r, count: sorted.filter((l) => l >= r.start && l <= r.end).length })).sort((a, b) => b.count - a.count || a.r.start - b.r.start)[0].r;
+  const gap = best.start > primary.end ? best.start - primary.end : primary.start > best.end ? primary.start - best.end : 0;
+  const mergedStart = Math.min(primary.start, best.start);
+  const mergedEnd = Math.max(primary.end, best.end);
+  if (gap <= RANKING.CALLSITE_MERGE_GAP && mergedEnd - mergedStart + 1 <= MAX_EXCERPT_LINES) {
+    const w = expandWindow(lines, mergedStart, mergedEnd, sym?.line ?? best.start);
+    return [{ start: w.start, end: w.end, label: primary.label, ...primary.span ? { span: primary.span } : {} }];
+  }
+  const cw = expandWindow(lines, best.start, best.end, best.start);
+  const caller = enclosingSymbol2(fileSyms, best.start);
+  return [primary, { start: cw.start, end: cw.end, label: caller ? `call site in ${symbolLabel(caller)}` : "call site", callSite: true }];
+}
+
+// src/index/semantic/qdrant.ts
+import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
+import { join as join29, dirname as dirname6 } from "path";
 
 // src/sources/firecrawl.ts
 var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";

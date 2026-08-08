@@ -20,6 +20,12 @@ configure({
   envPrefix: "ULTRADOC",
   cli: "ultradoc",
   contactUrl: "https://github.com/maxgfr/ultradoc",
+  // Two words on top of the engine's shared list, and the reason this skill can
+  // use the shared keyword machinery at all. ultradoc reads source repositories,
+  // where "test" and "request" appear in nearly every file — keeping them as
+  // keywords would score every document alike. The rest of the matcher is
+  // byte-for-byte the engine's.
+  extraStopwords: ["request", "test"],
 });
 
 export * from "./vendor/webindex-engine.mjs";
