@@ -118,9 +118,13 @@ jobs:
         if: steps.detect.outputs.repin == 'true'
         run: pnpm run verify:bundle
 
-      - name: Test (with coverage)
+      # `pnpm test`, not test:coverage — this repo has no coverage script, and the
+      # workflow was copied from a sibling that does. The no-op runs never caught
+      # it: every step here is gated on repin == 'true', so a repo already on the
+      # latest tag skips the lot and reports success having executed nothing.
+      - name: Test
         if: steps.detect.outputs.repin == 'true'
-        run: pnpm run test:coverage
+        run: pnpm test
 
       - name: Smoke-run the committed bundle (offline render + check)
         if: steps.detect.outputs.repin == 'true'
