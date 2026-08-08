@@ -42,9 +42,8 @@ index/
   symbols.ts      `symbol`: one declaration, its body, its call sites, its mentions
   modules.ts      the module graph ranked by centrality (overview + doc outline)
   semantic/       the vector tiers: static model · HTTP endpoint · Qdrant/Docker + control
-                  (control.ts drives one compose PROFILE per stack: semantic=all, firecrawl=extract)
-  compose.ts      embedded docker-compose stack + searxng settings + firecrawl env,
-                  materialized into the cache dir (byte-identical to the repo files)
+                  (control.ts maps ultradoc's two commands onto the engine's stack:
+                   semantic = qdrant+ollama+searxng, firecrawl = the extraction stack)
 lang/             per-language symbol extractors (registry by extension)
 providers/        issue/PR APIs per host (github, gitlab, gitea, generic) + shared helpers + registry
 sources/          one module per evidence source (code, docs, issues, …) + fetch (bounded retries)

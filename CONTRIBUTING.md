@@ -15,7 +15,7 @@ pnpm run eval         # offline retrieval evals (fixtures, deterministic)
 
 Node ≥ 18. The published `scripts/ultradoc.mjs` is a **zero-runtime-dependency**
 bundle — keep it that way. Anything heavy (vector DB, embeddings, metasearch)
-belongs in `docker-compose.yml` and is reached over HTTP, never imported.
+belongs in the engine's container stack and is reached over HTTP, never imported.
 
 ## Conventions
 

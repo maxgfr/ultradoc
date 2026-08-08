@@ -94,8 +94,8 @@ stack.
 > re-resolve against a Firecrawl-extracted page — re-run `ask` rather than
 > re-checking an old run.
 
-`docker/firecrawl/README.md` covers the containers, the smoke test and the
-tunables.
+`ultradoc firecrawl up` starts the containers and their tunables; the compose
+file and the env file are embedded in the engine and written out on demand.
 
 ## StackOverflow
 

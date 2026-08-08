@@ -284,8 +284,8 @@ with the stack down every page falls back to the built-in extractor, and a page
 Firecrawl failed on falls back with an honest dossier note. It is deliberately
 its own compose profile — ~3 GB of images that `semantic up` must not drag in.
 `--firecrawl off` (or `ULTRADOC_FIRECRAWL=off`) opts out; `--web-engine
-firecrawl` additionally routes discovery through its keyless `/search`. See
-[`docker/firecrawl/README.md`](./docker/firecrawl/README.md).
+firecrawl` additionally routes discovery through its keyless `/search`, which
+delegates to SearXNG — so `ultradoc firecrawl up` starts both.
 
 ## Monorepos
 

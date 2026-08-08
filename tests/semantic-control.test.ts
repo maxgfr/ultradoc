@@ -1,18 +1,23 @@
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
 import { firecrawlControl, semanticControl } from "../src/index/semantic/index.js";
-import type { ShResult } from "../src/util.js";
 
-// A fake `sh` runner matching the real signature: records every invocation and
-// (by default) succeeds, so `semantic up` orchestration can be asserted without
-// a real Docker daemon. `fail` lets a test make a chosen step fail.
-type ShLike = (cmd: string, args: string[], opts?: { cwd?: string; input?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv }) => ShResult;
+// The compose file and the orchestration live in the engine, which tests them
+// against its own fake docker. What is ultradoc's — and what these cover — is
+// the MAPPING: which profiles each of its two commands brings up, and that
+// neither has quietly started meaning something else.
+//
+// `semantic` is the one worth pinning. It has always meant "the cheap local
+// stack": the vector database, the embedding server AND SearXNG. The engine
+// keeps those as separate services, so this repo asks for both — in one compose
+// call, because a second against the same project recreates the first's work.
 
 function fakeRunner(fail?: (args: string[]) => boolean) {
   const calls: { cmd: string; args: string[]; timeoutMs?: number }[] = [];
-  const run: ShLike = (cmd, args, opts = {}) => {
+  const run = (cmd: string, args: string[], opts: { timeoutMs: number }) => {
     calls.push({ cmd, args, timeoutMs: opts.timeoutMs });
     const ok = !(fail?.(args) ?? false);
-    return { ok, status: ok ? 0 : 1, stdout: "", stderr: ok ? "" : "boom: network timeout pulling image", missing: false };
+    return { ok, stdout: "", stderr: ok ? "" : "boom: network timeout pulling image" };
   };
   return { calls, run };
 }
@@ -35,7 +40,10 @@ describe("semanticControl up — image pull step wiring", () => {
 
     const pull = calls[pullIdx]!;
     expect(pull.cmd).toBe("docker");
-    expect(pull.args).toEqual(["compose", "-f", expect.any(String), "--profile", "all", "pull"]);
+    // `--profile semantic --profile search` selects exactly what `--profile all`
+    // did: qdrant and ollama carry ["semantic","all"], searxng ["search","all"].
+    // Same three containers, asked for by name instead of by an alias.
+    expect(pull.args).toEqual(["compose", "-f", expect.any(String), "--profile", "semantic", "--profile", "search", "pull"]);
     // Generous default budget (20 min) — far larger than up's short timeout.
     expect(pull.timeoutMs).toBe(1_200_000);
     const up = calls[upIdx]!;
@@ -72,19 +80,23 @@ describe("semanticControl up — image pull step wiring", () => {
   });
 });
 
-// The Firecrawl stack is the SAME compose file under a different profile: it
-// must never be started by `semantic up` (~3 GB of images), and `semantic` must
-// keep its own `all` profile. Both are asserted through the injected runner.
-describe("firecrawlControl — the `extract` profile", () => {
-  const profileOf = (args: string[]): string | undefined => args[args.indexOf("--profile") + 1];
+// The Firecrawl stack is the SAME compose file under a different profile. The
+// invariant that matters is one-directional: `semantic up` must never drag in
+// Firecrawl's ~3 GB, while `firecrawl up` DOES bring SearXNG, because
+// Firecrawl's keyless /search delegates to it.
+describe("firecrawlControl — the extraction stack", () => {
+  const profilesOf = (args: string[]): string[] => args.filter((a, i) => args[i - 1] === "--profile");
 
-  it("drives every action on --profile extract, never on all", () => {
+  it("starts the extractor and the search engine it delegates to, never the semantic pair", () => {
     for (const action of ["up", "down", "status"]) {
       const { calls, run } = fakeRunner();
       const res = firecrawlControl(action, { run, has: () => true });
       expect(res.code).toBe(0);
       expect(calls.length).toBeGreaterThan(0);
-      for (const c of calls) expect(profileOf(c.args)).toBe("extract");
+      for (const c of calls) {
+        expect(profilesOf(c.args), action).toEqual(["search", "extract"]);
+        expect(profilesOf(c.args), action).not.toContain("semantic");
+      }
     }
   });
 
@@ -99,7 +111,7 @@ describe("firecrawlControl — the `extract` profile", () => {
     expect(calls[upIdx]!.args).toContain("--wait");
     // No embedding model to pull — that post-up step belongs to `semantic`.
     expect(calls.some((c) => c.args.includes("exec"))).toBe(false);
-    expect(res.message).toMatch(/Firecrawl :3002/);
+    expect(res.message).toMatch(/Firecrawl is up \(:3002/);
   });
 
   it("names itself in every message and rejects an unknown action", () => {
@@ -117,9 +129,33 @@ describe("firecrawlControl — the `extract` profile", () => {
     expect(calls).toEqual([]);
   });
 
-  it("`semantic` keeps the `all` profile", () => {
+  it("`semantic` still means the cheap three, and never Firecrawl", () => {
     const { calls, run } = fakeRunner();
-    semanticControl("up", { run, has: () => true });
-    expect(profileOf(calls.find((c) => isUp(c.args))!.args)).toBe("all");
+    const res = semanticControl("up", { run, has: () => true });
+    const up = calls.find((c) => isUp(c.args))!;
+    expect(profilesOf(up.args)).toEqual(["semantic", "search"]);
+    expect(profilesOf(up.args)).not.toContain("extract");
+    // Qdrant, Ollama and SearXNG are all named in what it reports.
+    expect(res.message).toMatch(/Qdrant/);
+    expect(res.message).toMatch(/Ollama/);
+    expect(res.message).toMatch(/SearXNG/);
+  });
+
+  it("pulls the embedding model once Ollama answers, and only for `semantic`", () => {
+    const { calls, run } = fakeRunner();
+    const res = semanticControl("up", { run, has: () => true });
+    expect(calls.some((c) => c.args.includes("exec") && c.args.includes("ollama"))).toBe(true);
+    expect(res.message).toMatch(/nomic-embed-text ready/);
+  });
+
+  it("drives the engine's embedded compose file, so an installed copy works", () => {
+    // The previous version needed docker-compose.yml beside the bundle. There
+    // is no such file in this repo any more.
+    const { calls, run } = fakeRunner();
+    semanticControl("status", { run, has: () => true });
+    const file = calls[0]!.args[calls[0]!.args.indexOf("-f") + 1]!;
+    expect(file).toMatch(/docker-compose\.yml$/);
+    expect(existsSync(file)).toBe(true);
+    expect(file).toContain("ultradoc"); // under OUR cache dir, not a shared one
   });
 });

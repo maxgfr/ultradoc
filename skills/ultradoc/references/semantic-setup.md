@@ -55,8 +55,10 @@ node scripts/ultradoc.mjs ask --repo <url> --q "..." --semantic --semantic-tier 
 node scripts/ultradoc.mjs semantic down
 ```
 
-`docker-compose.yml` defines three services in the `all` profile — every image
-is pinned, and every service has a healthcheck so `--wait` means something:
+The compose file lives in the engine, not this repo: `semantic up` writes it
+into the cache dir and drives it there, so it works from any install rather than
+only from a clone. Three services, every image pinned, every one with a
+healthcheck so `--wait` means something:
 
 | Service | Image | Port | Role |
 |---------|-------|------|------|
@@ -67,13 +69,10 @@ is pinned, and every service has a healthcheck so `--wait` means something:
 Default embedding model: **`nomic-embed-text`** (137M, CPU-friendly, strong on
 specific code lookups). Override with `ULTRADOC_EMBED_MODEL`.
 
-`semantic up` runs `docker compose --profile all pull`, then
-`up -d --wait`, then `ollama pull nomic-embed-text`. To start a subset directly:
-
-```
-docker compose --profile semantic up -d     # qdrant + ollama only
-docker compose --profile search up -d       # searxng only
-```
+`semantic up` pulls the images first, on their own 20-minute budget
+(`ULTRADOC_DOCKER_PULL_TIMEOUT_MS`) — the Ollama image alone is over 1.6 GB and
+letting `up`'s shorter deadline cover the download turns a slow network into a
+failed start. Then `up -d --wait`, then `ollama pull nomic-embed-text`.
 
 ## The `extract` profile (Firecrawl) — a separate stack
 
@@ -84,15 +83,14 @@ because it is ~3 GB of images and ~4 GB of RAM, and `semantic up` must stay
 cheap.
 
 ```
-node scripts/ultradoc.mjs firecrawl up|down|status
-docker compose --profile search --profile extract up -d --wait   # + SearXNG behind /search
+node scripts/ultradoc.mjs firecrawl up|down|status   # + SearXNG, which its /search delegates to
 ```
 
 It cleans **fetched pages**, not code: main-content markdown instead of
 regex-stripped HTML, and text at all from JS-rendered docs. Keyless
 (`USE_DB_AUTHENTICATION=false`); nothing here touches the vector tiers. Down or
 absent ⇒ the built-in extractor, transparently. See
-`references/web-discovery.md` and `docker/firecrawl/README.md`.
+`references/web-discovery.md`.
 
 On the first `docker`-tier run for a repo, ultradoc chunks the code + docs at
 symbol boundaries, embeds each chunk via Ollama, and upserts the vectors into a

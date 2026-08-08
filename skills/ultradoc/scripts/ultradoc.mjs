@@ -16004,12 +16004,12 @@ ${HELP}`);
 var VERSION = "2.21.0";
 
 // src/clone.ts
-import { existsSync as existsSync10, statSync as statSync7, mkdirSync as mkdirSync4, readdirSync as readdirSync5, renameSync as renameSync3 } from "fs";
-import { resolve as resolve4, join as join23, basename as basename4 } from "path";
-import { tmpdir as tmpdir3 } from "os";
+import { existsSync as existsSync10, statSync as statSync7, mkdirSync as mkdirSync5, readdirSync as readdirSync5, renameSync as renameSync3 } from "fs";
+import { resolve as resolve4, join as join24, basename as basename4 } from "path";
+import { tmpdir as tmpdir4 } from "os";
 
 // src/util.ts
-import { spawnSync as spawnSync2 } from "child_process";
+import { spawnSync as spawnSync3 } from "child_process";
 import { renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync6 } from "fs";
 
 // src/vendor/webindex-engine.mjs
@@ -16018,8 +16018,12 @@ import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync11, rmSync as 
 import { join as join21 } from "path";
 import { tmpdir } from "os";
 import { spawn } from "child_process";
-import { existsSync as existsSync32, readdirSync as readdirSync4, readFileSync as readFileSync32, realpathSync as realpathSync2, statSync as statSync6 } from "fs";
-import { basename as basename3, dirname as dirname5, join as join32, resolve as resolve3, sep as sep3 } from "path";
+import { spawnSync as spawnSync2 } from "child_process";
+import { existsSync as existsSync22, mkdirSync as mkdirSync4, readFileSync as readFileSync22, writeFileSync as writeFileSync22 } from "fs";
+import { tmpdir as tmpdir2 } from "os";
+import { dirname as dirname5, join as join22 } from "path";
+import { existsSync as existsSync42, readdirSync as readdirSync4, readFileSync as readFileSync42, realpathSync as realpathSync2, statSync as statSync6 } from "fs";
+import { basename as basename3, dirname as dirname22, join as join42, resolve as resolve3, sep as sep3 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 import { createInterface as createInterface2 } from "readline";
 import { createServer as createHttpServer } from "http";
@@ -16736,6 +16740,395 @@ var SCRAPE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
 var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
 var DOC_FETCH_OPTS = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
 var MASK64 = (1n << 64n) - 1n;
+var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for a semantic mode, web
+# search and content extraction. Start it with \`{{CLI}} semantic up\` (or
+# \`docker compose --profile all up -d\`). The published bundle stays
+# dependency-free \u2014 it only speaks HTTP to these containers on localhost;
+# nothing here is required for Tier-1 retrieval.
+#
+# Profiles let you start subsets:
+#   --profile semantic  \u2192 qdrant + ollama (vector search)
+#   --profile search    \u2192 searxng (web discovery)
+#   --profile all       \u2192 everything above
+#   --profile extract   \u2192 firecrawl (content cleaning; \`{{CLI}} firecrawl up\`)
+# \u2500\u2500 One stack, however many tools use it \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Any tool needing SearXNG or Firecrawl binds the SAME host ports. Run two from
+# separate compose projects and only one can ever be up: the second fails with
+# "port is already allocated", after leaving its sidecars running.
+#
+# So this file uses one fixed project name, one set of container names and one
+# set of volumes. A second tool bringing the stack up is a no-op against the
+# containers already running, and the whole thing costs one machine's worth of
+# RAM rather than one per tool.
+#
+# WARNING: any tool shipping its own copy of these service blocks must keep them
+# byte-identical. Docker compares the RESOLVED config, so a divergence makes an
+# up from one recreate the other's running containers.
+
+name: skills
+
+services:
+  # Vector database \u2014 Apache-2.0, self-hosted, no key.
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    container_name: skills-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant:/qdrant/storage
+    restart: unless-stopped
+    profiles: ["semantic", "all"]
+    healthcheck:
+      # The image ships no curl/wget \u2014 probe the REST port over bash's /dev/tcp.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Local embedding server \u2014 no key, no data leaves the machine. Pull the model
+  # once: \`docker compose exec ollama ollama pull nomic-embed-text\`
+  # (\`{{CLI}} semantic up\` does this for you).
+  ollama:
+    image: ollama/ollama:0.30.7
+    container_name: skills-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    profiles: ["semantic", "all"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Self-hosted metasearch for keyless web discovery. JSON output is enabled in
+  # docker/searxng/settings.yml so the engine can be queried programmatically.
+  # Also backs Firecrawl's keyless /search through SEARXNG_ENDPOINT.
+  searxng:
+    image: searxng/searxng:2026.6.11-a1490676e
+    container_name: skills-searxng
+    ports:
+      - "8888:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    volumes:
+      - ./docker/searxng:/etc/searxng:rw
+    restart: unless-stopped
+    profiles: ["search", "all"]
+    healthcheck:
+      # busybox wget is in the image; /healthz answers on the container port.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Self-hosted Firecrawl \u2014 keyless content cleaning. Fetches a page with a real
+  # browser and returns main-content markdown, which beats the built-in regex
+  # HTML stripper on nav/cookie chrome and is the only way JS-rendered pages
+  # yield any text at all. Keyless because USE_DB_AUTHENTICATION=false; see
+  # docker/firecrawl/firecrawl.env for the tunables.
+  #
+  # Deliberately NOT in the "all" profile: it is ~3 GB of images and 5
+  # containers, and \`{{CLI}} semantic up\` must stay cheap.
+  #
+  #   docker compose --profile search --profile extract up -d --wait
+  firecrawl:
+    image: ghcr.io/firecrawl/firecrawl:2.10.5@sha256:8ce1af201332e1de046d70d5d516fbfe7f0f6229820d271d880873eeca531ea6
+    container_name: skills-firecrawl
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./docker/firecrawl/firecrawl.env
+    environment:
+      # Wiring lives here; tunables live in the env file above.
+      - HOST=0.0.0.0
+      - PORT=3002
+      - ENV=local
+      - REDIS_URL=redis://firecrawl-redis:6379
+      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
+      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000/scrape
+      - POSTGRES_HOST=firecrawl-postgres
+      - NUQ_RABBITMQ_URL=amqp://firecrawl-rabbitmq:5672
+      # Keeps /search keyless by delegating to the searxng service above.
+      # Unreachable when the \`search\` profile is down \u2014 Firecrawl then falls
+      # back to DuckDuckGo on its own.
+      - SEARXNG_ENDPOINT=http://searxng:8080
+    command: node dist/src/harness.js --start-docker
+    depends_on:
+      firecrawl-redis:
+        condition: service_started
+      firecrawl-playwright:
+        condition: service_started
+      firecrawl-postgres:
+        condition: service_started
+      firecrawl-rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles: ["extract"]
+    # The image ships no curl/wget, but it is a Node image \u2014 probe with node.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    # Trimmed for a 16 GB laptop; upstream asks for 4 CPU / 8 GB. Measured at
+    # 2.3 GB steady under 5 concurrent scrapes, so 3 GB was too tight a cap \u2014
+    # MAX_RAM=0.8 in the env file makes Firecrawl self-throttle at ~3.2 GB.
+    cpus: 2.0
+    mem_limit: 4g
+    memswap_limit: 4g
+
+  # Headless-browser sidecar \u2014 this is what makes JS-rendered pages extractable.
+  firecrawl-playwright:
+    image: ghcr.io/firecrawl/playwright-service:latest@sha256:8c50add7293201e575110e6c7489fa383a9dfc46f168936526a458e06ffc5c28
+    container_name: skills-firecrawl-playwright
+    environment:
+      - PORT=3000
+      - BLOCK_MEDIA=true
+      - MAX_CONCURRENT_PAGES=4
+    restart: unless-stopped
+    profiles: ["extract"]
+    cpus: 1.5
+    mem_limit: 2g
+    memswap_limit: 2g
+    tmpfs:
+      - /tmp/.cache:noexec,nosuid,size=512m
+
+  firecrawl-redis:
+    image: redis:alpine
+    container_name: skills-firecrawl-redis
+    command: redis-server --bind 0.0.0.0
+    restart: unless-stopped
+    profiles: ["extract"]
+
+  firecrawl-rabbitmq:
+    image: rabbitmq:3-management
+    container_name: skills-firecrawl-rabbitmq
+    restart: unless-stopped
+    profiles: ["extract"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  firecrawl-postgres:
+    image: ghcr.io/firecrawl/nuq-postgres:latest@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
+    container_name: skills-firecrawl-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - firecrawl_pg:/var/lib/postgresql/data
+    restart: unless-stopped
+    profiles: ["extract"]
+
+volumes:
+  qdrant:
+  ollama:
+  firecrawl_pg:
+`;
+var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for keyless, self-hosted web discovery. The important
+# bit is enabling the JSON output format so the CLI can query it
+# programmatically (\`/search?format=json\`) \u2014 most PUBLIC instances disable it,
+# which is why a local one ships here.
+#
+# The service names and ports below are deliberately stable, so several tools on
+# one machine share a single container rather than each starting their own.
+use_default_settings: true
+
+server:
+  # Override with a real random secret if you expose this beyond localhost.
+  secret_key: "searxng-local-dev-change-me"
+  # The limiter/bot-detection middleware answers 403 to format=json requests.
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json
+`;
+var FIRECRAWL_ENV = `# Tunables for the self-hosted Firecrawl stack (docker compose --profile extract).
+# Wiring (hostnames, ports, SEARXNG_ENDPOINT) lives in docker-compose.yml and
+# overrides anything set here.
+
+# THIS is what makes the API keyless. Turning it on would require a Supabase
+# project; there is no reason to for a localhost stack.
+USE_DB_AUTHENTICATION=false
+
+# Firecrawl's Rust PDF extractor, which is OFF by default upstream. Without it
+# Firecrawl falls back to pdf-parse (JS) for PDFs. Still keyless: this is the
+# local Rust path, not the MinerU / Fire PDF routes, which need API credentials.
+# Reached as a rung of the PDF ladder when the built-in reader finds no text.
+PDF_RUST_EXTRACT_ENABLE=true
+
+# Postgres credentials for the bundled nuq-postgres container. It is not
+# published on a host port, so these never leave the compose network.
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=postgres
+POSTGRES_PORT=5432
+
+# Admin queue dashboard at http://localhost:3002/admin/CHANGEME/queues
+BULL_AUTH_KEY=CHANGEME
+
+# Concurrency, trimmed for a laptop. Upstream defaults are 8/5/5/10 and assume
+# a 4-CPU / 8-GB box; these keep the stack near ~4 GB total.
+NUM_WORKERS_PER_QUEUE=2
+MAX_CONCURRENT_JOBS=3
+BROWSER_POOL_SIZE=2
+CRAWL_CONCURRENT_REQUESTS=4
+
+# Back off before the host runs out of headroom.
+MAX_CPU=0.8
+MAX_RAM=0.8
+
+LOGGING_LEVEL=info
+`;
+function renderAsset(template) {
+  return template.replaceAll("{{CLI}}", brand().cli);
+}
+function ensureComposeMaterialized() {
+  const base = join22(brand().cacheDir ?? join22(tmpdir2(), brand().name), "compose");
+  const composePath = join22(base, "docker-compose.yml");
+  const settingsPath = join22(base, "docker", "searxng", "settings.yml");
+  const firecrawlEnvPath = join22(base, "docker", "firecrawl", "firecrawl.env");
+  writeIfChanged(composePath, renderAsset(COMPOSE_YAML));
+  writeIfChanged(settingsPath, renderAsset(SEARXNG_SETTINGS_YAML));
+  writeIfChanged(firecrawlEnvPath, renderAsset(FIRECRAWL_ENV));
+  return composePath;
+}
+function writeIfChanged(path, content) {
+  try {
+    if (existsSync22(path) && readFileSync22(path, "utf8") === content) return;
+    mkdirSync4(dirname5(path), { recursive: true });
+    writeFileSync22(path, content);
+  } catch {
+  }
+}
+var DEFAULT_PULL_TIMEOUT_MS = 12e5;
+var UP_TIMEOUT_MS = 3e5;
+var DOWN_TIMEOUT_MS = 12e4;
+var PS_TIMEOUT_MS = 3e4;
+var MODEL_PULL_TIMEOUT_MS = 6e5;
+function pullTimeoutMs() {
+  return envInt("DOCKER_PULL_TIMEOUT_MS", DEFAULT_PULL_TIMEOUT_MS);
+}
+function embedModel() {
+  return env("EMBED_MODEL") ?? "nomic-embed-text";
+}
+function defaultRun(cmd, args2, opts) {
+  const res = spawnSync2(cmd, args2, {
+    encoding: "utf8",
+    timeout: opts.timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: opts.capture ? "pipe" : "inherit"
+  });
+  const missing = !!res.error && res.error.code === "ENOENT";
+  return {
+    ok: !res.error && res.status === 0,
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? (res.error ? String(res.error.message) : ""),
+    missing
+  };
+}
+function defaultHas(cmd) {
+  const probe = defaultRun(process.platform === "win32" ? "where" : "which", [cmd], { timeoutMs: 1e4, capture: true });
+  return probe.ok && probe.stdout.trim().length > 0;
+}
+var STACKS = {
+  searxng: {
+    profiles: ["search"],
+    summary: "SearXNG is up (:8888) \u2014 keyless discovery, JSON API enabled."
+  },
+  firecrawl: {
+    profiles: ["search", "extract"],
+    summary: "Firecrawl is up (:3002 \xB7 playwright \xB7 redis \xB7 rabbitmq \xB7 postgres), with SearXNG behind it.",
+    postUp: () => [
+      "  keyless: USE_DB_AUTHENTICATION=false \u2014 no API key is sent or needed.",
+      "  effect:  pages are now cleaned by a real browser; --firecrawl off opts out."
+    ]
+  },
+  semantic: {
+    profiles: ["semantic"],
+    summary: "Qdrant (:6333) and Ollama (:11434) are up.",
+    postUp: (file, run3) => {
+      const model = embedModel();
+      const pull = run3("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", model], { timeoutMs: MODEL_PULL_TIMEOUT_MS, capture: true });
+      return [pull.ok ? `  model:   ${model} ready` : `  model:   pull it yourself: docker compose -f ${file} exec ollama ollama pull ${model}`];
+    }
+  },
+  all: {
+    profiles: ["all", "extract"],
+    summary: "The whole stack is up (Qdrant \xB7 Ollama \xB7 SearXNG \xB7 Firecrawl).",
+    postUp: (file, run3) => STACKS.semantic.postUp(file, run3)
+  }
+};
+function combine(names) {
+  const specs = names.map((n) => STACKS[n]);
+  if (specs.some((x) => !x)) return null;
+  const found = specs;
+  if (found.length === 1) return found[0];
+  return {
+    profiles: [...new Set(found.flatMap((x) => x.profiles))],
+    summary: found.map((x) => x.summary).join("\n  "),
+    postUp: (file, run3) => found.flatMap((x) => x.postUp?.(file, run3) ?? [])
+  };
+}
+var STACK_SERVICES = Object.keys(STACKS);
+var SERVICE_PROFILES = Object.fromEntries(Object.entries(STACKS).map(([k, v]) => [k, v.profiles]));
+function stackControl(service, action, deps = {}) {
+  const run3 = deps.run ?? defaultRun;
+  const has = deps.has ?? defaultHas;
+  const names = Array.isArray(service) ? service : [service];
+  const tag = `${brand().cli} ${names.join("+")}`;
+  const spec = combine(names);
+  if (!spec) {
+    const bad = names.filter((n) => !STACKS[n]);
+    return { message: `${brand().cli}: unknown service ${bad.map((b) => `"${b}"`).join(", ")} \u2014 expected one of ${STACK_SERVICES.join(", ")}`, code: 1 };
+  }
+  if (action !== "up" && action !== "down" && action !== "status") {
+    return { message: `${tag}: unknown action "${action}" (use: up | down | status)`, code: 1 };
+  }
+  if (!has("docker")) {
+    return { message: `${tag}: docker not found on PATH. The stack is optional \u2014 everything it provides degrades to a note.`, code: 1 };
+  }
+  const file = ensureComposeMaterialized();
+  const profiles = spec.profiles.flatMap((p) => ["--profile", p]);
+  if (action === "down") {
+    const r = run3("docker", ["compose", "-f", file, ...profiles, "down"], { timeoutMs: DOWN_TIMEOUT_MS, capture: true });
+    return { message: r.ok ? `${tag}: stopped.` : `${tag}: down failed.
+${r.stderr}`, code: r.ok ? 0 : 1 };
+  }
+  if (action === "status") {
+    const r = run3("docker", ["compose", "-f", file, ...profiles, "ps"], { timeoutMs: PS_TIMEOUT_MS, capture: true });
+    return { message: r.ok ? r.stdout.trim() || `${tag}: no services running.` : `${tag}: status failed.
+${r.stderr}`, code: 0 };
+  }
+  const pulled = run3("docker", ["compose", "-f", file, ...profiles, "pull"], { timeoutMs: pullTimeoutMs() });
+  if (!pulled.ok) {
+    return {
+      message: `${tag}: pulling the images failed (they are large \u2014 raise ${envName("DOCKER_PULL_TIMEOUT_MS")}, currently ${pullTimeoutMs()}ms).` + (pulled.stderr ? `
+${pulled.stderr}` : ""),
+      code: 1
+    };
+  }
+  const up = run3("docker", ["compose", "-f", file, ...profiles, "up", "-d", "--wait"], { timeoutMs: UP_TIMEOUT_MS });
+  if (!up.ok) return { message: `${tag}: up failed.${up.stderr ? `
+${up.stderr}` : ""}`, code: 1 };
+  return { message: [`${tag}: ${spec.summary}`, ...spec.postUp?.(file, run3) ?? []].join("\n"), code: 0 };
+}
 var DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
 var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
@@ -16822,20 +17215,20 @@ function isOriginAllowed(origin, allowed = []) {
 var skillName = () => brand().name;
 var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
-  const here = moduleDir ?? dirname5(fileURLToPath3(import.meta.url));
+  const here = moduleDir ?? dirname22(fileURLToPath3(import.meta.url));
   const name2 = brand().name;
   const candidates = [resolve3(here, ".."), resolve3(here, "..", "skills", name2), resolve3(here, "..", "..", "skills", name2)];
-  return candidates.find((dir) => existsSync32(join32(dir, "SKILL.md")));
+  return candidates.find((dir) => existsSync42(join42(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
   const root = resolveSkillRoot(moduleDir);
   if (!root) return [];
   const out2 = [describe(root, "SKILL.md", `${skillName()}: the skill`)];
-  const refDir = join32(root, "references");
-  if (!existsSync32(refDir)) return out2;
+  const refDir = join42(root, "references");
+  if (!existsSync42(refDir)) return out2;
   for (const file of readdirSync4(refDir).sort()) {
     if (!file.endsWith(".md")) continue;
-    out2.push(describe(root, join32("references", file), `${skillName()} reference: ${basename3(file, ".md")}`));
+    out2.push(describe(root, join42("references", file), `${skillName()} reference: ${basename3(file, ".md")}`));
   }
   return out2;
 }
@@ -16859,7 +17252,7 @@ function readResource(uri, moduleDir) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
   if (!statSync6(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync32(targetReal, "utf8") };
+  return { uri, mimeType: "text/markdown", text: readFileSync42(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -16870,14 +17263,14 @@ function describe(root, rel2, fallbackTitle) {
     title: fallbackTitle,
     mimeType: "text/markdown"
   };
-  const summary = firstProse(join32(root, rel2));
+  const summary = firstProse(join42(root, rel2));
   if (summary) decl.description = summary;
   return decl;
 }
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync32(file, "utf8");
+    text = readFileSync42(file, "utf8");
   } catch {
     return void 0;
   }
@@ -17304,7 +17697,7 @@ function writeFileAtomic(path, data) {
   }
 }
 function sh2(cmd, args2, opts = {}) {
-  const res = spawnSync2(cmd, args2, {
+  const res = spawnSync3(cmd, args2, {
     cwd: opts.cwd,
     input: opts.input,
     encoding: "utf8",
@@ -17365,8 +17758,8 @@ async function mapLimit(items, limit, fn) {
 }
 
 // src/config.ts
-import { homedir as homedir2, tmpdir as tmpdir2 } from "os";
-import { join as join22 } from "path";
+import { homedir as homedir2, tmpdir as tmpdir3 } from "os";
+import { join as join23 } from "path";
 function envInt2(name2, def, min = 1) {
   const raw = process.env[name2];
   if (raw === void 0) return def;
@@ -17410,19 +17803,19 @@ function cacheRoot() {
   const override = process.env.ULTRADOC_CACHE_DIR?.trim();
   if (override) return override;
   const home = homedir2();
-  if (!home) return join22(tmpdir2(), "ultradoc");
-  if (process.platform === "darwin") return join22(home, "Library", "Caches", "ultradoc");
-  if (process.platform === "win32") return join22(process.env.LOCALAPPDATA?.trim() || join22(home, "AppData", "Local"), "ultradoc");
-  return join22(process.env.XDG_CACHE_HOME?.trim() || join22(home, ".cache"), "ultradoc");
+  if (!home) return join23(tmpdir3(), "ultradoc");
+  if (process.platform === "darwin") return join23(home, "Library", "Caches", "ultradoc");
+  if (process.platform === "win32") return join23(process.env.LOCALAPPDATA?.trim() || join23(home, "AppData", "Local"), "ultradoc");
+  return join23(process.env.XDG_CACHE_HOME?.trim() || join23(home, ".cache"), "ultradoc");
 }
 
 // src/clone.ts
 function migrateLegacyClone(dir, slug) {
   if (existsSync10(dir)) return;
-  const legacy = join23(tmpdir3(), "ultradoc", slug);
-  if (legacy === dir || !existsSync10(join23(legacy, ".git"))) return;
+  const legacy = join24(tmpdir4(), "ultradoc", slug);
+  if (legacy === dir || !existsSync10(join24(legacy, ".git"))) return;
   try {
-    mkdirSync4(cacheRoot(), { recursive: true });
+    mkdirSync5(cacheRoot(), { recursive: true });
     renameSync3(legacy, dir);
   } catch {
   }
@@ -17475,16 +17868,16 @@ function resolveRepo(raw) {
 }
 function ensureClone(ref, opts = {}) {
   if (ref.isLocal) return resolve4(ref.raw);
-  const dir = join23(cacheRoot(), ref.slug);
+  const dir = join24(cacheRoot(), ref.slug);
   migrateLegacyClone(dir, ref.slug);
-  const alreadyCloned = existsSync10(join23(dir, ".git"));
+  const alreadyCloned = existsSync10(join24(dir, ".git"));
   if (alreadyCloned && !opts.refresh) return dir;
   if (alreadyCloned && opts.refresh) {
     sh2("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { timeoutMs: 18e4 });
     sh2("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: 6e4 });
     return dir;
   }
-  mkdirSync4(cacheRoot(), { recursive: true });
+  mkdirSync5(cacheRoot(), { recursive: true });
   const args2 = ["clone", "--depth", "1", "--filter=blob:none"];
   if (opts.branch) args2.push("--branch", opts.branch);
   args2.push(ref.cloneUrl, dir);
@@ -17546,8 +17939,8 @@ function originUrl(dir) {
 }
 
 // src/index/structural.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync5, readFileSync as readFileSync12 } from "fs";
-import { join as join26 } from "path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12 } from "fs";
+import { join as join27 } from "path";
 
 // src/lang/registry.ts
 function languageOf2(ext) {
@@ -17555,7 +17948,7 @@ function languageOf2(ext) {
 }
 
 // src/index/scan.ts
-import { join as join24 } from "path";
+import { join as join25 } from "path";
 var memo = /* @__PURE__ */ new Map();
 function scanOptions2(root, maxFiles) {
   return {
@@ -17563,7 +17956,7 @@ function scanOptions2(root, maxFiles) {
     maxBytes: LIMITS.maxFileBytes,
     // Exclude ultradoc's own cache dir by absolute path — the engine only knows
     // to skip its own.
-    out: join24(root, CACHE_DIR_NAME)
+    out: join25(root, CACHE_DIR_NAME)
   };
 }
 function publishScan(root, scan2) {
@@ -17578,7 +17971,7 @@ function repoScan(root) {
 }
 
 // src/sources/doc-discovery.ts
-import { join as join25 } from "path";
+import { join as join26 } from "path";
 
 // src/walk.ts
 function walkDetailed(root, opts = {}) {
@@ -17648,7 +18041,7 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   };
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f)) ?? docFiles.find((f) => /(^|\/)readme\./i.test(f));
   if (readme) {
-    const text = readText(join25(repoDir, readme)).slice(0, 4e4);
+    const text = readText(join26(repoDir, readme)).slice(0, 4e4);
     let m;
     const link = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
     while (m = link.exec(text)) add(m[2], m[1]);
@@ -17660,7 +18053,7 @@ function discoverDocsUrl(repoDir, docFiles, configFiles, projectNames = []) {
   }
   for (const cfg of configFiles) {
     const base = cfg.split("/").pop().toLowerCase();
-    const text = readText(join25(repoDir, cfg));
+    const text = readText(join26(repoDir, cfg));
     if (!text) continue;
     if (base === "package.json" || base === "composer.json") {
       try {
@@ -17727,10 +18120,10 @@ var CONFIG_BASENAME2 = /* @__PURE__ */ new Set([
   "manifest.json"
 ]);
 function indexDir(root) {
-  return join26(root, ".ultradoc");
+  return join27(root, ".ultradoc");
 }
 function indexPath(root) {
-  return join26(indexDir(root), "index.json");
+  return join27(indexDir(root), "index.json");
 }
 function isDoc2(rel2, ext) {
   const base = rel2.split("/").pop().toLowerCase();
@@ -17817,7 +18210,7 @@ function buildIndex(root, slug, opts = {}) {
     schemaVersion: SCHEMA_VERSION2
   };
   try {
-    mkdirSync5(indexDir(root), { recursive: true });
+    mkdirSync6(indexDir(root), { recursive: true });
     writeFileAtomic(indexPath(root), JSON.stringify(index));
   } catch {
   }
@@ -17845,8 +18238,8 @@ function ensureIndex(root, slug, opts = {}) {
 }
 
 // src/dossier.ts
-import { mkdirSync as mkdirSync6, writeFileSync as writeFileSync7 } from "fs";
-import { join as join27 } from "path";
+import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync7 } from "fs";
+import { join as join28 } from "path";
 var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var SOURCE_LABEL = {
   code: "Code",
@@ -17870,7 +18263,7 @@ function runId(d = /* @__PURE__ */ new Date()) {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(repoDir, d) {
-  return join27(indexDir(repoDir), "runs", runId(d));
+  return join28(indexDir(repoDir), "runs", runId(d));
 }
 function assignIds2(results) {
   const flat = results.flatMap((r) => r.items);
@@ -17922,10 +18315,10 @@ function renderEvidenceMarkdown(evidence, meta) {
   return out2.join("\n");
 }
 function writeDossier(dir, evidence, meta) {
-  mkdirSync6(dir, { recursive: true });
-  const evidenceJson = join27(dir, "evidence.json");
-  const evidenceMd = join27(dir, "EVIDENCE.md");
-  const metaJson = join27(dir, "meta.json");
+  mkdirSync7(dir, { recursive: true });
+  const evidenceJson = join28(dir, "evidence.json");
+  const evidenceMd = join28(dir, "EVIDENCE.md");
+  const metaJson = join28(dir, "meta.json");
   writeFileSync7(evidenceJson, JSON.stringify(evidence, null, 2));
   writeFileSync7(evidenceMd, renderEvidenceMarkdown(evidence, meta));
   writeFileSync7(metaJson, JSON.stringify(meta, null, 2));
@@ -17934,7 +18327,7 @@ function writeDossier(dir, evidence, meta) {
 
 // src/index/search.ts
 import { statSync as statSync8 } from "fs";
-import { join as join28 } from "path";
+import { join as join29 } from "path";
 
 // src/index/bm25.ts
 function bm25(docs, terms, N, df, k1 = 1.2, b = 0.75) {
@@ -18289,7 +18682,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const candidates = [...files].filter((rel2) => lexical.has(rel2)).map((rel2) => {
     let len = 1e3;
     try {
-      len = Math.max(1, statSync8(join28(root, rel2)).size / 5);
+      len = Math.max(1, statSync8(join29(root, rel2)).size / 5);
     } catch {
     }
     return { key: rel2, tf: lexical.get(rel2).kwCounts, len };
@@ -18316,7 +18709,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const items = [];
   for (const f of scored) {
     if (items.length >= perSource) break;
-    const content = readText(join28(root, f.rel));
+    const content = readText(join29(root, f.rel));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const call = callHits.get(f.rel);
@@ -18365,7 +18758,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   if (pins.length) {
     items.length = Math.max(0, Math.min(items.length, perSource - pins.length));
     for (const { f, kw, n, res } of pins) {
-      const content = readText(join28(root, f.rel));
+      const content = readText(join29(root, f.rel));
       if (!content) continue;
       const lines = content.split(/\r?\n/);
       const anchor = f.fh.lines.find((l) => {
@@ -18426,8 +18819,8 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 }
 
 // src/index/semantic/qdrant.ts
-import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync7 } from "fs";
-import { join as join29, dirname as dirname6 } from "path";
+import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync8 } from "fs";
+import { join as join30, dirname as dirname6 } from "path";
 
 // src/sources/firecrawl.ts
 var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
@@ -18861,7 +19254,7 @@ function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
 }
 function markerPath(repoDir) {
-  return join29(repoDir, ".ultradoc", "semantic.json");
+  return join30(repoDir, ".ultradoc", "semantic.json");
 }
 async function collectionExists(name2) {
   const r = await httpJson("GET", `${QDRANT}/collections/${name2}`);
@@ -18895,7 +19288,7 @@ async function buildIfNeeded(ctx) {
       capped = true;
       break;
     }
-    const content = readText(join29(ctx.repoDir, rel2));
+    const content = readText(join30(ctx.repoDir, rel2));
     if (!content) continue;
     const isDoc3 = ctx.index.docFiles.includes(rel2);
     for (const c2 of chunkFile(rel2, content, isDoc3, symbolLines.get(rel2) ?? [])) {
@@ -18937,7 +19330,7 @@ async function buildIfNeeded(ctx) {
   const tooHollow = failed2 / chunks.length > 0.2;
   if (!tooHollow) {
     try {
-      mkdirSync7(dirname6(marker), { recursive: true });
+      mkdirSync8(dirname6(marker), { recursive: true });
       writeFileSync8(marker, JSON.stringify({ collection: name2, commit, chunks: chunks.length, dim }));
     } catch {
     }
@@ -18982,14 +19375,14 @@ async function qdrantSearch(ctx) {
 
 // src/index/semantic/model.ts
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync13, mkdirSync as mkdirSync8, writeFileSync as writeFileSync9 } from "fs";
-import { join as join30 } from "path";
+import { existsSync as existsSync13, mkdirSync as mkdirSync9, writeFileSync as writeFileSync9 } from "fs";
+import { join as join31 } from "path";
 var MODELS_DIR = "models";
 function modelDir() {
-  return join30(cacheRoot(), MODELS_DIR);
+  return join31(cacheRoot(), MODELS_DIR);
 }
 function modelPath() {
-  return join30(modelDir(), "model.json");
+  return join31(modelDir(), "model.json");
 }
 function hasStaticModel() {
   return existsSync13(modelPath());
@@ -19023,7 +19416,7 @@ async function pullStaticModel(opts = {}) {
     }
   }
   try {
-    mkdirSync8(modelDir(), { recursive: true });
+    mkdirSync9(modelDir(), { recursive: true });
     writeFileSync9(path, res.body);
   } catch (e) {
     return { ok: false, status: "failed", path, message: `ultradoc semantic: could not write the embedding model to ${path} (${e.message}).` };
@@ -19058,13 +19451,13 @@ function staticModelHint() {
 }
 
 // src/index/semantic/vectors.ts
-import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "fs";
-import { dirname as dirname7, join as join31 } from "path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "fs";
+import { dirname as dirname7, join as join32 } from "path";
 function artifactPath(repoDir) {
-  return join31(repoDir, CACHE_DIR_NAME, "embeddings.bin");
+  return join32(repoDir, CACHE_DIR_NAME, "embeddings.bin");
 }
 function markerPath2(repoDir) {
-  return join31(repoDir, CACHE_DIR_NAME, "embeddings.json");
+  return join32(repoDir, CACHE_DIR_NAME, "embeddings.json");
 }
 function loadPersisted(ctx, enc) {
   try {
@@ -19077,7 +19470,7 @@ function loadPersisted(ctx, enc) {
 }
 function persist(ctx, enc, index) {
   try {
-    mkdirSync9(dirname7(artifactPath(ctx.repoDir)), { recursive: true });
+    mkdirSync10(dirname7(artifactPath(ctx.repoDir)), { recursive: true });
     writeFileSync10(artifactPath(ctx.repoDir), serializeEmbeddings(index));
     writeFileSync10(markerPath2(ctx.repoDir), JSON.stringify({ commit: ctx.index.commit ?? "HEAD", tier: enc.tier, modelId: index.modelId }));
   } catch {
@@ -19110,7 +19503,7 @@ async function vectorSearch(ctx, enc) {
   const symsByFile = symbolsByFile(ctx.index.symbols);
   const items = [];
   for (const hit of hits) {
-    const content = readText(join31(ctx.repoDir, hit.file));
+    const content = readText(join32(ctx.repoDir, hit.file));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const sym = hit.symbol ? symsByFile.get(hit.file)?.find((s) => s.name === hit.symbol) : void 0;
@@ -19135,362 +19528,12 @@ async function vectorSearch(ctx, enc) {
   return { available: true, items, notes };
 }
 
-// src/index/compose.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync10, readFileSync as readFileSync15, writeFileSync as writeFileSync11 } from "fs";
-import { dirname as dirname8, join as join33 } from "path";
-var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for ultradoc's semantic mode, web
-# search and content extraction. Start it with \`ultradoc semantic up\` (or
-# \`docker compose --profile all up -d\`). The published bundle stays
-# dependency-free \u2014 it only speaks HTTP to these containers on localhost;
-# nothing here is required for Tier-1 retrieval.
-#
-# Profiles let you start subsets:
-#   --profile semantic  \u2192 qdrant + ollama (vector search)
-#   --profile search    \u2192 searxng (web discovery)
-#   --profile all       \u2192 everything above
-#   --profile extract   \u2192 firecrawl (content cleaning; \`ultradoc firecrawl up\`)
-# \u2500\u2500 Shared with the sibling skills \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-# ultrasearch, construct and ultradoc all need SearXNG and Firecrawl (and two of
-# them Qdrant and Ollama), and all bound the SAME host ports from three separate
-# compose projects \u2014 so only one could ever be up. Starting a second failed with
-# "port is already allocated", *after* leaving its sidecars running.
-#
-# They now share one project name, one set of container names and one set of
-# volumes, and the service definitions below are identical across the three. So
-# \`<any skill> firecrawl up\` targets the SAME containers: the second one is a
-# no-op instead of a collision, and the stack costs one machine's worth of RAM
-# rather than three.
-#
-# \u26A0 Keep the shared service blocks byte-identical across the three repos. Docker
-#   compares the resolved config: a divergence makes \`up\` from one repo RECREATE
-#   the other's running containers.
-#
-# \u26A0 Upgrading from a version that used per-skill container names? The old
-#   \`ultrasearch-* / construct-* / ultradoc-*\` containers still hold the ports
-#   and this file can no longer stop them. Remove them once:
-#     docker rm -f $(docker ps -aq --filter name='^(ultrasearch|construct|ultradoc)-')
-#   Their volumes are Firecrawl queue state and are safe to drop too:
-#     docker volume ls -q | grep -E '^(ultrasearch|construct|ultradoc)_' | xargs -r docker volume rm
-name: skills
-
-services:
-  # Vector database \u2014 Apache-2.0, self-hosted, no key.
-  qdrant:
-    image: qdrant/qdrant:v1.18.2
-    container_name: skills-qdrant
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant:/qdrant/storage
-    restart: unless-stopped
-    profiles: ["semantic", "all"]
-    healthcheck:
-      # The image ships no curl/wget \u2014 probe the REST port over bash's /dev/tcp.
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  # Local embedding server \u2014 no key, no data leaves the machine. Pull the model
-  # once: \`docker compose exec ollama ollama pull nomic-embed-text\`
-  # (\`ultradoc semantic up\` does this for you).
-  ollama:
-    image: ollama/ollama:0.30.7
-    container_name: skills-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/root/.ollama
-    restart: unless-stopped
-    profiles: ["semantic", "all"]
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  # Self-hosted metasearch for keyless web discovery. JSON output is enabled in
-  # docker/searxng/settings.yml so the engine can be queried programmatically.
-  # Also backs Firecrawl's keyless /search through SEARXNG_ENDPOINT.
-  searxng:
-    image: searxng/searxng:2026.6.11-a1490676e
-    container_name: skills-searxng
-    ports:
-      - "8888:8080"
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:8888/
-    volumes:
-      - ./docker/searxng:/etc/searxng:rw
-    restart: unless-stopped
-    profiles: ["search", "all"]
-    healthcheck:
-      # busybox wget is in the image; /healthz answers on the container port.
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
-  # Self-hosted Firecrawl \u2014 keyless content cleaning. Fetches a page with a real
-  # browser and returns main-content markdown, which beats the built-in regex
-  # HTML stripper on nav/cookie chrome and is the only way JS-rendered pages
-  # yield any text at all. Keyless because USE_DB_AUTHENTICATION=false; see
-  # docker/firecrawl/firecrawl.env for the tunables.
-  #
-  # Deliberately NOT in the "all" profile: it is ~3 GB of images and 5
-  # containers, and \`ultradoc semantic up\` must stay cheap.
-  #
-  #   docker compose --profile search --profile extract up -d --wait
-  firecrawl:
-    image: ghcr.io/firecrawl/firecrawl:2.10.5@sha256:8ce1af201332e1de046d70d5d516fbfe7f0f6229820d271d880873eeca531ea6
-    container_name: skills-firecrawl
-    ports:
-      - "3002:3002"
-    env_file:
-      - ./docker/firecrawl/firecrawl.env
-    environment:
-      # Wiring lives here; tunables live in the env file above.
-      - HOST=0.0.0.0
-      - PORT=3002
-      - ENV=local
-      - REDIS_URL=redis://firecrawl-redis:6379
-      - REDIS_RATE_LIMIT_URL=redis://firecrawl-redis:6379
-      - PLAYWRIGHT_MICROSERVICE_URL=http://firecrawl-playwright:3000/scrape
-      - POSTGRES_HOST=firecrawl-postgres
-      - NUQ_RABBITMQ_URL=amqp://firecrawl-rabbitmq:5672
-      # Keeps /search keyless by delegating to the searxng service above.
-      # Unreachable when the \`search\` profile is down \u2014 Firecrawl then falls
-      # back to DuckDuckGo on its own.
-      - SEARXNG_ENDPOINT=http://searxng:8080
-    command: node dist/src/harness.js --start-docker
-    depends_on:
-      firecrawl-redis:
-        condition: service_started
-      firecrawl-playwright:
-        condition: service_started
-      firecrawl-postgres:
-        condition: service_started
-      firecrawl-rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    profiles: ["extract"]
-    # The image ships no curl/wget, but it is a Node image \u2014 probe with node.
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    # Trimmed for a 16 GB laptop; upstream asks for 4 CPU / 8 GB. Measured at
-    # 2.3 GB steady under 5 concurrent scrapes, so 3 GB was too tight a cap \u2014
-    # MAX_RAM=0.8 in the env file makes Firecrawl self-throttle at ~3.2 GB.
-    cpus: 2.0
-    mem_limit: 4g
-    memswap_limit: 4g
-
-  # Headless-browser sidecar \u2014 this is what makes JS-rendered pages extractable.
-  firecrawl-playwright:
-    image: ghcr.io/firecrawl/playwright-service:latest@sha256:8c50add7293201e575110e6c7489fa383a9dfc46f168936526a458e06ffc5c28
-    container_name: skills-firecrawl-playwright
-    environment:
-      - PORT=3000
-      - BLOCK_MEDIA=true
-      - MAX_CONCURRENT_PAGES=4
-    restart: unless-stopped
-    profiles: ["extract"]
-    cpus: 1.5
-    mem_limit: 2g
-    memswap_limit: 2g
-    tmpfs:
-      - /tmp/.cache:noexec,nosuid,size=512m
-
-  firecrawl-redis:
-    image: redis:alpine
-    container_name: skills-firecrawl-redis
-    command: redis-server --bind 0.0.0.0
-    restart: unless-stopped
-    profiles: ["extract"]
-
-  firecrawl-rabbitmq:
-    image: rabbitmq:3-management
-    container_name: skills-firecrawl-rabbitmq
-    restart: unless-stopped
-    profiles: ["extract"]
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
-  firecrawl-postgres:
-    image: ghcr.io/firecrawl/nuq-postgres:latest@sha256:aed86f62858f29bd971abddcdeb301c12888098d2cf5d33c1ba42b053bc460f6
-    container_name: skills-firecrawl-postgres
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=postgres
-    volumes:
-      - firecrawl_pg:/var/lib/postgresql/data
-    restart: unless-stopped
-    profiles: ["extract"]
-
-volumes:
-  qdrant:
-  ollama:
-  firecrawl_pg:
-`;
-var SEARXNG_SETTINGS_YAML = `# Minimal SearXNG config for keyless, self-hosted web discovery. The important
-# bit is enabling the JSON output format so the CLI can query it
-# programmatically (\`/search?format=json\`) \u2014 most PUBLIC instances disable it,
-# which is why a local one ships here.
-#
-# Kept byte-identical across maxgfr/ultradoc, maxgfr/ultrasearch and
-# maxgfr/construct so one container can serve all three.
-use_default_settings: true
-
-server:
-  # Override with a real random secret if you expose this beyond localhost.
-  secret_key: "searxng-local-dev-change-me"
-  # The limiter/bot-detection middleware answers 403 to format=json requests.
-  limiter: false
-  image_proxy: false
-
-search:
-  safe_search: 0
-  autocomplete: ""
-  formats:
-    - html
-    - json
-`;
-var FIRECRAWL_ENV = `# Tunables for the self-hosted Firecrawl stack (docker compose --profile extract).
-# Wiring (hostnames, ports, SEARXNG_ENDPOINT) lives in docker-compose.yml and
-# overrides anything set here.
-
-# THIS is what makes the API keyless. Turning it on would require a Supabase
-# project; there is no reason to for a localhost stack.
-USE_DB_AUTHENTICATION=false
-
-# Firecrawl's Rust PDF extractor, which is OFF by default upstream. Without it
-# Firecrawl falls back to pdf-parse (JS) for PDFs. Still keyless: this is the
-# local Rust path, not the MinerU / Fire PDF routes, which need API credentials.
-# ultradoc reaches this as rung 2 of the PDF ladder \u2014 see src/sources/pdf/.
-PDF_RUST_EXTRACT_ENABLE=true
-
-# Postgres credentials for the bundled nuq-postgres container. It is not
-# published on a host port, so these never leave the compose network.
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=postgres
-POSTGRES_PORT=5432
-
-# Admin queue dashboard at http://localhost:3002/admin/CHANGEME/queues
-BULL_AUTH_KEY=CHANGEME
-
-# Concurrency, trimmed for a laptop. Upstream defaults are 8/5/5/10 and assume
-# a 4-CPU / 8-GB box; these keep the stack near ~4 GB total.
-NUM_WORKERS_PER_QUEUE=2
-MAX_CONCURRENT_JOBS=3
-BROWSER_POOL_SIZE=2
-CRAWL_CONCURRENT_REQUESTS=4
-
-# Back off before the host runs out of headroom.
-MAX_CPU=0.8
-MAX_RAM=0.8
-
-LOGGING_LEVEL=info
-`;
-function ensureComposeMaterialized() {
-  const base = join33(cacheRoot(), "compose");
-  const composePath = join33(base, "docker-compose.yml");
-  const settingsPath = join33(base, "docker", "searxng", "settings.yml");
-  const firecrawlEnvPath = join33(base, "docker", "firecrawl", "firecrawl.env");
-  writeIfChanged(composePath, COMPOSE_YAML);
-  writeIfChanged(settingsPath, SEARXNG_SETTINGS_YAML);
-  writeIfChanged(firecrawlEnvPath, FIRECRAWL_ENV);
-  return composePath;
-}
-function writeIfChanged(path, content) {
-  try {
-    if (existsSync15(path) && readFileSync15(path, "utf8") === content) return;
-    mkdirSync10(dirname8(path), { recursive: true });
-    writeFileSync11(path, content);
-  } catch {
-  }
-}
-
 // src/index/semantic/control.ts
-function composeFile() {
-  return ensureComposeMaterialized();
-}
-var DEFAULT_DOCKER_PULL_TIMEOUT_MS = 12e5;
-function dockerPullTimeoutMs() {
-  const raw = Number(process.env.ULTRADOC_DOCKER_PULL_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DOCKER_PULL_TIMEOUT_MS;
-}
-var SEMANTIC_STACK = {
-  command: "semantic",
-  profile: "all",
-  summary: "stack is up (Qdrant :6333 \xB7 Ollama :11434 \xB7 SearXNG :8888).",
-  postUp: (file, run3) => {
-    const pull = run3("docker", ["compose", "-f", file, "exec", "-T", "ollama", "ollama", "pull", EMBED_MODEL], { timeoutMs: 6e5 });
-    return [
-      pull.ok ? `  model:  ${EMBED_MODEL} ready` : `  model:  pull '${EMBED_MODEL}' yourself: docker compose -f ${file} exec ollama ollama pull ${EMBED_MODEL}`,
-      '  use:    ultradoc ask --repo <url> --q "..." --semantic'
-    ];
-  }
-};
-var FIRECRAWL_STACK = {
-  command: "firecrawl",
-  profile: "extract",
-  summary: "stack is up (Firecrawl :3002 \xB7 playwright \xB7 redis \xB7 rabbitmq \xB7 postgres).",
-  postUp: () => [
-    "  keyless: USE_DB_AUTHENTICATION=false \u2014 no API key is sent or needed.",
-    "  use:     fetched pages are now cleaned by Firecrawl; --firecrawl off opts out.",
-    '  search:  ultradoc web --repo <url> --q "..." --web-engine firecrawl'
-  ]
-};
-function composeControl(action, stack, deps = {}) {
-  const run3 = deps.run ?? sh2;
-  const has = deps.has ?? have2;
-  const tag = `ultradoc ${stack.command}`;
-  if (!["up", "down", "status"].includes(action)) {
-    return { message: `${tag}: unknown action "${action}" (use: up | down | status)`, code: 1 };
-  }
-  if (!has("docker")) {
-    return { message: `${tag}: docker not found. Install Docker, then retry. See references/semantic-setup.md.`, code: 1 };
-  }
-  const file = composeFile();
-  if (action === "down") {
-    const r = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "down"], { timeoutMs: 12e4 });
-    return { message: r.ok ? `${tag}: stack stopped.` : `${tag}: down failed.
-${r.stderr}`, code: r.ok ? 0 : 1 };
-  }
-  if (action === "status") {
-    const r = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "ps"], { timeoutMs: 3e4 });
-    return { message: r.ok ? r.stdout || `${tag}: no services running.` : `${tag}: status failed.
-${r.stderr}`, code: 0 };
-  }
-  const imagePull = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "pull"], { timeoutMs: dockerPullTimeoutMs() });
-  if (!imagePull.ok) {
-    return {
-      message: `${tag}: pulling the stack images failed (large images can be slow \u2014 raise ULTRADOC_DOCKER_PULL_TIMEOUT_MS, currently ${dockerPullTimeoutMs()}ms).
-${imagePull.stderr}`,
-      code: 1
-    };
-  }
-  const up = run3("docker", ["compose", "-f", file, "--profile", stack.profile, "up", "-d", "--wait"], { timeoutMs: 3e5 });
-  if (!up.ok) return { message: `${tag}: up failed.
-${up.stderr}`, code: 1 };
-  return { message: [`${tag}: ${stack.summary}`, ...stack.postUp?.(file, run3) ?? []].join("\n"), code: 0 };
-}
 function semanticControl(action, deps = {}) {
-  return composeControl(action, SEMANTIC_STACK, deps);
+  return stackControl(["semantic", "searxng"], action, deps);
 }
 function firecrawlControl(action, deps = {}) {
-  return composeControl(action, FIRECRAWL_STACK, deps);
+  return stackControl("firecrawl", action, deps);
 }
 
 // src/index/semantic/index.ts
@@ -19569,18 +19612,18 @@ async function codeSource(ctx) {
 }
 
 // src/sources/docs.ts
-import { join as join35 } from "path";
+import { join as join34 } from "path";
 
 // src/sources/page-cache.ts
-import { existsSync as existsSync16, mkdirSync as mkdirSync11, readFileSync as readFileSync16, statSync as statSync9, writeFileSync as writeFileSync12 } from "fs";
-import { join as join34 } from "path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync15, statSync as statSync9, writeFileSync as writeFileSync11 } from "fs";
+import { join as join33 } from "path";
 var CACHE_GEN = "v3";
 function pageCacheFile(dir, url, extractor) {
-  return join34(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
+  return join33(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
 }
 var PAGES_DIR = "pages";
 function webPageCacheDir() {
-  return join34(cacheRoot(), PAGES_DIR);
+  return join33(cacheRoot(), PAGES_DIR);
 }
 async function plannedExtractor(opts = {}) {
   const base = firecrawlBase(opts);
@@ -19593,8 +19636,8 @@ async function cachedPageText(dir, url, opts = {}) {
   let cached;
   let fresh = false;
   try {
-    if (existsSync16(file)) {
-      cached = readFileSync16(file, "utf8");
+    if (existsSync15(file)) {
+      cached = readFileSync15(file, "utf8");
       fresh = Date.now() - statSync9(file).mtimeMs < extdocsTtlMs();
     }
   } catch {
@@ -19605,7 +19648,7 @@ async function cachedPageText(dir, url, opts = {}) {
     const out2 = res.extractor === planned ? file : pageCacheFile(dir, url, res.extractor);
     try {
       mkdirSync11(dir, { recursive: true });
-      writeFileSync12(out2, res.text);
+      writeFileSync11(out2, res.text);
     } catch {
     }
     return res;
@@ -19618,7 +19661,7 @@ async function cachedPageText(dir, url, opts = {}) {
 var DOCS_ENTRY_BOOST = 1.2;
 var DOCS_ROOT_BOOST = 1.5;
 async function getDocText(repoDir, url, opts = {}) {
-  return cachedPageText(join35(repoDir, ".ultradoc", "extdocs"), url, opts);
+  return cachedPageText(join34(repoDir, ".ultradoc", "extdocs"), url, opts);
 }
 async function docsSource(ctx) {
   const notes = [];
@@ -19628,7 +19671,7 @@ async function docsSource(ctx) {
   for (const rel2 of ctx.index.docFiles) {
     if (ctx.scopeDir && !rel2.startsWith(ctx.scopeDir + "/")) continue;
     if (/(^|\/)(tests?|__tests__|spec|specs|fixtures?|examples?|vendor|node_modules|third[-_]?party|deps?|bower_components)\//i.test(rel2)) continue;
-    const content = readText(join35(ctx.repoDir, rel2));
+    const content = readText(join34(ctx.repoDir, rel2));
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     let bestLine = -1;
@@ -19681,7 +19724,7 @@ async function docsSource(ctx) {
 }
 
 // src/sources/releases.ts
-import { join as join36 } from "path";
+import { join as join35 } from "path";
 
 // src/providers/shared.ts
 function ghAuthHeaders() {
@@ -19818,7 +19861,7 @@ async function releasesSource(ctx) {
     (rel2) => CHANGELOG_RE.test(rel2) && (!ctx.scopeDir || rel2.startsWith(ctx.scopeDir + "/")) && !/(^|\/)(node_modules|vendor|fixtures?)\//i.test(rel2)
   );
   for (const rel2 of changelogs) {
-    const content = readText(join36(ctx.repoDir, rel2));
+    const content = readText(join35(ctx.repoDir, rel2));
     if (!content) continue;
     const scored = changelogSections(rel2, content).map((s) => ({ s, cov: coverage(s.lines.join("\n"), kws) })).filter((x) => x.cov > 0).sort((a, b) => b.cov - a.cov);
     for (const { s, cov } of scored.slice(0, ctx.options.perSource)) {
@@ -20508,8 +20551,8 @@ async function runSources(ctx) {
 }
 
 // src/drill-plan.ts
-import { writeFileSync as writeFileSync13 } from "fs";
-import { join as join37 } from "path";
+import { writeFileSync as writeFileSync12 } from "fs";
+import { join as join36 } from "path";
 var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var MAX_DRILL_CELLS = 24;
 var MAX_SYMBOL_CELLS = 3;
@@ -20572,8 +20615,8 @@ function buildDrillPlan(opts) {
   };
 }
 function writeDrillPlan(dir, plan) {
-  const p = join37(dir, "drill-plan.json");
-  writeFileSync13(p, JSON.stringify(plan, null, 2));
+  const p = join36(dir, "drill-plan.json");
+  writeFileSync12(p, JSON.stringify(plan, null, 2));
   return p;
 }
 
@@ -20645,12 +20688,12 @@ async function runSingleSource(options, kind) {
 }
 
 // src/doc.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync14 } from "fs";
-import { basename as basename6, join as join39 } from "path";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync13 } from "fs";
+import { basename as basename6, join as join38 } from "path";
 
 // src/overview.ts
-import { existsSync as existsSync17, mkdirSync as mkdirSync12, readFileSync as readFileSync17 } from "fs";
-import { basename as basename5, dirname as dirname9, join as join38 } from "path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync12, readFileSync as readFileSync16 } from "fs";
+import { basename as basename5, dirname as dirname8, join as join37 } from "path";
 
 // src/index/modules.ts
 var NOISE_DIR = /(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e|docs?|website|site)(\/|$)/i;
@@ -20690,12 +20733,12 @@ function coreModules(repoDir) {
 }
 var CACHE_MARK = /<!-- ultradoc:overview commit=([^\s]+) -->/;
 function overviewPath(repoDir) {
-  return join38(repoDir, ".ultradoc", "OVERVIEW.md");
+  return join37(repoDir, ".ultradoc", "OVERVIEW.md");
 }
 function readmeAbout(repoDir, docFiles) {
   const readme = docFiles.find((f) => /^readme(\.|$)/i.test(f));
   if (!readme) return [];
-  const text = readText(join38(repoDir, readme));
+  const text = readText(join37(repoDir, readme));
   const out2 = [];
   let chars = 0;
   for (const para of text.split(/\r?\n\s*\r?\n/)) {
@@ -20815,9 +20858,9 @@ function renderOverview(index, ref, repoDir) {
 }
 function ensureOverview(index, ref, repoDir, opts = {}) {
   const path = opts.out ?? overviewPath(repoDir);
-  if (!opts.refresh && existsSync17(path)) {
+  if (!opts.refresh && existsSync16(path)) {
     try {
-      const existing = readFileSync17(path, "utf8");
+      const existing = readFileSync16(path, "utf8");
       const commit = CACHE_MARK.exec(existing)?.[1];
       if (commit && commit === (index.commit ?? "unknown")) {
         return { path, markdown: existing, cached: true };
@@ -20826,7 +20869,7 @@ function ensureOverview(index, ref, repoDir, opts = {}) {
     }
   }
   const markdown = renderOverview(index, ref, repoDir);
-  mkdirSync12(dirname9(path), { recursive: true });
+  mkdirSync12(dirname8(path), { recursive: true });
   writeFileAtomic(path, markdown);
   return { path, markdown, cached: false };
 }
@@ -20858,7 +20901,7 @@ function detectProjectTraits(repoDir, index) {
   const bases = new Map(index.configFiles.map((f) => [f.split("/").pop().toLowerCase(), f]));
   const readCfg = (base) => {
     const rel2 = bases.get(base);
-    return rel2 ? readText(join39(repoDir, rel2)) : "";
+    return rel2 ? readText(join38(repoDir, rel2)) : "";
   };
   let isCli = false;
   const pkg = readCfg("package.json");
@@ -20972,8 +21015,8 @@ function renderDocTodo(plan, evidence) {
   return out2.join("\n");
 }
 function defaultDocDir(repoDir, scopePkg) {
-  const base = join39(indexDir(repoDir), "doc");
-  return scopePkg ? join39(base, slugify2(scopePkg.name)) : base;
+  const base = join38(indexDir(repoDir), "doc");
+  return scopePkg ? join38(base, slugify2(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
   const ctx = buildContext(options);
@@ -21032,21 +21075,21 @@ async function runDoc(options, opts = {}) {
   };
   const dir = options.out ?? defaultDocDir(ctx.repoDir, ctx.scopePkg);
   mkdirSync13(dir, { recursive: true });
-  const evidenceJson = join39(dir, "evidence.json");
-  const evidenceMd = join39(dir, "EVIDENCE.md");
-  const planJson = join39(dir, "DOC.plan.json");
-  const todoMd = join39(dir, "DOC.todo.md");
-  const metaJson = join39(dir, "meta.json");
-  writeFileSync14(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync14(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync14(planJson, JSON.stringify(plan, null, 2));
-  writeFileSync14(todoMd, renderDocTodo(plan, evidence));
-  writeFileSync14(metaJson, JSON.stringify(meta, null, 2));
+  const evidenceJson = join38(dir, "evidence.json");
+  const evidenceMd = join38(dir, "EVIDENCE.md");
+  const planJson = join38(dir, "DOC.plan.json");
+  const todoMd = join38(dir, "DOC.todo.md");
+  const metaJson = join38(dir, "meta.json");
+  writeFileSync13(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync13(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync13(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync13(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync13(metaJson, JSON.stringify(meta, null, 2));
   let architecturePath;
   if (graph) {
     try {
-      architecturePath = join39(dir, "ARCHITECTURE.mmd");
-      writeFileSync14(architecturePath, graph.mermaid());
+      architecturePath = join38(dir, "ARCHITECTURE.mmd");
+      writeFileSync13(architecturePath, graph.mermaid());
     } catch {
       architecturePath = void 0;
     }
@@ -21061,8 +21104,8 @@ async function runDoc(options, opts = {}) {
 
 // src/check.ts
 import { createHash as createHash5 } from "crypto";
-import { existsSync as existsSync19, readFileSync as readFileSync19 } from "fs";
-import { basename as basename7, dirname as dirname10, join as join41, resolve as resolvePath, sep as sep4 } from "path";
+import { existsSync as existsSync18, readFileSync as readFileSync18 } from "fs";
+import { basename as basename7, dirname as dirname9, join as join40, resolve as resolvePath, sep as sep4 } from "path";
 
 // src/citations.ts
 var TOKEN_RE2 = /\[([^\]\n]+)\](?!\()/g;
@@ -21306,8 +21349,8 @@ function claimCoverage(text, _evidence) {
 }
 
 // src/verify.ts
-import { existsSync as existsSync18, readFileSync as readFileSync18, writeFileSync as writeFileSync15 } from "fs";
-import { join as join40 } from "path";
+import { existsSync as existsSync17, readFileSync as readFileSync17, writeFileSync as writeFileSync14 } from "fs";
+import { join as join39 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
@@ -21321,13 +21364,13 @@ function claimStrings(text) {
   return out2;
 }
 function buildWorklist(dir, opts = {}) {
-  const evidencePath = join40(dir, "evidence.json");
-  if (!existsSync18(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
-  const evidence = JSON.parse(readFileSync18(evidencePath, "utf8"));
+  const evidencePath = join39(dir, "evidence.json");
+  if (!existsSync17(evidencePath)) throw new Error(`No evidence.json in ${dir} \u2014 run \`ultradoc ask\` first.`);
+  const evidence = JSON.parse(readFileSync17(evidencePath, "utf8"));
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} \u2014 write the answer first.`);
-  const answer = readFileSync18(answerPath, "utf8");
+  const answer = readFileSync17(answerPath, "utf8");
   const pairs = [];
   const uncitedClaims = [];
   let claimNo = 0;
@@ -21366,8 +21409,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims: worklist.uncitedClaims
   };
-  writeFileSync15(join40(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync15(join40(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync14(join39(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync14(join39(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -21404,10 +21447,10 @@ _Showing ${kept} of ${total} pair(s) \u2014 capped at the highest-score evidence
   return out2.join("\n");
 }
 function applyVerdicts(dir, verdictsPath) {
-  if (!existsSync18(verdictsPath)) {
+  if (!existsSync17(verdictsPath)) {
     throw new Error(`No verdicts file at ${verdictsPath} \u2014 adjudicate VERIFY.todo.json and save it as verdicts.json first.`);
   }
-  const raw = JSON.parse(readFileSync18(verdictsPath, "utf8"));
+  const raw = JSON.parse(readFileSync17(verdictsPath, "utf8"));
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.pairs) ? raw.pairs : Array.isArray(raw?.verdicts) ? raw.verdicts : [];
   if (list.length === 0) {
     throw new Error(`${verdictsPath}: no verdict rows found \u2014 expected a bare array, { pairs: [...] } or { verdicts: [...] } with at least one row.`);
@@ -21442,14 +21485,14 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync15(join40(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
+  writeFileSync14(join39(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
   try {
-    const todoPath = join40(dir, "VERIFY.todo.json");
-    if (!existsSync18(todoPath)) return null;
-    const todo = JSON.parse(readFileSync18(todoPath, "utf8"));
+    const todoPath = join39(dir, "VERIFY.todo.json");
+    if (!existsSync17(todoPath)) return null;
+    const todo = JSON.parse(readFileSync17(todoPath, "utf8"));
     if (!Array.isArray(todo?.pairs)) return null;
     return [...new Set(todo.pairs.map((p) => p.claimId))];
   } catch {
@@ -21459,10 +21502,10 @@ function expectedClaims(dir) {
 function answerSignatureFor(dir) {
   try {
     const answerPath = resolveAnswerPath(dir);
-    const evidencePath = join40(dir, "evidence.json");
-    if (!answerPath || !existsSync18(evidencePath)) return null;
-    const evidence = JSON.parse(readFileSync18(evidencePath, "utf8"));
-    return answerClaimSignature(readFileSync18(answerPath, "utf8"), evidence);
+    const evidencePath = join39(dir, "evidence.json");
+    if (!answerPath || !existsSync17(evidencePath)) return null;
+    const evidence = JSON.parse(readFileSync17(evidencePath, "utf8"));
+    return answerClaimSignature(readFileSync17(answerPath, "utf8"), evidence);
   } catch {
     return null;
   }
@@ -21520,12 +21563,12 @@ function formatVerifyReport(r) {
 var COVERAGE_MIN_DEFAULT = 0.7;
 function resolveAnswerPath(dir, answerFile) {
   if (answerFile) {
-    const p = join41(dir, answerFile);
-    return existsSync19(p) ? p : null;
+    const p = join40(dir, answerFile);
+    return existsSync18(p) ? p : null;
   }
   for (const name2 of ["ANSWER.md", "DOC.md"]) {
-    const p = join41(dir, name2);
-    if (existsSync19(p)) return p;
+    const p = join40(dir, name2);
+    if (existsSync18(p)) return p;
   }
   return null;
 }
@@ -21545,13 +21588,13 @@ var REVALIDATION = {
 function pinnedClone(dir) {
   const pin = { headMatches: false };
   try {
-    const metaPath = join41(dir, "meta.json");
-    if (!existsSync19(metaPath)) return pin;
-    const meta = JSON.parse(readFileSync19(metaPath, "utf8"));
+    const metaPath = join40(dir, "meta.json");
+    if (!existsSync18(metaPath)) return pin;
+    const meta = JSON.parse(readFileSync18(metaPath, "utf8"));
     pin.meta = meta;
     if (!meta.commit) return pin;
     pin.recordedRepoDir = meta.repoDir;
-    const repoDir = meta.repoDir && existsSync19(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
+    const repoDir = meta.repoDir && existsSync18(meta.repoDir) ? meta.repoDir : dossierRepoDir(dir);
     if (!repoDir) return pin;
     pin.repoDir = repoDir;
     const head = headCommit2(repoDir);
@@ -21638,13 +21681,13 @@ function revalidateEvidence(pin, evidence, errors, warnings) {
       fail2("escapes-repo", "the cited path resolves outside the pinned clone");
       continue;
     }
-    if (!existsSync19(abs)) {
+    if (!existsSync18(abs)) {
       fail2("missing-file", `file not found in the pinned clone (${repoRoot} @ ${pin.meta.commit})`);
       continue;
     }
     let lines;
     try {
-      lines = readFileSync19(abs, "utf8").split(/\r?\n/);
+      lines = readFileSync18(abs, "utf8").split(/\r?\n/);
     } catch (e) {
       fail2("missing-file", `file is unreadable (${e.message})`);
       continue;
@@ -21688,11 +21731,11 @@ function headingsOf(answer) {
 }
 function missingDocSections(dir, answerPath, answer) {
   if (basename7(answerPath) !== "DOC.md") return void 0;
-  const planPath = join41(dir, "DOC.plan.json");
-  if (!existsSync19(planPath)) return void 0;
+  const planPath = join40(dir, "DOC.plan.json");
+  if (!existsSync18(planPath)) return void 0;
   let plan;
   try {
-    plan = JSON.parse(readFileSync19(planPath, "utf8"));
+    plan = JSON.parse(readFileSync18(planPath, "utf8"));
   } catch {
     return void 0;
   }
@@ -21704,8 +21747,8 @@ function missingDocSections(dir, answerPath, answer) {
 function dossierRepoDir(dir) {
   let d = dir;
   for (let i2 = 0; i2 < 6; i2++) {
-    if (basename7(d) === ".ultradoc") return dirname10(d);
-    const parent = dirname10(d);
+    if (basename7(d) === ".ultradoc") return dirname9(d);
+    const parent = dirname9(d);
     if (parent === d) break;
     d = parent;
   }
@@ -21724,7 +21767,7 @@ function answerClaimSignature(answer, evidence) {
   return createHash5("sha256").update(parts2.join("\n")).digest("hex").slice(0, 32);
 }
 function applySemantic(dir, result, answer, evidence, allowUnverified = false, answerFile) {
-  const p = join41(dir, "VERIFY.json");
+  const p = join40(dir, "VERIFY.json");
   const unverified = (what) => {
     const fix = "run `verify` then `verify --apply <verdicts.json>` first";
     if (allowUnverified) {
@@ -21734,13 +21777,13 @@ function applySemantic(dir, result, answer, evidence, allowUnverified = false, a
       result.errors.push(`--semantic: ${what} \u2014 ${fix}, or pass --allow-unverified to skip the semantic gate explicitly.`);
     }
   };
-  if (!existsSync19(p)) {
+  if (!existsSync18(p)) {
     unverified("no VERIFY.json");
     return;
   }
   let sem;
   try {
-    sem = JSON.parse(readFileSync19(p, "utf8"));
+    sem = JSON.parse(readFileSync18(p, "utf8"));
   } catch (e) {
     unverified(`VERIFY.json is unreadable (${e.message})`);
     return;
@@ -21794,9 +21837,9 @@ function checkRun(dir, opts = {}) {
   const errors = [];
   const warnings = [];
   const coverageMin = opts.strict ? 1 : opts.coverageMin ?? COVERAGE_MIN_DEFAULT;
-  const answerPath = opts.answerText === void 0 ? resolveAnswerPath(dir, opts.answerFile) : join41(dir, opts.answerFile ?? "ANSWER.md");
-  const evidencePath = join41(dir, "evidence.json");
-  if (!existsSync19(evidencePath)) {
+  const answerPath = opts.answerText === void 0 ? resolveAnswerPath(dir, opts.answerFile) : join40(dir, opts.answerFile ?? "ANSWER.md");
+  const evidencePath = join40(dir, "evidence.json");
+  if (!existsSync18(evidencePath)) {
     return {
       ok: false,
       citations: [],
@@ -21809,7 +21852,7 @@ function checkRun(dir, opts = {}) {
   }
   let evidence;
   try {
-    evidence = JSON.parse(readFileSync19(evidencePath, "utf8"));
+    evidence = JSON.parse(readFileSync18(evidencePath, "utf8"));
   } catch (e) {
     return {
       ok: false,
@@ -21833,7 +21876,7 @@ function checkRun(dir, opts = {}) {
       warnings: []
     };
   }
-  const answer = opts.answerText ?? readFileSync19(answerPath, "utf8");
+  const answer = opts.answerText ?? readFileSync18(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
   const { tokens: citations, fencedOnly } = collectCitations(answer);
@@ -21983,7 +22026,7 @@ function parseSourceList(tokens, label = "sources") {
 }
 
 // src/index/symbols.ts
-import { join as join42 } from "path";
+import { join as join41 } from "path";
 var DEF_SCORE = 100;
 var CALL_SCORE = 60;
 var UNCORROBORATED = "unique-name";
@@ -21997,7 +22040,7 @@ function symbolEvidence(ctx, name2, opts = {}) {
   const lineCache = /* @__PURE__ */ new Map();
   const linesOf = (rel2) => {
     if (!lineCache.has(rel2)) {
-      const content = readText(join42(ctx.repoDir, rel2));
+      const content = readText(join41(ctx.repoDir, rel2));
       lineCache.set(rel2, content ? content.split(/\r?\n/) : void 0);
     }
     return lineCache.get(rel2);
@@ -22087,7 +22130,7 @@ function symbolEvidence(ctx, name2, opts = {}) {
 }
 
 // src/cache.ts
-import { existsSync as existsSync20, readdirSync as readdirSync6, rmSync as rmSync4, statSync as statSync10 } from "fs";
+import { existsSync as existsSync19, readdirSync as readdirSync6, rmSync as rmSync4, statSync as statSync10 } from "fs";
 import { join as join43 } from "path";
 function dirSize(dir) {
   let total = 0;
@@ -22151,7 +22194,7 @@ function cacheClean(opts) {
     }
     for (const extra of [PAGES_DIR, MODELS_DIR]) {
       const dir = join43(root, extra);
-      if (!existsSync20(dir)) continue;
+      if (!existsSync19(dir)) continue;
       try {
         rmSync4(dir, { recursive: true, force: true });
         removed.push(extra);
@@ -22163,7 +22206,7 @@ function cacheClean(opts) {
   if (opts.repo) {
     const slug = resolveRepo(opts.repo).slug;
     const dir = join43(root, slug);
-    if (existsSync20(dir)) {
+    if (existsSync19(dir)) {
       rmSync4(dir, { recursive: true, force: true });
       removed.push(slug);
     }
@@ -22185,7 +22228,7 @@ function formatCacheStatus(s) {
 }
 
 // src/orchestrate.ts
-import { existsSync as existsSync21, mkdirSync as mkdirSync14, readFileSync as readFileSync20, writeFileSync as writeFileSync16 } from "fs";
+import { existsSync as existsSync20, mkdirSync as mkdirSync14, readFileSync as readFileSync19, writeFileSync as writeFileSync15 } from "fs";
 import { join as join45, resolve as resolve5 } from "path";
 
 // src/orchestrate-templates.ts
@@ -22429,9 +22472,9 @@ function listPhases(runDir2, engineAbs) {
   const drillPath = join45(run3, "drill-plan.json");
   let drillIds = [];
   let drillReady = false;
-  if (existsSync21(drillPath)) {
+  if (existsSync20(drillPath)) {
     try {
-      const plan = JSON.parse(readFileSync20(drillPath, "utf8"));
+      const plan = JSON.parse(readFileSync19(drillPath, "utf8"));
       if (plan && Array.isArray(plan.cells)) {
         drillReady = true;
         drillIds = plan.cells.map((c2) => c2.id);
@@ -22442,9 +22485,9 @@ function listPhases(runDir2, engineAbs) {
   const verPath = join45(run3, "VERIFY.todo.json");
   let verIds = [];
   let verReady = false;
-  if (existsSync21(verPath)) {
+  if (existsSync20(verPath)) {
     try {
-      const todo = JSON.parse(readFileSync20(verPath, "utf8"));
+      const todo = JSON.parse(readFileSync19(verPath, "utf8"));
       if (todo && Array.isArray(todo.pairs)) {
         verReady = true;
         verIds = todo.pairs.map((p) => `${p.claimId}:${p.evidenceId}`);
@@ -22455,9 +22498,9 @@ function listPhases(runDir2, engineAbs) {
   const docPath = join45(run3, "DOC.plan.json");
   let docIds = [];
   let docReady = false;
-  if (existsSync21(docPath)) {
+  if (existsSync20(docPath)) {
     try {
-      const plan = JSON.parse(readFileSync20(docPath, "utf8"));
+      const plan = JSON.parse(readFileSync19(docPath, "utf8"));
       if (plan && Array.isArray(plan.sections)) {
         docReady = true;
         docIds = plan.sections.map((s) => s.id);
@@ -22494,7 +22537,7 @@ function listPhases(runDir2, engineAbs) {
 }
 function orchestrateRun(runDir2, engineAbs, opts = {}) {
   const run3 = resolve5(runDir2);
-  if (!existsSync21(run3)) {
+  if (!existsSync20(run3)) {
     return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run3}`], phases: [] };
   }
   const phases = listPhases(run3, engineAbs);
@@ -22529,7 +22572,7 @@ function orchestrateRun(runDir2, engineAbs, opts = {}) {
   const notices = [];
   for (const [name2, content] of Object.entries(agentContracts(run3, engineAbs))) {
     const p = join45(agentsDir, `${name2}.md`);
-    writeFileSync16(p, content);
+    writeFileSync15(p, content);
     written.push(p);
   }
   if (!opts.eco) {
@@ -22542,18 +22585,18 @@ function orchestrateRun(runDir2, engineAbs, opts = {}) {
         notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
       }
       const p = join45(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync16(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
+      writeFileSync15(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
       written.push(p);
     }
   }
   const rb = join45(orchDir, "RUNBOOK.md");
-  writeFileSync16(rb, runbookMd(phases, run3, engineAbs));
+  writeFileSync15(rb, runbookMd(phases, run3, engineAbs));
   written.push(rb);
   return { exitCode: 0, written, notices, errors: [], phases };
 }
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync22, readFileSync as readFileSync21, realpathSync as realpathSync3, statSync as statSync11 } from "fs";
+import { existsSync as existsSync21, readFileSync as readFileSync20, realpathSync as realpathSync3, statSync as statSync11 } from "fs";
 import { isAbsolute as isAbsolute2, resolve as resolve6, sep as sep5 } from "path";
 
 // src/repo-lock.ts
@@ -22847,7 +22890,7 @@ function handleRead(args2, defaults) {
       `${rel2} is ${stat.size} bytes, over the ${LIMITS.maxFileBytes}-byte whole-file cap \u2014 pass start_line/end_line and the window will be returned.`
     );
   }
-  const lines = readFileSync21(real, "utf8").split("\n");
+  const lines = readFileSync20(real, "utf8").split("\n");
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const total = lines.length;
   const start2 = Math.max(1, Math.trunc(num2(args2.start_line) ?? 1));
@@ -22877,7 +22920,7 @@ async function handleFetch(args2) {
 }
 function runDir(args2) {
   const dir = requiredStr(args2, "run_dir", "the dossier directory returned by ultradoc_ask.");
-  if (!existsSync22(dir)) throw new ToolError(`No dossier at ${dir} \u2014 run ultradoc_ask first, and pass the run_dir it returned.`);
+  if (!existsSync21(dir)) throw new ToolError(`No dossier at ${dir} \u2014 run ultradoc_ask first, and pass the run_dir it returned.`);
   return dir;
 }
 function handleCheck(args2) {
