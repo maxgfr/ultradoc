@@ -1,0 +1,22 @@
+{
+  "_comment": "Declarations in this repo that shadow a webindex export, with why they have not been adopted. A ratchet: entries may leave, never arrive. Anything not listed fails verify-engine-usage, so the next fork is an argued decision rather than a quiet copy. An entry that no longer matches anything also fails, so the list cannot rot.",
+  "forks": {
+    "src/config.ts:envInt": "envInt duplicate \u2014 cheap to adopt, bundled with the next config pass.",
+    "src/sources/fetch.ts:HttpResult": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:httpGet": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:httpJson": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:htmlToText": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:ExtractResult": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:fetchAndExtract": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:nearestHeading": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/firecrawl.ts:FIRECRAWL_DEFAULT_BASE": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:FirecrawlOptions": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:firecrawlBase": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:probeFirecrawl": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:apiPrefix": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:mapScrapeResponse": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:mapSearchResponse": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:scrapeViaFirecrawl": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
+    "src/sources/firecrawl.ts:searchViaFirecrawl": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither."
+  }
+}
