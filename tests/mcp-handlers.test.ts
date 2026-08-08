@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { ultradocAdapter, type AdapterOptions } from "../src/mcp/adapter.js";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createServer, type JsonRpcMessage } from "../src/mcp/server.js";
+import { createServer, type JsonRpcMessage } from "../src/engine.js";
 import { resetGrammarWarm } from "../src/mcp/handlers.js";
 import { resetRepoLocks } from "../src/repo-lock.js";
 
@@ -35,8 +36,8 @@ afterEach(() => {
 });
 
 let nextId = 1;
-async function rpc(msg: Omit<JsonRpcMessage, "jsonrpc">, opts: Parameters<typeof createServer>[0] = {}): Promise<JsonRpcMessage | undefined> {
-  const server = createServer(opts);
+async function rpc(msg: Omit<JsonRpcMessage, "jsonrpc">, opts: AdapterOptions = {}): Promise<JsonRpcMessage | undefined> {
+  const server = createServer(ultradocAdapter(opts));
   server.setProtocolVersion("2025-06-18");
   let out: JsonRpcMessage | undefined;
   await server.handle({ jsonrpc: "2.0", ...msg }, (m) => {
@@ -45,7 +46,7 @@ async function rpc(msg: Omit<JsonRpcMessage, "jsonrpc">, opts: Parameters<typeof
   return out;
 }
 
-async function call(name: string, args: Record<string, unknown>, opts: Parameters<typeof createServer>[0] = {}) {
+async function call(name: string, args: Record<string, unknown>, opts: AdapterOptions = {}) {
   const res = await rpc({ id: nextId++, method: "tools/call", params: { name, arguments: args } }, opts);
   return res!;
 }
@@ -116,7 +117,7 @@ describe("lifecycle methods", () => {
   });
 
   it("drops the response to a cancelled request", async () => {
-    const server = createServer();
+    const server = createServer(ultradocAdapter());
     const sent: JsonRpcMessage[] = [];
     await server.handle({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 } }, (m) => void sent.push(m));
     await server.handle({ jsonrpc: "2.0", id: 7, method: "ping" }, (m) => void sent.push(m));

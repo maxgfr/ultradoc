@@ -17,8 +17,8 @@ import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
-import { runStdioServer } from "./mcp/stdio.js";
-import { startHttpServer } from "./mcp/http.js";
+import { runStdioServer, startHttpServer } from "./engine.js";
+import { ultradocAdapter } from "./mcp/adapter.js";
 
 const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
@@ -775,7 +775,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       if (transport === "stdio") {
         // Nothing is written to stdout here: from this point stdout carries
         // JSON-RPC frames only, and runStdioServer guards that.
-        await runStdioServer(options);
+        await runStdioServer(ultradocAdapter(options), options);
         return;
       }
 
@@ -789,7 +789,13 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         : undefined;
       let running: Awaited<ReturnType<typeof startHttpServer>>;
       try {
-        running = await startHttpServer({ ...options, port, bind: p.values.bind, allowOrigin, allowRemote: p.bools.has("allow-remote") });
+        running = await startHttpServer(ultradocAdapter(options), {
+          ...options,
+          port,
+          bind: p.values.bind,
+          allowOrigin,
+          allowRemote: p.bools.has("allow-remote"),
+        });
       } catch (e) {
         fail((e as Error).message);
       }

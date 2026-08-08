@@ -30,7 +30,10 @@ export interface HandlerDefaults {
 // Thrown for anything the caller can fix by calling again differently. The
 // server turns it into an `isError` tool result, never a JSON-RPC error: the
 // tool ran, the request was wrong or the world didn't cooperate.
-export class ToolError extends Error {}
+// Re-exported from the engine: the server distinguishes a tool failure from a
+// protocol error by INSTANCE, so both halves must use the same class.
+export { ToolError } from "../engine.js";
+import { ToolError } from "../engine.js";
 
 // A file read cannot return more than this many lines in one call, however big
 // the window asked for. Bounds a `ultradoc_read` on a 200k-line generated file.
@@ -189,13 +192,8 @@ function safeRealpath(p: string): string | undefined {
 // already exists, fetch a URL, or report on the cache.
 const REPO_FREE_TOOLS = new Set(["ultradoc_fetch", "ultradoc_check", "ultradoc_verify", "ultradoc_cache", "ultradoc_cache_clean"]);
 
-export interface ToolOutcome {
-  // The tool result, JSON-encoded. The MCP content block carries this verbatim.
-  text: string;
-  // An on-disk file holding the same thing, when one exists. Only used if the
-  // payload is too large to send, so the refusal can point somewhere useful.
-  artifact?: string;
-}
+export type { ToolOutcome } from "../engine.js";
+import type { ToolOutcome } from "../engine.js";
 
 // Throws ToolError for anything the caller can act on; any other throw is a bug
 // and the server reports it as an internal error.

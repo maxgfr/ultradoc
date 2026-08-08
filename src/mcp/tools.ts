@@ -1,18 +1,12 @@
 import { SOURCE_TOKENS } from "../sources/kinds.js";
-import { ANNOTATIONS_SINCE, RICH_TOOLS_SINCE, type JsonSchema, type JsonSchemaProp, type ProtocolVersion } from "./protocol.js";
+import { ANNOTATIONS_SINCE, RICH_TOOLS_SINCE, type JsonSchema, type JsonSchemaProp, type ProtocolVersion } from "../engine.js";
 
 // What the server advertises. Pure data — nothing here imports the retrieval
 // pipeline, so the declarations can be asserted in a test without cloning
 // anything. handlers.ts is where these names become work.
 
-export interface ToolDecl {
-  name: string;
-  description: string;
-  inputSchema: JsonSchema;
-  title?: string;
-  outputSchema?: JsonSchema;
-  annotations?: Record<string, boolean>;
-}
+export type { ToolDecl } from "../engine.js";
+import type { ToolDecl } from "../engine.js";
 
 // Every spelling parseSourceList accepts, so a model that writes "issues"
 // instead of "issue" is not rejected by schema validation for a token the

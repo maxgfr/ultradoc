@@ -14,34 +14,19 @@ import { TOOLS, WRITE_TOOLS } from "./tools.js";
 // SKILL.md — it is the operative subset, phrased for a model that has the
 // tools in hand and nothing else.
 
-export interface PromptArgument {
-  name: string;
-  description: string;
-  required?: boolean;
-}
-
-export interface PromptDecl {
-  name: string;
-  title?: string;
-  description: string;
-  arguments: PromptArgument[];
-}
-
 export interface PromptMessage {
   role: "user" | "assistant";
   content: { type: "text"; text: string };
 }
 
-export interface PromptResult {
-  description: string;
-  messages: PromptMessage[];
-}
-
 // Thrown for an unknown prompt or a missing required argument — a client bug,
 // which the server reports as a JSON-RPC error rather than as content.
-export class PromptError extends Error {}
+export { PromptError } from "../engine.js";
+import { PromptError } from "../engine.js";
+export type { PromptDecl, PromptResult } from "../engine.js";
+import type { PromptDecl, PromptResult } from "../engine.js";
 
-const repoArg: PromptArgument = {
+const repoArg: { name: string; description?: string; required?: boolean } = {
   name: "repo",
   description: "The repository: a git URL, owner/repo, or an absolute local path.",
   required: true,
@@ -79,7 +64,7 @@ export function getPrompt(name: string, args: Record<string, unknown> = {}): Pro
   const decl = PROMPTS.find((p) => p.name === name);
   if (!decl) throw new PromptError(`unknown prompt: ${name || "(none given)"}`);
 
-  for (const arg of decl.arguments) {
+  for (const arg of decl.arguments ?? []) {
     if (arg.required && !str(args[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name}"`);
   }
 
