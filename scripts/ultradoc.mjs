@@ -16999,8 +16999,11 @@ LOGGING_LEVEL=info
 function renderAsset(template) {
   return template.replaceAll("{{CLI}}", brand().cli);
 }
+function cacheRoot() {
+  return env("CACHE_DIR") ?? brand().cacheDir ?? join22(tmpdir2(), brand().name);
+}
 function ensureComposeMaterialized() {
-  const base = join22(brand().cacheDir ?? join22(tmpdir2(), brand().name), "compose");
+  const base = join22(cacheRoot(), "compose");
   const composePath = join22(base, "docker-compose.yml");
   const settingsPath = join22(base, "docker", "searxng", "settings.yml");
   const firecrawlEnvPath = join22(base, "docker", "firecrawl", "firecrawl.env");
@@ -17799,7 +17802,7 @@ function extdocsTtlMs() {
   return envInt2("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
 }
 var CACHE_DIR_NAME = ".ultradoc";
-function cacheRoot() {
+function cacheRoot2() {
   const override = process.env.ULTRADOC_CACHE_DIR?.trim();
   if (override) return override;
   const home = homedir2();
@@ -17815,7 +17818,7 @@ function migrateLegacyClone(dir, slug) {
   const legacy = join24(tmpdir4(), "ultradoc", slug);
   if (legacy === dir || !existsSync10(join24(legacy, ".git"))) return;
   try {
-    mkdirSync5(cacheRoot(), { recursive: true });
+    mkdirSync5(cacheRoot2(), { recursive: true });
     renameSync3(legacy, dir);
   } catch {
   }
@@ -17868,7 +17871,7 @@ function resolveRepo(raw) {
 }
 function ensureClone(ref, opts = {}) {
   if (ref.isLocal) return resolve4(ref.raw);
-  const dir = join24(cacheRoot(), ref.slug);
+  const dir = join24(cacheRoot2(), ref.slug);
   migrateLegacyClone(dir, ref.slug);
   const alreadyCloned = existsSync10(join24(dir, ".git"));
   if (alreadyCloned && !opts.refresh) return dir;
@@ -17877,7 +17880,7 @@ function ensureClone(ref, opts = {}) {
     sh2("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: 6e4 });
     return dir;
   }
-  mkdirSync5(cacheRoot(), { recursive: true });
+  mkdirSync5(cacheRoot2(), { recursive: true });
   const args2 = ["clone", "--depth", "1", "--filter=blob:none"];
   if (opts.branch) args2.push("--branch", opts.branch);
   args2.push(ref.cloneUrl, dir);
@@ -19379,7 +19382,7 @@ import { existsSync as existsSync13, mkdirSync as mkdirSync9, writeFileSync as w
 import { join as join31 } from "path";
 var MODELS_DIR = "models";
 function modelDir() {
-  return join31(cacheRoot(), MODELS_DIR);
+  return join31(cacheRoot2(), MODELS_DIR);
 }
 function modelPath() {
   return join31(modelDir(), "model.json");
@@ -19623,7 +19626,7 @@ function pageCacheFile(dir, url, extractor) {
 }
 var PAGES_DIR = "pages";
 function webPageCacheDir() {
-  return join33(cacheRoot(), PAGES_DIR);
+  return join33(cacheRoot2(), PAGES_DIR);
 }
 async function plannedExtractor(opts = {}) {
   const base = firecrawlBase(opts);
@@ -22154,7 +22157,7 @@ function dirSize(dir) {
   return total;
 }
 function cacheStatus() {
-  const root = cacheRoot();
+  const root = cacheRoot2();
   const repos = [];
   let slugs = [];
   try {
@@ -22182,7 +22185,7 @@ function cacheStatus() {
   };
 }
 function cacheClean(opts) {
-  const root = cacheRoot();
+  const root = cacheRoot2();
   const removed = [];
   if (opts.all) {
     for (const r of cacheStatus().repos) {
@@ -22866,7 +22869,7 @@ function handleRead(args2, defaults) {
   } catch {
     throw new ToolError(`No such file in ${ctx.repoRef.raw}: ${rel2}`);
   }
-  const cache = safeRealpath(cacheRoot());
+  const cache = safeRealpath(cacheRoot2());
   if (!within(real, root) && !(cache && within(real, cache))) {
     throw new ToolError(
       `\`path\` is outside ${ctx.repoRef.raw} and outside ultradoc's cache: ${rel2}. ultradoc_read only opens files in the clone or in a dossier under the cache \u2014 read anything else with your own file tools.`
