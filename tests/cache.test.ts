@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cacheRoot } from "../src/config.js";
-import { cacheStatus, cacheClean, formatCacheStatus } from "../src/cache.js";
+import { cacheStatus, cleanRepoCache, formatCacheStatus } from "../src/cache.js";
 import { PAGES_DIR } from "../src/sources/page-cache.js";
 import { MODELS_DIR } from "../src/index/semantic/model.js";
 
@@ -45,7 +45,7 @@ describe("cacheRoot env override", () => {
   });
 });
 
-describe("cacheStatus / cacheClean", () => {
+describe("cacheStatus / cleanRepoCache", () => {
   it("lists cached repos with sizes and totals", () => {
     fakeRepo("github.com-a-b", 300);
     fakeRepo("github.com-c-d", 100);
@@ -65,7 +65,7 @@ describe("cacheStatus / cacheClean", () => {
   it("clean --all removes every repo", () => {
     fakeRepo("github.com-a-b");
     fakeRepo("github.com-c-d");
-    const { removed } = cacheClean({ all: true });
+    const { removed } = cleanRepoCache({ all: true });
     expect(removed.length).toBe(2);
     expect(cacheStatus().repos).toEqual([]);
   });
@@ -73,7 +73,7 @@ describe("cacheStatus / cacheClean", () => {
   it("clean --repo removes only the matching slug", () => {
     fakeRepo("github.com-sindresorhus-ky");
     fakeRepo("github.com-expressjs-express");
-    const { removed } = cacheClean({ repo: "sindresorhus/ky" });
+    const { removed } = cleanRepoCache({ repo: "sindresorhus/ky" });
     expect(removed).toEqual(["github.com-sindresorhus-ky"]);
     expect(existsSync(join(root, "github.com-expressjs-express"))).toBe(true);
   });
@@ -93,7 +93,7 @@ describe("cacheStatus / cacheClean", () => {
   it("clean --all also clears the page cache", () => {
     fakeRepo("github.com-a-b");
     fakePages();
-    const { removed } = cacheClean({ all: true });
+    const { removed } = cleanRepoCache({ all: true });
     expect(removed).toContain(PAGES_DIR);
     expect(existsSync(join(root, PAGES_DIR))).toBe(false);
     expect(cacheStatus().pagesBytes).toBe(0);
@@ -102,7 +102,7 @@ describe("cacheStatus / cacheClean", () => {
   it("clean --repo leaves the page cache alone", () => {
     fakeRepo("github.com-sindresorhus-ky");
     fakePages();
-    cacheClean({ repo: "sindresorhus/ky" });
+    cleanRepoCache({ repo: "sindresorhus/ky" });
     expect(existsSync(join(root, PAGES_DIR))).toBe(true);
   });
 
@@ -121,7 +121,7 @@ describe("cacheStatus / cacheClean", () => {
 
   it("clean --all still drops the model, and names it", () => {
     fakeModel();
-    const { removed } = cacheClean({ all: true });
+    const { removed } = cleanRepoCache({ all: true });
     expect(removed).toContain(MODELS_DIR);
     expect(existsSync(join(root, MODELS_DIR))).toBe(false);
   });
@@ -129,7 +129,7 @@ describe("cacheStatus / cacheClean", () => {
   it("clean --repo leaves the model alone", () => {
     fakeRepo("github.com-sindresorhus-ky");
     fakeModel();
-    cacheClean({ repo: "sindresorhus/ky" });
+    cleanRepoCache({ repo: "sindresorhus/ky" });
     expect(existsSync(join(root, MODELS_DIR))).toBe(true);
   });
 });

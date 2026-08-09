@@ -1,6 +1,6 @@
 import { resolveRepo, ensureClone } from "./clone.js";
 import { ensureIndex } from "./index/structural.js";
-import { resolvePackage } from "./index/workspaces.js";
+import { resolveWorkspacePackage } from "./index/workspaces.js";
 import { runSources } from "./sources/registry.js";
 import { assignIds, writeDossier, defaultRunDir } from "./dossier.js";
 import { buildDrillPlan, writeDrillPlan } from "./drill-plan.js";
@@ -22,9 +22,9 @@ export function buildContext(options: AskOptions): RunContext {
 
   // --package: resolve to one workspace package and scope retrieval to its
   // subtree. An unknown name fails loudly with what actually exists.
-  let scopePkg: ReturnType<typeof resolvePackage>;
+  let scopePkg: ReturnType<typeof resolveWorkspacePackage>;
   if (options.pkg) {
-    scopePkg = resolvePackage(index.packages, options.pkg);
+    scopePkg = resolveWorkspacePackage(index.packages, options.pkg);
     if (!scopePkg) {
       const known = index.packages.length
         ? `known packages: ${index.packages.map((p) => `${p.name} (${p.dir})`).join(", ")}`

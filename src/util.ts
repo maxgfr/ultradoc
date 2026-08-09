@@ -70,19 +70,6 @@ export function have(cmd: string): boolean {
   return found;
 }
 
-// Turn an arbitrary repo identifier into a filesystem-safe cache slug, e.g.
-// "github.com/expressjs/express" -> "github.com-expressjs-express".
-export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^git@/, "")
-    .replace(/\.git$/, "")
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-}
-
 // Truncate a string to a max length with an ellipsis marker, for snippets.
 export function clip(s: string, max: number): string {
   if (s.length <= max) return s;
@@ -124,40 +111,11 @@ export {
   type KeywordVariant,
   type ExpandedKeyword,
   type KeywordMatcher,
+  // Adopted with webindex v1.13. `rrf` was byte-identical to the engine's,
+  // `slugify` was one of three copies that disagreed about length and
+  // normalisation — which for an on-disk cache key means one repository under
+  // three names — and `mapLimit` was the third copy of bounded concurrency.
+  slugify,
+  rrf,
+  mapLimit,
 } from "./engine.js";
-
-// Pull the meaningful keywords out of a natural-language question: lowercase,
-// split on non-word chars, drop stopwords and very short tokens, dedupe. Used
-// to drive lexical search and symbol ranking deterministically (no LLM).
-// Reciprocal Rank Fusion: merge several ranked lists into one robust ranking
-// without needing comparable scores across lists. `k` damps the contribution of
-// low ranks. Returns keys ordered best-first with a fused score.
-export function rrf<T>(lists: T[][], keyOf: (item: T) => string, k = 60): Map<string, number> {
-  const score = new Map<string, number>();
-  for (const list of lists) {
-    list.forEach((item, idx) => {
-      const key = keyOf(item);
-      score.set(key, (score.get(key) ?? 0) + 1 / (k + idx + 1));
-    });
-  }
-  return score;
-}
-
-// Map `fn` over `items` with at most `limit` concurrent calls, preserving input
-// order in the result. Used to embed chunks in parallel without a dependency and
-// without unbounded fan-out; a rejected call surfaces as the thrown error.
-export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const n = items.length;
-  const out: R[] = new Array(n);
-  const width = Math.max(1, Math.min(limit, n || 1));
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (true) {
-      const i = next++;
-      if (i >= n) return;
-      out[i] = await fn(items[i]!, i);
-    }
-  }
-  await Promise.all(Array.from({ length: width }, () => worker()));
-  return out;
-}

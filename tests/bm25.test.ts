@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { bm25, type Bm25Doc } from "../src/index/bm25.js";
+import { bm25, type Bm25Candidate } from "../src/index/bm25.js";
 
-function doc(key: string, tf: Record<string, number>, len: number): Bm25Doc {
+function doc(key: string, tf: Record<string, number>, len: number): Bm25Candidate {
   return { key, tf: new Map(Object.entries(tf)), len };
 }
 

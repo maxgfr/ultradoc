@@ -10,7 +10,7 @@ import { webFetchUrls } from "../sources/web.js";
 import { checkRun } from "../check.js";
 import { runVerify } from "../verify.js";
 import { runDoc } from "../doc.js";
-import { cacheStatus, cacheClean } from "../cache.js";
+import { cacheStatus, cleanRepoCache } from "../cache.js";
 import { resolveRepo } from "../clone.js";
 import { withRepoLock } from "../repo-lock.js";
 import { DEFAULT_SOURCES, parseSourceList } from "../sources/kinds.js";
@@ -519,5 +519,5 @@ function handleCacheClean(args: Record<string, unknown>) {
   const all = bool(args.all);
   const repo = str(args.repo);
   if (!all && !repo) throw new ToolError("Pass `repo` to drop one cache entry, or `all: true` to drop every one.");
-  return { ...cacheClean({ all, repo }), all, repo };
+  return { ...cleanRepoCache({ all, repo }), all, repo };
 }

@@ -86,7 +86,7 @@ export function cacheStatus(): CacheStatus {
 
 // Clear cached clones/indexes. `all` wipes every repo (keeps the root dir);
 // `repo` resolves one repo identifier to its slug and removes just that one.
-export function cacheClean(opts: { all?: boolean; repo?: string }): { removed: string[] } {
+export function cleanRepoCache(opts: { all?: boolean; repo?: string }): { removed: string[] } {
   const root = cacheRoot();
   const removed: string[] = [];
   if (opts.all) {

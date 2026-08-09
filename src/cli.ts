@@ -15,7 +15,7 @@ import { assignIds } from "./dossier.js";
 import { semanticControl, firecrawlControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
-import { cacheStatus, cacheClean, formatCacheStatus } from "./cache.js";
+import { cacheStatus, cleanRepoCache, formatCacheStatus } from "./cache.js";
 import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
 import { runStdioServer, startHttpServer } from "./engine.js";
 import { ultradocAdapter } from "./mcp/adapter.js";
@@ -752,7 +752,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       }
       if (action === "clean") {
         if (!p.bools.has("all") && !p.values.repo) fail("cache clean needs --all or --repo <url|path>");
-        const { removed } = cacheClean({ all: p.bools.has("all"), repo: p.values.repo });
+        const { removed } = cleanRepoCache({ all: p.bools.has("all"), repo: p.values.repo });
         process.stdout.write(`ultradoc: removed ${removed.length} cached repo(s)${removed.length ? ": " + removed.join(", ") : ""}\n`);
         return;
       }

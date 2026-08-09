@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { discoverWorkspaces, resolvePackage } from "../src/index/workspaces.js";
+import { discoverWorkspaces, resolveWorkspacePackage } from "../src/index/workspaces.js";
 import { buildIndex } from "../src/index/structural.js";
 import { searchCode } from "../src/index/search.js";
 import { resolveRepo } from "../src/clone.js";
@@ -192,23 +192,23 @@ describe("discoverWorkspaces", () => {
   });
 });
 
-describe("resolvePackage", () => {
+describe("resolveWorkspacePackage", () => {
   const pkgs = discoverWorkspaces(MONO);
 
   it("matches an exact package name", () => {
-    expect(resolvePackage(pkgs, "@sample/web")?.dir).toBe("packages/web");
+    expect(resolveWorkspacePackage(pkgs, "@sample/web")?.dir).toBe("packages/web");
   });
 
   it("matches a short name (suffix after the scope)", () => {
-    expect(resolvePackage(pkgs, "web")?.dir).toBe("packages/web");
+    expect(resolveWorkspacePackage(pkgs, "web")?.dir).toBe("packages/web");
   });
 
   it("matches a directory path", () => {
-    expect(resolvePackage(pkgs, "packages/api")?.name).toBe("@sample/api");
+    expect(resolveWorkspacePackage(pkgs, "packages/api")?.name).toBe("@sample/api");
   });
 
   it("returns undefined for an unknown package", () => {
-    expect(resolvePackage(pkgs, "nope")).toBeUndefined();
+    expect(resolveWorkspacePackage(pkgs, "nope")).toBeUndefined();
   });
 
   it("returns undefined when a short name matches several packages", () => {
@@ -216,7 +216,7 @@ describe("resolvePackage", () => {
       { name: "@a/core", dir: "packages/a-core", description: undefined },
       { name: "@b/core", dir: "packages/b-core", description: undefined },
     ];
-    expect(resolvePackage(ambiguous, "core")).toBeUndefined();
+    expect(resolveWorkspacePackage(ambiguous, "core")).toBeUndefined();
   });
 });
 

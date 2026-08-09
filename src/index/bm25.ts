@@ -2,7 +2,7 @@
 // terms given corpus-level stats (N documents, per-term document frequency).
 // Only the candidates need per-doc stats; the corpus is described by N and df.
 
-export interface Bm25Doc {
+export interface Bm25Candidate {
   key: string;
   // term -> occurrences in this doc. Upstream search caps hits per file (~40),
   // which clips tf — immaterial: BM25's tf component saturates well before that.
@@ -10,7 +10,7 @@ export interface Bm25Doc {
   len: number; // doc length in tokens (any consistent proxy works)
 }
 
-export function bm25(docs: Bm25Doc[], terms: string[], N: number, df: Map<string, number>, k1 = 1.2, b = 0.75): Map<string, number> {
+export function bm25(docs: Bm25Candidate[], terms: string[], N: number, df: Map<string, number>, k1 = 1.2, b = 0.75): Map<string, number> {
   const scores = new Map<string, number>();
   // Average length over the candidates, not the whole corpus — the corpus-wide
   // average isn't stored anywhere and the candidate average normalizes the same

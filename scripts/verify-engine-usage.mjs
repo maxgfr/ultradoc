@@ -122,10 +122,11 @@ for (const f of files) {
 // Raise this when a layer lands. Never lower it to make a red run pass — a drop
 // means a layer stopped being used, which is a decision, not a detail.
 //
-// 55 against a real 59. It was 38 while the counter could not see `./engine.js`,
-// which left the whole keyword/matcher block in src/util.ts unprotected — it
-// could have been deleted and re-forked with the gate still green.
-const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 55);
+// 60 against a real 63, after adopting slugify, rrf and mapLimit from v1.13.
+//
+// It was 38 while the counter could not see `./engine.js` — which left the whole
+// keyword/matcher block in src/util.ts unprotected.
+const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 60);
 
 let ok = true;
 

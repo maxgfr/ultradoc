@@ -32,7 +32,7 @@ export function discoverWorkspaces(root: string): WorkspacePackage[] {
 // short name (suffix after the scope), or directory. There is no engine
 // equivalent for this, so it stays local.
 // Ambiguous or unknown → undefined; the caller reports loudly.
-export function resolvePackage(packages: WorkspacePackage[], query: string): WorkspacePackage | undefined {
+export function resolveWorkspacePackage(packages: WorkspacePackage[], query: string): WorkspacePackage | undefined {
   const q = query.toLowerCase().replace(/\/+$/, "");
   const exact = packages.find((p) => p.name.toLowerCase() === q) ?? packages.find((p) => p.dir.toLowerCase() === q);
   if (exact) return exact;
