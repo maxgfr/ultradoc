@@ -24,51 +24,21 @@ export function writeFileAtomic(path: string, data: string): void {
   }
 }
 
-// Result of a subprocess call. `ok` is true on exit code 0 with the binary
-// found; `missing` is true when the binary isn't on PATH (so callers can fall
-// back gracefully instead of crashing — e.g. no ripgrep, no gh, no docker).
-export interface ShResult {
-  ok: boolean;
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  missing: boolean;
-}
-
-// Run a command synchronously. Sync keeps the CLI simple and deterministic
-// (mirrors how the engine is structured); the work is I/O-bound git/rg/gh calls
-// where parallelism buys little. `input` feeds stdin; `maxBuffer` is generous
-// for large `rg --json` / `git log` output.
-export function sh(cmd: string, args: string[], opts: { cwd?: string; input?: string; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}): ShResult {
-  const res = spawnSync(cmd, args, {
-    cwd: opts.cwd,
-    input: opts.input,
-    encoding: "utf8",
-    timeout: opts.timeoutMs ?? 120_000,
-    maxBuffer: 64 * 1024 * 1024,
-    env: opts.env ?? process.env,
-  });
-  const missing = !!res.error && (res.error as NodeJS.ErrnoException).code === "ENOENT";
-  return {
-    ok: !res.error && res.status === 0,
-    status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? (res.error ? String(res.error.message) : ""),
-    missing,
-  };
-}
-
-// Is a binary available on PATH? Cached because we probe the same few tools
-// (rg, gh, git, docker) repeatedly within a run.
-const whichCache = new Map<string, boolean>();
-export function have(cmd: string): boolean {
-  const cached = whichCache.get(cmd);
-  if (cached !== undefined) return cached;
-  const probe = sh(process.platform === "win32" ? "where" : "which", [cmd]);
-  const found = probe.ok && probe.stdout.trim().length > 0;
-  whichCache.set(cmd, found);
-  return found;
-}
+// Running a local command now comes from the vendored webindex engine.
+//
+// Adopted with v1.14.0. The copy that was here differed in two ways, and both
+// were defects rather than policy:
+//
+//   - `status: number | null`. The engine always reports a number — 127 for a
+//     binary that is not there, 124 for one it killed — so a caller printing
+//     "exit ${status}" can no longer print "exit null".
+//   - the 120s default, which is genuinely this repo's: its shell calls include
+//     clones and full-history fetches of large repositories. It is declared as
+//     `ULTRADOC_SH_TIMEOUT_MS` in src/engine.ts rather than hardcoded here.
+//
+// `missing` is now optional rather than always present, which no call site in
+// this repo reads either way.
+export { type ShResult, sh, have } from "./engine.js";
 
 // Truncate a string to a max length with an ellipsis marker, for snippets.
 export function clip(s: string, max: number): string {

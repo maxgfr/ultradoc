@@ -126,7 +126,11 @@ for (const f of files) {
 //
 // It was 38 while the counter could not see `./engine.js` — which left the whole
 // keyword/matcher block in src/util.ts unprotected.
-const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 60);
+// 100 against a real 101, after v1.14.0 took the last four forks: the shell
+// layer, the clone and its history depth, the fetch stack and the Firecrawl
+// client. engine-forks.json is now EMPTY — this floor and that empty object say
+// the same thing from two directions, and the first one to move is the warning.
+const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 100);
 
 let ok = true;
 

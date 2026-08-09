@@ -47,10 +47,22 @@ describe("httpGet retry policy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("does not retry when retries is 0 (default)", async () => {
+  it("retries a transient failure once by default", async () => {
+    // Changed with webindex v1.14.0, on purpose. The copy this replaced defaulted
+    // to zero retries and made every caller opt in — which meant one throttled
+    // request could silently zero out a whole backend for a run. The shared
+    // policy is one retry, and a caller that genuinely wants a single shot (a
+    // reachability probe) still says so.
     const fetchMock = vi.fn().mockResolvedValue(res(503));
     vi.stubGlobal("fetch", fetchMock);
     await httpGet("https://x/api");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("still makes a single attempt when the caller asks for none", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res(503));
+    vi.stubGlobal("fetch", fetchMock);
+    await httpGet("https://x/api", { retries: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

@@ -58,6 +58,7 @@ function htmlRes(status: number, body: string): Response {
     headers: new Headers({ "content-type": "text/html" }),
     body: null, // forces readCapped's arrayBuffer fallback
     arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    text: async () => body,
   } as unknown as Response;
 }
 
@@ -129,31 +130,56 @@ describe("mapScrapeResponse (pure)", () => {
 });
 
 describe("mapSearchResponse (pure)", () => {
-  it("pulls result URLs out of data.web, capped at n", () => {
-    expect(mapSearchResponse(SEARCH_FIXTURE, 5)).toEqual(["https://expressjs.com/en/guide/migrating-5.html", "https://github.com/expressjs/express/releases"]);
-    expect(mapSearchResponse(SEARCH_FIXTURE, 1)).toHaveLength(1);
+  it("pulls result URLs out of data.web", () => {
+    // The engine returns rich hits (url + title + description) and does NOT cap:
+    // capping is the caller's, because how many results a run wants is a policy
+    // and a mapper that silently drops rows cannot be reused by a caller that
+    // wanted them. src/sources/web.ts slices.
+    expect(mapSearchResponse(SEARCH_FIXTURE).map((h) => h.url)).toEqual([
+      "https://expressjs.com/en/guide/migrating-5.html",
+      "https://github.com/expressjs/express/releases",
+    ]);
   });
 
   it("returns nothing on a failed or shapeless response", () => {
-    expect(mapSearchResponse({ success: false, data: { web: [{ url: "https://x" }] } }, 3)).toEqual([]);
-    expect(mapSearchResponse({ success: true, data: {} }, 3)).toEqual([]);
-    expect(mapSearchResponse(undefined, 3)).toEqual([]);
+    expect(mapSearchResponse({ success: false, data: { web: [{ url: "https://x" }] } })).toEqual([]);
+    expect(mapSearchResponse({ success: true, data: {} })).toEqual([]);
+    expect(mapSearchResponse(undefined)).toEqual([]);
   });
 
-  it("drops non-http entries and duplicates", () => {
-    const json = { success: true, data: { web: [{ url: "https://a" }, { url: "https://a" }, { url: "ftp://b" }, { title: "no url" }] } };
-    expect(mapSearchResponse(json, 5)).toEqual(["https://a"]);
+  it("drops an entry with no usable URL", () => {
+    const json = { success: true, data: { web: [{ url: "https://a" }, { title: "no url" }, {}] } };
+    expect(mapSearchResponse(json).map((h) => h.url)).toEqual(["https://a"]);
   });
 });
 
 describe("probeFirecrawl", () => {
-  it("counts ANY http status as up, and memoises the answer for the process", async () => {
-    // A 404 on / still proves something is listening (a proxy, an older build).
-    const fetchMock = vi.fn().mockResolvedValue(htmlRes(404, ""));
+  it("accepts a non-HTML answer as up, and memoises it for the process", async () => {
+    // A proxy's 404 or an older build's JSON root still proves Firecrawl is
+    // behind it. What is NOT accepted any more is an HTML page with no Firecrawl
+    // marker — see the next case.
+    const fetchMock = vi.fn().mockResolvedValue(jsonRes(404, {}));
     vi.stubGlobal("fetch", fetchMock);
     expect(await probeFirecrawl("http://fc:3002")).toBe(true);
     expect(await probeFirecrawl("http://fc:3002")).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1); // memoised, not re-probed
+  });
+
+  it("refuses somebody else's app squatting the port", async () => {
+    // 3002 is a common dev port. A Vite app answering 200 there used to count as
+    // "firecrawl answering": every page extraction then POSTed to something that
+    // 404s, paying a wasted round-trip before falling back, while doctor reported
+    // the stack as up. A false positive here is invisible, which is why it is
+    // worse than a false negative.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(htmlRes(200, "<html><title>Vite App</title></html>")));
+    expect(await probeFirecrawl("http://squatted:3002")).toBe(false);
+  });
+
+  it("trusts an instance the user NAMED, proxy or not", async () => {
+    // Pointing --firecrawl somewhere is a statement about what lives there, and
+    // it may legitimately sit behind a proxy that masks the root.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(htmlRes(200, "<html>a reverse proxy landing page</html>")));
+    expect(await probeFirecrawl("http://proxied:3002", true)).toBe(true);
   });
 
   it("is down when the connection is refused (no status at all)", async () => {
@@ -167,8 +193,10 @@ describe("scrapeViaFirecrawl", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonRes(200, SCRAPE_FIXTURE));
     vi.stubGlobal("fetch", fetchMock);
     const r = await scrapeViaFirecrawl("https://expressjs.com/en/guide/migrating-5.html", { firecrawl: "http://fc:3002" });
-    expect(r.page!.markdown).toContain("Express 5");
-    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(r.data!.markdown).toContain("Express 5");
+    // Call 0 is the availability probe, which the engine runs before it will
+    // POST anything. The scrape is the one after it.
+    const [url, init] = fetchMock.mock.calls[1]!;
     expect(url).toBe("http://fc:3002/v2/scrape");
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body).toMatchObject({ formats: ["markdown"], onlyMainContent: true, blockAds: true, removeBase64Images: true });
@@ -180,13 +208,15 @@ describe("scrapeViaFirecrawl", () => {
   it("falls back to /v1 when /v2 answers 404, and pins it for later calls", async () => {
     const fetchMock = vi
       .fn()
+      .mockResolvedValueOnce(jsonRes(200, {})) // the probe
       .mockResolvedValueOnce(jsonRes(404, { error: "Not Found" }))
       .mockResolvedValue(jsonRes(200, SCRAPE_FIXTURE));
     vi.stubGlobal("fetch", fetchMock);
     const r = await scrapeViaFirecrawl("https://x/y", { firecrawl: "http://old:3002" });
-    expect(r.page).not.toBeNull();
-    expect(fetchMock.mock.calls[0]![0]).toBe("http://old:3002/v2/scrape");
-    expect(fetchMock.mock.calls[1]![0]).toBe("http://old:3002/v1/scrape");
+    expect(r.data).toBeDefined();
+    // Call 0 is the probe; the versioned POSTs follow it.
+    expect(fetchMock.mock.calls[1]![0]).toBe("http://old:3002/v2/scrape");
+    expect(fetchMock.mock.calls[2]![0]).toBe("http://old:3002/v1/scrape");
     expect(apiPrefix("http://old:3002")).toBe("/v1");
   });
 
@@ -195,14 +225,14 @@ describe("scrapeViaFirecrawl", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonRes(200, SCRAPE_FIXTURE));
     vi.stubGlobal("fetch", fetchMock);
     await scrapeViaFirecrawl("https://x/y", { firecrawl: "https://api.firecrawl.dev" });
-    expect((fetchMock.mock.calls[0]![1] as RequestInit).headers).toMatchObject({ authorization: "Bearer fc-secret" });
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).headers).toMatchObject({ authorization: "Bearer fc-secret" });
   });
 
   it("reports an error instead of throwing when the API errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonRes(500, { success: false })));
     const r = await scrapeViaFirecrawl("https://x/y", { firecrawl: "http://fc:3002" });
-    expect(r.page).toBeNull();
-    expect(r.error).toMatch(/500/);
+    expect(r.data).toBeUndefined();
+    expect(r.why).toMatch(/500/);
   });
 });
 
@@ -224,9 +254,12 @@ describe("fetchAndExtract — Firecrawl first, native fallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const r = await fetchAndExtract("https://x/y", { firecrawl: "http://fc:3002" });
-    expect(r.extractor).toBe("native");
+    // Absent, not "native": the engine reports the built-in reader by saying
+    // nothing, and page-cache.ts is the one place that normalises it back into a
+    // filename component.
+    expect(r.extractor).toBeUndefined();
     expect(r.text).toContain("real prose");
-    expect(r.note).toMatch(/Firecrawl could not extract/);
+    expect(r.note).toMatch(/Firecrawl returned no markdown for https:\/\/x\/y/);
   });
 
   it("falls back silently-but-notedly when a PINNED Firecrawl is down", async () => {
@@ -236,9 +269,12 @@ describe("fetchAndExtract — Firecrawl first, native fallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const r = await fetchAndExtract("https://x/y", { firecrawl: "http://dead:3002" });
-    expect(r.extractor).toBe("native");
+    // Absent, not "native": the engine reports the built-in reader by saying
+    // nothing, and page-cache.ts is the one place that normalises it back into a
+    // filename component.
+    expect(r.extractor).toBeUndefined();
     expect(r.text).toContain("still answered");
-    expect(r.note).toMatch(/Firecrawl unreachable at http:\/\/dead:3002/);
+    expect(r.note).toMatch(/Firecrawl not reachable at http:\/\/dead:3002/);
   });
 
   it("says nothing when the DEFAULT base is down — a machine without the stack is not a degraded run", async () => {
@@ -248,7 +284,10 @@ describe("fetchAndExtract — Firecrawl first, native fallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const r = await fetchAndExtract("https://x/y");
-    expect(r.extractor).toBe("native");
+    // Absent, not "native": the engine reports the built-in reader by saying
+    // nothing, and page-cache.ts is the one place that normalises it back into a
+    // filename component.
+    expect(r.extractor).toBeUndefined();
     expect(r.note).toBeUndefined();
   });
 
@@ -256,7 +295,10 @@ describe("fetchAndExtract — Firecrawl first, native fallback", () => {
     const fetchMock = vi.fn(async (_url: string) => htmlRes(200, "<html><p>direct</p></html>"));
     vi.stubGlobal("fetch", fetchMock);
     const r = await fetchAndExtract("https://x/y", { firecrawl: "off" });
-    expect(r.extractor).toBe("native");
+    // Absent, not "native": the engine reports the built-in reader by saying
+    // nothing, and page-cache.ts is the one place that normalises it back into a
+    // filename component.
+    expect(r.extractor).toBeUndefined();
     // One call: the page itself. No probe, so `off` costs nothing.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]![0]).toBe("https://x/y");

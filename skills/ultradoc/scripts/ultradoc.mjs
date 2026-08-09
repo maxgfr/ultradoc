@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join46, resolve as resolve7 } from "path";
+import { join as join46, resolve as resolve6 } from "path";
 import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath4 } from "url";
 import { existsSync as existsSync23, realpathSync as realpathSync4 } from "fs";
 
@@ -8838,9 +8838,9 @@ function resolveJs(fromRel, spec, ctx) {
       if (entry.star) {
         const starAt = entry.key.indexOf("*");
         const pre = entry.key.slice(0, starAt);
-        const post2 = entry.key.slice(starAt + 1);
-        if (!subKey.startsWith(pre) || !subKey.endsWith(post2) || subKey.length < pre.length + post2.length) continue;
-        fill = subKey.slice(pre.length, subKey.length - post2.length);
+        const post = entry.key.slice(starAt + 1);
+        if (!subKey.startsWith(pre) || !subKey.endsWith(post) || subKey.length < pre.length + post.length) continue;
+        fill = subKey.slice(pre.length, subKey.length - post.length);
       } else if (entry.key !== subKey) continue;
       for (const t of entry.targets) {
         const hit = probeEntry(fill === void 0 ? t : t.replace(/\*/g, fill));
@@ -10927,8 +10927,8 @@ function packageAt(root, dir, kind, warnings) {
   const composer = () => probeComposer(root, dir, warnings);
   const nx = () => probeNxProject(root, dir, warnings);
   const gradle = () => probeGradle(root, dir);
-  const probes2 = kind === "go" ? [gomod, node, cargo, maven, py, composer, nx] : kind === "uv" ? [py, node, cargo, gomod, maven, composer, nx] : kind === "composer" ? [composer, node, py, cargo, gomod, maven, nx] : kind === "gradle" ? [node, maven, cargo, gomod, py, composer, nx, gradle] : [node, cargo, gomod, maven, py, composer, nx];
-  for (const probe of probes2) {
+  const probes = kind === "go" ? [gomod, node, cargo, maven, py, composer, nx] : kind === "uv" ? [py, node, cargo, gomod, maven, composer, nx] : kind === "composer" ? [composer, node, py, cargo, gomod, maven, nx] : kind === "gradle" ? [node, maven, cargo, gomod, py, composer, nx, gradle] : [node, cargo, gomod, maven, py, composer, nx];
+  for (const probe of probes) {
     const pkg = probe();
     if (pkg) return pkg;
   }
@@ -14026,7 +14026,7 @@ function workerCount(requested) {
   }
   return Math.max(0, Math.min(cores - 1, 8));
 }
-async function runExtractWorker(input, post2) {
+async function runExtractWorker(input, post) {
   await ensureGrammars(input.grammarKeys);
   const ready = input.grammarKeys.filter((k) => grammarReady(k));
   const records = [];
@@ -14046,7 +14046,7 @@ async function runExtractWorker(input, post2) {
     });
     records.push({ rel: job.rel, size, mtimeMs, record });
   }
-  post2({ ready, records });
+  post({ ready, records });
 }
 async function extractInParallel(jobs, grammarKeys, count, opts = {}) {
   if (count < 2 || jobs.length === 0) return void 0;
@@ -16004,23 +16004,68 @@ ${HELP}`);
 var VERSION = "2.21.1";
 
 // src/clone.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readdirSync as readdirSync5, renameSync as renameSync3 } from "fs";
-import { resolve as resolve4, join as join24 } from "path";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, renameSync as renameSync2 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
+import { join as join24 } from "path";
 
-// src/util.ts
-import { spawnSync as spawnSync3 } from "child_process";
-import { renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync6 } from "fs";
+// src/config.ts
+import { homedir as homedir2, tmpdir } from "os";
+import { join as join21 } from "path";
+function envIntRaw(name2, def, min = 1) {
+  const raw = process.env[name2];
+  if (raw === void 0) return def;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
+}
+var LIMITS = {
+  maxFiles: envIntRaw("ULTRADOC_MAX_FILES", 2e4),
+  // files walked/indexed
+  maxFileBytes: envIntRaw("ULTRADOC_MAX_FILE_BYTES", 1048576),
+  // per-file read cap
+  symbolsPerFile: envIntRaw("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
+  // symbols kept per file
+  // Call sites kept per declared symbol name. Bounds index.json on repos where
+  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
+  // keeps the evidence (a handful of sites is all a citation ever needs) and
+  // the cap is reported in stats rather than silently applied.
+  callSitesPerSymbol: envIntRaw("ULTRADOC_MAX_CALL_SITES", 30),
+  releasesFetched: envIntRaw("ULTRADOC_MAX_RELEASES", 20),
+  // GitHub releases fetched
+  docPackages: envIntRaw("ULTRADOC_MAX_DOC_PACKAGES", 6),
+  // monorepo packages given doc sections
+  docModules: envIntRaw("ULTRADOC_MAX_DOC_MODULES", 5),
+  // subsystems given their own doc section
+  verifyPairs: envIntRaw("ULTRADOC_MAX_VERIFY", 40),
+  // claim↔evidence pairs (CLI --max-verify wins)
+  embedChunks: envIntRaw("ULTRADOC_MAX_CHUNKS", 800),
+  // semantic chunks embedded per repo
+  embedConcurrency: envIntRaw("ULTRADOC_EMBED_CONCURRENCY", 4)
+  // parallel embed requests
+};
+function extdocsTtlMs() {
+  return envIntRaw("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
+}
+var CACHE_DIR_NAME = ".ultradoc";
+function cacheRoot() {
+  const override = process.env.ULTRADOC_CACHE_DIR?.trim();
+  if (override) return override;
+  const home = homedir2();
+  if (!home) return join21(tmpdir(), "ultradoc");
+  if (process.platform === "darwin") return join21(home, "Library", "Caches", "ultradoc");
+  if (process.platform === "win32") return join21(process.env.LOCALAPPDATA?.trim() || join21(home, "AppData", "Local"), "ultradoc");
+  return join21(process.env.XDG_CACHE_HOME?.trim() || join21(home, ".cache"), "ultradoc");
+}
 
 // src/vendor/webindex-engine.mjs
 import { inflateSync, inflateRawSync } from "zlib";
 import { mkdtempSync as mkdtempSync2, readFileSync as readFileSync11, rmSync as rmSync3, writeFileSync as writeFileSync5, existsSync as existsSync9 } from "fs";
-import { join as join21 } from "path";
-import { tmpdir } from "os";
+import { join as join22 } from "path";
+import { tmpdir as tmpdir2 } from "os";
 import { spawn } from "child_process";
 import { spawn as spawn2, spawnSync as spawnSync2 } from "child_process";
 import { existsSync as existsSync22, mkdirSync as mkdirSync4, readdirSync as readdirSync4, rmSync as rmSync22, statSync as statSync6 } from "fs";
-import { basename as basename3, join as join22, resolve as resolve3 } from "path";
+import { tmpdir as tmpdir22 } from "os";
+import { basename as basename3, join as join23, resolve as resolve3 } from "path";
 import { spawnSync as spawnSync22 } from "child_process";
 import { existsSync as existsSync32, mkdirSync as mkdirSync22, readFileSync as readFileSync22, writeFileSync as writeFileSync22 } from "fs";
 import { tmpdir as tmpdir3 } from "os";
@@ -16048,6 +16093,14 @@ function configure(next) {
 }
 function brand() {
   return current;
+}
+function countFetch(bytes, cached = false) {
+  const hook = current.onFetch;
+  if (!hook) return;
+  try {
+    hook(bytes, cached);
+  } catch {
+  }
 }
 function envName(suffix) {
   return `${current.envPrefix}_${suffix}`;
@@ -16269,10 +16322,10 @@ async function ocrPdf(bytes) {
   if (ocrBudgetLeft() <= 0) return void 0;
   const { copyablePdf, tesseract } = await ocrTools();
   if (!copyablePdf || !tesseract) return void 0;
-  const dir = mkdtempSync2(join21(tmpdir(), `${brand().name}-ocr-`));
+  const dir = mkdtempSync2(join22(tmpdir2(), `${brand().name}-ocr-`));
   try {
-    const input = join21(dir, "in.pdf");
-    const output = join21(dir, "out.pdf");
+    const input = join22(dir, "in.pdf");
+    const output = join22(dir, "out.pdf");
     writeFileSync5(input, bytes);
     const lang = env("OCR_LANG") || DEFAULT_LANG;
     const r = await runWithInput("copyable-pdf", ["-o", output, "-m", "-l", lang, input], Buffer.alloc(0), envInt("OCR_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
@@ -16429,6 +16482,93 @@ async function extractDocument(bytes, fmt, opts = {}) {
     lastReason = verdict.reason;
   }
   return { text: "", reason: lastReason ?? "no document converter available" };
+}
+function bomEncoding(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191) return { encoding: "utf-8", skip: 3 };
+  if (bytes.length >= 2 && bytes[0] === 255 && bytes[1] === 254) return { encoding: "utf-16le", skip: 2 };
+  if (bytes.length >= 2 && bytes[0] === 254 && bytes[1] === 255) return { encoding: "utf-16be", skip: 2 };
+  return void 0;
+}
+var CHARSET_IN_CONTENT_TYPE = /charset\s*=\s*["']?([a-z0-9_:.+-]+)/i;
+function charsetFromContentType(contentType) {
+  return CHARSET_IN_CONTENT_TYPE.exec(contentType ?? "")?.[1]?.toLowerCase();
+}
+function charsetFromHtml(head) {
+  const window2 = head.slice(0, 4096);
+  const direct = /<meta[^>]+charset\s*=\s*["']?([a-z0-9_:.+-]+)/i.exec(window2);
+  if (direct) return direct[1].toLowerCase();
+  const httpEquiv = /<meta[^>]+http-equiv\s*=\s*["']?content-type["']?[^>]*content\s*=\s*["'][^"']*charset\s*=\s*([a-z0-9_:.+-]+)/i.exec(window2);
+  return httpEquiv?.[1]?.toLowerCase();
+}
+function decodeBody(bytes, contentType = "") {
+  const bom = bomEncoding(bytes);
+  if (bom) return decodeWith(bytes.subarray(bom.skip), bom.encoding);
+  const declared = charsetFromContentType(contentType);
+  if (declared && declared !== "utf-8" && declared !== "utf8") return decodeWith(bytes, declared);
+  if (declared) return bytes.toString("utf8");
+  const meta = charsetFromHtml(bytes.subarray(0, 4096).toString("latin1"));
+  if (meta && meta !== "utf-8" && meta !== "utf8") return decodeWith(bytes, meta);
+  return bytes.toString("utf8");
+}
+var CP1252_C1 = [
+  8364,
+  129,
+  8218,
+  402,
+  8222,
+  8230,
+  8224,
+  8225,
+  710,
+  8240,
+  352,
+  8249,
+  338,
+  141,
+  381,
+  143,
+  144,
+  8216,
+  8217,
+  8220,
+  8221,
+  8226,
+  8211,
+  8212,
+  732,
+  8482,
+  353,
+  8250,
+  339,
+  157,
+  382,
+  376
+];
+var CP1252_LABELS = /* @__PURE__ */ new Set([
+  "windows-1252",
+  "cp1252",
+  "cp-1252",
+  "x-cp1252",
+  "ansi_x3.4-1968",
+  "iso-8859-1",
+  "iso8859-1",
+  "latin1",
+  "l1",
+  "us-ascii",
+  "ascii"
+]);
+function decodeCp1252(bytes) {
+  let out2 = "";
+  for (const b of bytes) out2 += String.fromCharCode(b >= 128 && b <= 159 ? CP1252_C1[b - 128] : b);
+  return out2;
+}
+function decodeWith(bytes, encoding) {
+  if (CP1252_LABELS.has(encoding)) return decodeCp1252(bytes);
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(bytes);
+  } catch {
+    return bytes.toString("utf8");
+  }
 }
 function escapeRegExp2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -16739,13 +16879,656 @@ function buildMatcher(question, max = 8) {
 function matcherFromTokens(tokens, max = 8) {
   return makeMatcher(expandTokens(tokens.filter(Boolean), max));
 }
+function nearestHeading(lines, anchor) {
+  let heading;
+  let inFence = false;
+  for (let i2 = 0; i2 <= anchor && i2 < lines.length; i2++) {
+    const line = lines[i2];
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (m) heading = m[1].trim();
+  }
+  return heading;
+}
+function excerptWindows(text, question, opts = {}) {
+  const lines = text.split("\n");
+  const before = opts.before ?? 3;
+  const after = opts.after ?? 12;
+  const maxChars = opts.maxChars ?? 1500;
+  const perDoc = Math.max(1, opts.perDoc ?? 2);
+  const matchers = (Array.isArray(question) ? question : [question]).filter((q) => q.trim()).map((q) => buildMatcher(q));
+  const hits = [];
+  for (let i2 = 0; i2 < lines.length; i2++) {
+    let score = 0;
+    for (const m of matchers) {
+      const cov = m.matchLine(lines[i2]).size;
+      if (cov > score) score = cov;
+    }
+    if (score > 0) hits.push({ anchor: i2, score });
+  }
+  hits.sort((a, b) => b.score - a.score || a.anchor - b.anchor);
+  const take = hits.length ? hits : [{ anchor: 0, score: 0 }];
+  const out2 = [];
+  for (const h of take) {
+    if (out2.length >= perDoc) break;
+    const start2 = Math.max(0, h.anchor - before);
+    const end = Math.min(lines.length, h.anchor + after);
+    if (out2.some((w) => start2 < w.end && end > w.start)) continue;
+    const snippet = lines.slice(start2, end).join("\n").slice(0, maxChars);
+    if (!snippet.trim()) continue;
+    const heading = nearestHeading(lines, h.anchor);
+    out2.push({ start: start2, end, anchor: h.anchor, score: h.score, ...heading ? { heading } : {}, snippet });
+  }
+  return out2;
+}
 function slugify2(input, opts = {}) {
   const s = input.toLowerCase().replace(/^https?:\/\//, "").replace(/^git@/, "").replace(/\.git$/, "").replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, opts.max ?? 120);
   return s || (opts.fallback ?? "");
 }
+var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
+var PROBE_TIMEOUT_MS = 2e3;
+var SCRAPE_TIMEOUT_MS = 45e3;
+var SEARCH_TIMEOUT_MS = 3e4;
 var SCRAPE_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+function firecrawlBase(opts = {}) {
+  const raw = (opts.firecrawl ?? env("FIRECRAWL") ?? FIRECRAWL_DEFAULT_BASE).trim();
+  if (!raw || raw.toLowerCase() === "off") return null;
+  return raw.replace(/\/+$/, "");
+}
+function firecrawlIsExplicit(opts = {}) {
+  return !!(opts.firecrawl ?? env("FIRECRAWL"));
+}
+function authHeaders() {
+  const key = env("FIRECRAWL_KEY");
+  return key ? { authorization: `Bearer ${key}` } : void 0;
+}
+var probeCache = /* @__PURE__ */ new Map();
+function looksLikeFirecrawl(contentType, body2) {
+  if (/firecrawl/i.test(body2.slice(0, 4096))) return true;
+  return !/^\s*text\/html/i.test(contentType ?? "");
+}
+function probeFirecrawl(base, explicit = false) {
+  const key = `${base}|${explicit}`;
+  let p = probeCache.get(key);
+  if (!p) {
+    p = (async () => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${base}/`, { signal: ctrl.signal });
+        const body2 = await res.text().catch(() => "");
+        return explicit || looksLikeFirecrawl(res.headers.get("content-type"), body2);
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(t);
+      }
+    })();
+    probeCache.set(key, p);
+  }
+  return p;
+}
+var prefixCache = /* @__PURE__ */ new Map();
+function apiPrefix(base) {
+  return prefixCache.get(base) ?? "/v2";
+}
+async function postJson(base, path, body2, timeoutMs) {
+  const headers = authHeaders();
+  const first = await httpJson("POST", `${base}${apiPrefix(base)}${path}`, body2, { timeoutMs, headers });
+  if (first.status !== 404 || apiPrefix(base) !== "/v2") return first;
+  prefixCache.set(base, "/v1");
+  return httpJson("POST", `${base}/v1${path}`, body2, { timeoutMs, headers });
+}
+function mapScrapeResponse(json) {
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  if (json.success === false) return null;
+  const data = json.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const markdown = typeof data.markdown === "string" ? data.markdown.trim() : "";
+  if (!markdown) return null;
+  const meta = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
+  const rawTitle = typeof meta.title === "string" ? cleanInline(meta.title) : "";
+  const src = typeof meta.sourceURL === "string" ? meta.sourceURL : typeof meta.url === "string" ? meta.url : void 0;
+  const status = typeof meta.statusCode === "number" ? meta.statusCode : void 0;
+  return {
+    markdown,
+    ...rawTitle ? { title: rawTitle } : {},
+    ...src ? { sourceURL: src } : {},
+    ...status !== void 0 ? { statusCode: status } : {}
+  };
+}
+function mapSearchResponse(json) {
+  if (!json || typeof json !== "object") return [];
+  if (json.success === false) return [];
+  const data = json.data;
+  const web = Array.isArray(data) ? data : Array.isArray(data?.web) ? data.web : Array.isArray(data?.results) ? data.results : [];
+  const out2 = [];
+  for (const x of web) {
+    if (!x || typeof x.url !== "string" || !x.url) continue;
+    out2.push({
+      url: x.url,
+      // `||` (not `??`): an empty title degrades to the URL, never blank.
+      title: cleanInline(String(x.title || x.url)),
+      description: cleanInline(String(x.description ?? x.snippet ?? "")).slice(0, 360),
+      ...typeof x.markdown === "string" && x.markdown.trim() ? { markdown: x.markdown } : {}
+    });
+  }
+  return out2;
+}
+async function scrapeViaFirecrawl(url, opts = {}) {
+  const base = firecrawlBase(opts);
+  if (!base) return {};
+  if (!await probeFirecrawl(base, firecrawlIsExplicit(opts))) {
+    return firecrawlIsExplicit(opts) ? { why: `Firecrawl not reachable at ${base} \u2014 used the built-in extractor.` } : {};
+  }
+  const r = await postJson(
+    base,
+    "/scrape",
+    {
+      url,
+      formats: ["markdown"],
+      onlyMainContent: true,
+      blockAds: true,
+      removeBase64Images: true,
+      maxAge: SCRAPE_MAX_AGE_MS,
+      timeout: SCRAPE_TIMEOUT_MS
+    },
+    SCRAPE_TIMEOUT_MS
+  );
+  if (!r.ok) {
+    const why = r.status ? `status ${r.status}` : r.error ?? "no response";
+    return { why: `Firecrawl could not scrape ${url} (${why}) \u2014 fell back to the built-in extractor.` };
+  }
+  const data = mapScrapeResponse(r.data);
+  if (!data) return { why: `Firecrawl returned no markdown for ${url} \u2014 fell back to the built-in extractor.` };
+  return { data };
+}
+async function searchViaFirecrawl(query4, limit, opts = {}) {
+  const base = firecrawlBase(opts);
+  if (!base) return { why: `Firecrawl disabled (--firecrawl off / ${envName("FIRECRAWL")}=off). Skipping.` };
+  if (!await probeFirecrawl(base, firecrawlIsExplicit(opts))) {
+    return { why: `Firecrawl not reachable at ${base} (bring it up with \`${brand().cli} firecrawl up\`). Skipping.` };
+  }
+  const r = await postJson(base, "/search", { query: query4, limit, sources: ["web"] }, SEARCH_TIMEOUT_MS);
+  if (!r.ok) {
+    const why = r.status === 429 || r.status === 503 ? `rate-limited (HTTP ${r.status})` : `unreachable (status ${r.status || 0})`;
+    return { why: `Firecrawl search ${why} at ${base}.` };
+  }
+  return { hits: mapSearchResponse(r.data) };
+}
+var DEFAULT_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+function browserUa() {
+  return env("UA") || DEFAULT_BROWSER_UA;
+}
+function contactUa() {
+  const b = brand();
+  return `${b.name}/${b.version ?? "1.x"} (+${b.contactUrl ?? `https://github.com/maxgfr/${b.name}`})`;
+}
+function defaultUa() {
+  return brand().defaultUa === "contact" ? contactUa() : browserUa();
+}
+var RETRY_STATUS = /* @__PURE__ */ new Set([429, 503, 502, 504]);
+var maxAttempts = () => envInt("MAX_ATTEMPTS", 2, 1, 5);
+var defaultRetryMs = () => envInt("RETRY_MS", 600, 0, 5e3);
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function detectRateLimited(status, headers) {
+  if (status === 429) return true;
+  return status === 403 && headers.get("x-ratelimit-remaining") === "0";
+}
+function parseRetryAfter(headers, capMs = 5e3) {
+  const h = headers.get("retry-after");
+  if (!h) return void 0;
+  const secs = Number(h);
+  if (Number.isFinite(secs)) return Math.min(Math.max(0, secs) * 1e3, capMs);
+  const when = Date.parse(h);
+  if (Number.isFinite(when)) return Math.min(Math.max(0, when - Date.now()), capMs);
+  return void 0;
+}
+function retryDelayMs(headers) {
+  return parseRetryAfter(headers) ?? defaultRetryMs();
+}
+function attemptsFor(retries) {
+  return retries === void 0 ? maxAttempts() : Math.min(4, Math.max(0, Math.trunc(retries))) + 1;
+}
+async function readCappedBytes(res, max) {
+  const reader = res.body?.getReader?.();
+  if (!reader) return Buffer.from(await res.arrayBuffer()).subarray(0, max);
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value?.byteLength) continue;
+    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    const remaining = max - total;
+    if (chunk.length >= remaining) {
+      chunks.push(chunk.subarray(0, remaining));
+      await reader.cancel().catch(() => {
+      });
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  return Buffer.concat(chunks);
+}
+async function httpGet(url, opts = {}) {
+  const attempts = attemptsFor(opts.retries);
+  let last = { ok: false, status: 0, body: "", contentType: "", url };
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
+    try {
+      const headers = { "user-agent": opts.userAgent ?? defaultUa(), accept: opts.accept ?? "*/*" };
+      if (opts.acceptLanguage) headers["accept-language"] = opts.acceptLanguage;
+      for (const [k, v] of Object.entries(opts.headers ?? {})) headers[k.toLowerCase()] = v;
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        redirect: "follow",
+        headers
+      });
+      const max = opts.maxBytes ?? 4 * 1024 * 1024;
+      const meta = {
+        contentType: res.headers.get("content-type") ?? "",
+        url: res.url || url,
+        etag: res.headers.get("etag") ?? void 0,
+        lastModified: res.headers.get("last-modified") ?? void 0,
+        rateLimited: detectRateLimited(res.status, res.headers),
+        retryAfterMs: parseRetryAfter(res.headers)
+      };
+      const declared = Number(res.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared > max) {
+        ctrl.abort();
+        return { ok: false, status: res.status, body: "", ...meta, error: `response too large: ${declared} bytes > ${max} cap` };
+      }
+      const bytes = res.status === 304 ? Buffer.alloc(0) : await readCappedBytes(res, max);
+      countFetch(bytes.length, false);
+      const result = {
+        ok: res.ok,
+        status: res.status,
+        // Decoded per the response's own encoding, not assumed UTF-8. A
+        // Windows-1252 page used to come back with every accented character
+        // replaced by U+FFFD, and nothing anywhere noticed.
+        body: opts.binary ? "" : decodeBody(bytes, meta.contentType),
+        bytes: opts.binary ? bytes : void 0,
+        ...meta
+      };
+      if (RETRY_STATUS.has(res.status) && attempt < attempts - 1) {
+        last = result;
+        await sleep(retryDelayMs(res.headers));
+        continue;
+      }
+      return result;
+    } catch (e) {
+      last = { ok: false, status: 0, body: "", contentType: "", url, error: e.message };
+      if (attempt < attempts - 1) await sleep(defaultRetryMs());
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  return last;
+}
+async function httpJson(method, url, body2, opts = {}) {
+  const attempts = attemptsFor(opts.retries);
+  let last = { ok: false, status: 0, data: void 0 };
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
+    try {
+      const headers = {
+        "content-type": "application/json",
+        accept: opts.accept ?? "application/json",
+        "user-agent": opts.userAgent ?? defaultUa()
+      };
+      if (opts.acceptLanguage) headers["accept-language"] = opts.acceptLanguage;
+      for (const [k, v] of Object.entries(opts.headers ?? {})) headers[k.toLowerCase()] = v;
+      const res = await fetch(url, {
+        method,
+        signal: ctrl.signal,
+        headers,
+        body: body2 === void 0 ? void 0 : JSON.stringify(body2)
+      });
+      const text = await res.text();
+      countFetch(Buffer.byteLength(text), false);
+      let data;
+      try {
+        data = text ? JSON.parse(text) : void 0;
+      } catch {
+        data = text;
+      }
+      const result = { ok: res.ok, status: res.status, data };
+      if (RETRY_STATUS.has(res.status) && attempt < attempts - 1) {
+        last = result;
+        await sleep(retryDelayMs(res.headers));
+        continue;
+      }
+      return result;
+    } catch (e) {
+      last = { ok: false, status: 0, data: void 0, error: e.message };
+      if (attempt < attempts - 1) await sleep(defaultRetryMs());
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  return last;
+}
+var ENTITIES = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+  "&nbsp;": " ",
+  "&mdash;": "\u2014",
+  "&ndash;": "\u2013",
+  "&hellip;": "\u2026",
+  "&copy;": "\xA9",
+  // Typographic punctuation CMSes emit as named refs (WordPress "smart" text) —
+  // otherwise a curly quote/apostrophe leaks into the report prose verbatim.
+  "&lsquo;": "\u2018",
+  "&rsquo;": "\u2019",
+  "&sbquo;": "\u201A",
+  "&ldquo;": "\u201C",
+  "&rdquo;": "\u201D",
+  "&bdquo;": "\u201E",
+  "&bull;": "\u2022",
+  "&middot;": "\xB7",
+  "&laquo;": "\xAB",
+  "&raquo;": "\xBB",
+  "&deg;": "\xB0",
+  "&plusmn;": "\xB1",
+  "&times;": "\xD7",
+  "&divide;": "\xF7",
+  "&frac12;": "\xBD",
+  "&frac14;": "\xBC",
+  "&frac34;": "\xBE",
+  "&sup2;": "\xB2",
+  "&sup3;": "\xB3",
+  "&micro;": "\xB5",
+  "&trade;": "\u2122",
+  "&reg;": "\xAE",
+  "&sect;": "\xA7",
+  "&para;": "\xB6",
+  "&dagger;": "\u2020",
+  "&Dagger;": "\u2021",
+  "&prime;": "\u2032",
+  "&Prime;": "\u2033",
+  "&iexcl;": "\xA1",
+  "&iquest;": "\xBF",
+  "&cent;": "\xA2",
+  "&pound;": "\xA3",
+  "&curren;": "\xA4",
+  "&yen;": "\xA5",
+  "&euro;": "\u20AC",
+  // Latin-1 accented letters — pervasive in non-English titles/snippets.
+  "&agrave;": "\xE0",
+  "&aacute;": "\xE1",
+  "&acirc;": "\xE2",
+  "&atilde;": "\xE3",
+  "&auml;": "\xE4",
+  "&aring;": "\xE5",
+  "&aelig;": "\xE6",
+  "&ccedil;": "\xE7",
+  "&egrave;": "\xE8",
+  "&eacute;": "\xE9",
+  "&ecirc;": "\xEA",
+  "&euml;": "\xEB",
+  "&igrave;": "\xEC",
+  "&iacute;": "\xED",
+  "&icirc;": "\xEE",
+  "&iuml;": "\xEF",
+  "&ntilde;": "\xF1",
+  "&ograve;": "\xF2",
+  "&oacute;": "\xF3",
+  "&ocirc;": "\xF4",
+  "&otilde;": "\xF5",
+  "&ouml;": "\xF6",
+  "&oslash;": "\xF8",
+  "&ugrave;": "\xF9",
+  "&uacute;": "\xFA",
+  "&ucirc;": "\xFB",
+  "&uuml;": "\xFC",
+  "&yacute;": "\xFD",
+  "&yuml;": "\xFF",
+  "&szlig;": "\xDF",
+  "&Agrave;": "\xC0",
+  "&Aacute;": "\xC1",
+  "&Acirc;": "\xC2",
+  "&Auml;": "\xC4",
+  "&Aring;": "\xC5",
+  "&AElig;": "\xC6",
+  "&Ccedil;": "\xC7",
+  "&Egrave;": "\xC8",
+  "&Eacute;": "\xC9",
+  "&Ecirc;": "\xCA",
+  "&Euml;": "\xCB",
+  "&Iacute;": "\xCD",
+  "&Ntilde;": "\xD1",
+  "&Oacute;": "\xD3",
+  "&Ouml;": "\xD6",
+  "&Oslash;": "\xD8",
+  "&Uacute;": "\xDA",
+  "&Uuml;": "\xDC"
+};
+var ENTITY_BY_NAME = new Map(Object.entries(ENTITIES).map(([k, v]) => [k.slice(1, -1), v]));
+var ENTITY_RE = /&(#[xX][0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
+function decodeEntities(s) {
+  return s.replace(ENTITY_RE, (m, ref) => {
+    if (ref[0] === "#") {
+      const n = ref[1] === "x" || ref[1] === "X" ? Number.parseInt(ref.slice(2), 16) : Number(ref.slice(1));
+      try {
+        return Number.isFinite(n) ? String.fromCodePoint(n) : " ";
+      } catch {
+        return " ";
+      }
+    }
+    return ENTITY_BY_NAME.get(ref) ?? m;
+  });
+}
+function cleanInline(s) {
+  return decodeEntities(String(s)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+function htmlToText(html) {
+  let s = html;
+  s = s.replace(/<!--[\s\S]*?-->/g, " ");
+  s = s.replace(/<(script|style|noscript|head|nav|footer|svg|template)[\s\S]*?<\/\1>/gi, " ");
+  s = s.replace(/<h([1-6])(?:\s[^>]*)?>/gi, (_m, n) => "\n" + "#".repeat(Number(n)) + " ");
+  s = s.replace(/<\/(p|div|section|article|li|tr|td|th|ul|ol|h[1-6]|pre|blockquote|br)>/gi, "\n");
+  s = s.replace(/<(p|div|section|article|li|tr|td|th|ul|ol|pre|blockquote|table)\b[^>]*>/gi, "\n");
+  s = s.replace(/<(br|hr)\s*\/?>/gi, "\n");
+  s = s.replace(/<[^>]+>/g, " ");
+  s = decodeEntities(s);
+  s = s.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
+  return s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
+}
+function htmlTitle(html) {
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  if (!m) return void 0;
+  const t = decodeEntities(m[1].replace(/\s+/g, " ").trim());
+  return t || void 0;
+}
+function htmlCanonicalUrl(html) {
+  const head = html.slice(0, 6e4);
+  const canonical = /<link\b[^>]*\brel=["']?canonical["']?[^>]*>/i.exec(head)?.[0];
+  const og = /<meta\b[^>]*\bproperty=["']?og:url["']?[^>]*>/i.exec(head)?.[0];
+  for (const tag of [canonical, og]) {
+    const href = tag && /\b(?:href|content)=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (href?.trim()) return decodeEntities(href.trim());
+  }
+  return void 0;
+}
+function sliceToMatchingClose(html, start2, tag) {
+  const re = new RegExp(`<${tag}\\b|</${tag}\\s*>`, "gi");
+  re.lastIndex = start2;
+  let depth = 1;
+  let m;
+  while (m = re.exec(html)) {
+    if (m[0][1] === "/") {
+      if (--depth === 0) return html.slice(start2, m.index);
+    } else {
+      depth++;
+    }
+  }
+  return null;
+}
+function extractMainHtml(html) {
+  const visible = (h) => h.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().length;
+  const tiers = [
+    /<(main)\b[^>]*>/gi,
+    /<(article)\b[^>]*>/gi,
+    /<(div|section)\b[^>]*\b(?:id|class)="[^"]*\b(?:content|article|post|entry|story|markdown-body|main|prose)\b[^"]*"[^>]*>/gi
+  ];
+  let candidates = [];
+  for (const re of tiers) {
+    const found = [];
+    re.lastIndex = 0;
+    let m;
+    while (m = re.exec(html)) {
+      const inner = sliceToMatchingClose(html, re.lastIndex, m[1].toLowerCase());
+      if (inner !== null) found.push(inner);
+    }
+    if (found.length) {
+      candidates = found;
+      break;
+    }
+  }
+  if (!candidates.length) return html;
+  let best = candidates[0];
+  let bestLen = visible(best);
+  for (const c2 of candidates.slice(1)) {
+    const len = visible(c2);
+    if (len > bestLen) {
+      best = c2;
+      bestLen = len;
+    }
+  }
+  const fullLen = visible(html);
+  if (bestLen < 500 && bestLen < fullLen * 0.3) return html;
+  return best;
+}
+var PDF_URL_RE = /\.pdf($|[?#])/i;
+var PDF_ROUTE_RE = /\/pdf\/[^/?#]+($|[?#])/i;
+var NON_PDF_TAIL_RE = /\.(html?|php|aspx?|jsp|json|xml|txt|md|csv)($|[?#])/i;
+function looksLikePdfUrl(url) {
+  if (PDF_URL_RE.test(url)) return true;
+  return PDF_ROUTE_RE.test(url) && !NON_PDF_TAIL_RE.test(url);
+}
 var PDF_FETCH_OPTS = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
 var DOC_FETCH_OPTS = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024 };
+async function fetchAndExtract(url, opts = {}) {
+  const wantsPdf = looksLikePdfUrl(url);
+  const wantsDoc = wantsPdf ? void 0 : docFormatForUrl(url);
+  let firecrawlNote;
+  if (!wantsPdf && !wantsDoc) {
+    const fc = await scrapeViaFirecrawl(url, opts);
+    if (fc.data && (fc.data.statusCode ?? 200) < 400) {
+      return {
+        text: fc.data.markdown,
+        title: fc.data.title,
+        finalUrl: fc.data.sourceURL || url,
+        status: fc.data.statusCode ?? 200,
+        extractor: "firecrawl"
+      };
+    }
+    firecrawlNote = fc.data ? `Firecrawl got HTTP ${fc.data.statusCode} for ${url} \u2014 fell back to the built-in extractor.` : fc.why;
+  }
+  const base = wantsPdf ? PDF_FETCH_OPTS : wantsDoc ? DOC_FETCH_OPTS : { accept: "text/html,text/plain,*/*", acceptLanguage: opts.acceptLanguage };
+  const fetchOpts = opts.headers ? { ...base, headers: opts.headers } : base;
+  let res = await httpGet(url, fetchOpts);
+  if (!res.ok && brand().defaultUa === "contact" && (res.status === 403 || res.status === 429)) {
+    res = await httpGet(url, { ...fetchOpts, userAgent: browserUa(), acceptLanguage: opts.acceptLanguage ?? "en-US,en;q=0.9" });
+  }
+  if (res.status === 304) {
+    return { text: "", finalUrl: res.url, status: 304, etag: res.etag ?? opts.headers?.["if-none-match"], lastModified: res.lastModified };
+  }
+  if (!res.ok) {
+    const why = res.status === 429 ? "rate-limited (HTTP 429)" : `status ${res.status}${res.error ? ", " + res.error : ""}`;
+    return { text: "", finalUrl: res.url, status: res.status, note: `Could not fetch ${url} (${why}).` };
+  }
+  const validators = res.etag || res.lastModified ? { etag: res.etag, lastModified: res.lastModified } : {};
+  if (wantsPdf || /application\/pdf/i.test(res.contentType)) {
+    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS)).bytes;
+    const got = bytes ? await extractPdf(bytes, {
+      firecrawl: async () => {
+        const fc = await scrapeViaFirecrawl(url, opts);
+        return fc.data && (fc.data.statusCode ?? 200) < 400 ? fc.data.markdown : void 0;
+      }
+    }) : { text: "", reason: "empty response body" };
+    return {
+      text: got.text,
+      finalUrl: res.url,
+      status: res.status,
+      // `native` keeps reporting as absent, which is what the cache key and every
+      // existing dossier already assume.
+      extractor: got.via && got.via !== "native" ? got.via : void 0,
+      note: got.text ? firecrawlNote : `Fetched ${url} but could not extract text \u2014 ${got.reason}.`,
+      ...validators
+    };
+  }
+  const docFmt = wantsDoc ?? docFormatForContentType(res.contentType);
+  if (docFmt) {
+    const bytes = res.bytes ?? (await httpGet(url, DOC_FETCH_OPTS)).bytes;
+    const got = bytes ? await extractDocument(bytes, docFmt, {
+      firecrawl: async () => {
+        const fc = await scrapeViaFirecrawl(url, opts);
+        return fc.data && (fc.data.statusCode ?? 200) < 400 ? fc.data.markdown : void 0;
+      }
+    }) : { text: "", reason: "empty response body" };
+    if (!got.text && docFmt.textFallback && bytes?.length) {
+      return { text: bytes.toString("utf8"), finalUrl: res.url, status: res.status, note: firecrawlNote, ...validators };
+    }
+    return {
+      text: got.text,
+      finalUrl: res.url,
+      status: res.status,
+      extractor: got.via,
+      note: got.text ? firecrawlNote : `Fetched ${url} but could not extract text \u2014 ${got.reason}.`,
+      ...validators
+    };
+  }
+  const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
+  const stripped = isHtml ? htmlToText(extractMainHtml(res.body)) : res.body;
+  const text = isHtml && opts.stripConsent ? stripConsentBoilerplate(stripped).text : stripped;
+  const title = isHtml ? htmlTitle(res.body) : void 0;
+  const canonical = isHtml ? htmlCanonicalUrl(res.body) : void 0;
+  const metaDescription = isHtml ? metaDescriptionOf(res.body) : void 0;
+  return { text, title, canonical, metaDescription, finalUrl: res.url, status: res.status, note: firecrawlNote, ...validators };
+}
+var CONSENT_PATTERNS = [
+  /\bcookies?\b/i,
+  /\bconsent\b/i,
+  /\bgdpr\b/i,
+  /\bccpa\b/i,
+  /accept all\b/i,
+  /reject all\b/i,
+  /manage (?:preferences|choices|cookies|settings)/i,
+  /privacy (?:policy|preferences|choices)/i,
+  /tracking technolog/i,
+  /advertising partners/i,
+  /legitimate interest/i
+];
+function stripConsentBoilerplate(text) {
+  let dropped = 0;
+  const kept = text.split("\n").filter((line) => {
+    const hits = CONSENT_PATTERNS.reduce((n, re) => n + (re.test(line) ? 1 : 0), 0);
+    const isBanner2 = hits >= 2 || hits === 1 && line.trim().length < 120;
+    if (isBanner2) dropped++;
+    return !isBanner2;
+  });
+  return { text: kept.join("\n"), dropped };
+}
+function metaDescriptionOf(html) {
+  const m = /<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i.exec(html) || /<meta[^>]+content=["']([^"']+)["'][^>]*name=["']description["']/i.exec(html) || /<meta[^>]+property=["']og:description["'][^>]*content=["']([^"']+)["']/i.exec(html);
+  const d = m?.[1]?.replace(/\s+/g, " ").trim();
+  return d ? decodeEntities(d) : void 0;
+}
 var MASK64 = (1n << 64n) - 1n;
 function rrf2(lists, keyOf2, k = 60) {
   const score = /* @__PURE__ */ new Map();
@@ -16758,6 +17541,7 @@ function rrf2(lists, keyOf2, k = 60) {
   return score;
 }
 var STDOUT_CAP = 24 * 1024 * 1024;
+var defaultTimeoutMs = () => envInt("SH_TIMEOUT_MS", 6e4, 1e3);
 function toResult(status, stdout, stderr, err2) {
   const missing = err2?.code === "ENOENT";
   return {
@@ -16768,17 +17552,60 @@ function toResult(status, stdout, stderr, err2) {
     ...missing ? { missing: true } : {}
   };
 }
+var havePresence = /* @__PURE__ */ new Map();
+function have2(cmd) {
+  let hit = havePresence.get(cmd);
+  if (hit === void 0) {
+    const probe = spawnSync2(process.platform === "win32" ? "where" : "which", [cmd], { encoding: "utf8" });
+    hit = probe.status === 0 && (probe.stdout ?? "").trim().length > 0;
+    havePresence.set(cmd, hit);
+  }
+  return hit;
+}
 function sh2(cmd, args2, opts = {}) {
   const r = spawnSync2(cmd, args2, {
     cwd: opts.cwd,
     input: opts.input,
-    timeout: opts.timeoutMs ?? 6e4,
+    timeout: opts.timeoutMs ?? defaultTimeoutMs(),
     encoding: "utf8",
     maxBuffer: STDOUT_CAP,
     env: opts.env ?? process.env
   });
   return toResult(r.status, r.stdout ?? "", r.stderr ?? "", r.error);
 }
+function shAsync(cmd, args2, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? defaultTimeoutMs();
+  return new Promise((resolve32) => {
+    let settled = false;
+    const done = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve32(r);
+    };
+    const child = spawn2(cmd, args2, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (d) => {
+      if (stdout.length < STDOUT_CAP) stdout += String(d);
+    });
+    child.stderr?.on("data", (d) => {
+      if (stderr.length < STDOUT_CAP) stderr += String(d);
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      done({ ok: false, status: 124, stdout, stderr: stderr || `timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+    child.on("error", (e) => done(toResult(null, stdout, stderr, e)));
+    child.on("close", (code) => done(toResult(code, stdout, stderr)));
+  });
+}
+function repoCacheRoot() {
+  return env("REPO_DIR") ?? brand().repoDir ?? join23(tmpdir22(), brand().name, "repos");
+}
+var cloneTimeoutMs = () => envInt("GIT_CLONE_TIMEOUT_MS", 3e5, 1e3);
+var fetchTimeoutMs = () => envInt("GIT_FETCH_TIMEOUT_MS", 12e4, 1e3);
+var historyTimeoutMs = () => envInt("GIT_HISTORY_TIMEOUT_MS", 3e5, 1e3);
 function resolveRepo(raw) {
   const trimmed = raw.trim();
   if (trimmed) {
@@ -16836,6 +17663,72 @@ function resolveRepo(raw) {
     slug: slugify2(`${host}/${path}`)
   };
 }
+async function ensureClone(ref, opts = {}) {
+  if (ref.isLocal) return resolve3(ref.raw);
+  if (!ref.cloneUrl) throw new Error(`"${ref.raw}" does not name a repository that can be cloned`);
+  if (!have2("git")) throw new Error(`git is not installed or not on PATH \u2014 cannot clone ${ref.cloneUrl}`);
+  const dir = join23(repoCacheRoot(), ref.slug);
+  const cloned = existsSync22(join23(dir, ".git"));
+  if (cloned && !opts.refresh) return dir;
+  if (cloned && opts.refresh) {
+    await shAsync("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { timeoutMs: fetchTimeoutMs() });
+    await shAsync("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: fetchTimeoutMs() });
+    return dir;
+  }
+  mkdirSync4(repoCacheRoot(), { recursive: true });
+  const args2 = ["clone", "--depth", "1", "--filter=blob:none", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir];
+  const first = await shAsync("git", args2, { timeoutMs: cloneTimeoutMs() });
+  if (!first.ok) {
+    if (existsSync22(dir)) {
+      try {
+        rmSync22(dir, { recursive: true, force: true });
+      } catch (e) {
+        throw new Error(`could not remove the partial clone at ${dir} before retrying: ${e.message} \u2014 delete it and re-run`);
+      }
+    }
+    const retry = await shAsync("git", ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir], {
+      timeoutMs: cloneTimeoutMs()
+    });
+    if (!retry.ok) {
+      throw new Error(
+        [
+          `git clone failed for ${ref.cloneUrl}`,
+          `  attempt 1 (--filter=blob:none): ${first.stderr.trim() || `exit ${first.status}`}`,
+          `  attempt 2 (no filter):          ${retry.stderr.trim() || `exit ${retry.status}`}`
+        ].join("\n")
+      );
+    }
+  }
+  if (!existsSync22(dir) || readdirSync4(dir).length === 0) throw new Error(`clone produced an empty tree at ${dir}`);
+  return dir;
+}
+var deepened = /* @__PURE__ */ new Map();
+async function ensureHistoryDepth(dir, opts = {}) {
+  const cached = deepened.get(dir);
+  if (cached) return cached;
+  const out2 = await computeHistoryDepth(dir, opts);
+  deepened.set(dir, out2);
+  return out2;
+}
+async function computeHistoryDepth(dir, opts) {
+  if (!have2("git")) return { ok: false, note: "git is not installed \u2014 no commit history available." };
+  const probe = await shAsync("git", ["-C", dir, "rev-parse", "--is-shallow-repository"], { timeoutMs: 1e4 });
+  if (!probe.ok) return { ok: false, note: "Not a git working tree \u2014 no commit history available." };
+  const filter = await shAsync("git", ["-C", dir, "config", "remote.origin.partialclonefilter"], { timeoutMs: 1e4 });
+  const shallow = probe.stdout.trim() === "true";
+  const partial = filter.ok && filter.stdout.trim() !== "";
+  if (!shallow && !partial) return { ok: true };
+  if (partial) await shAsync("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""], { timeoutMs: 1e4 });
+  const full = await shAsync("git", ["-C", dir, "fetch", "--quiet", ...partial ? ["--refetch"] : [], ...shallow ? ["--unshallow"] : [], "origin"], {
+    timeoutMs: historyTimeoutMs()
+  });
+  if (full.ok) return { ok: true };
+  if (shallow && !partial) {
+    const deepen = await shAsync("git", ["-C", dir, "fetch", "--quiet", `--deepen=${opts.deepen ?? 500}`, "origin"], { timeoutMs: fetchTimeoutMs() });
+    return deepen.ok ? { ok: true, note: `History deepened to ~${opts.deepen ?? 500} commits (full unshallow failed); older changes may be missing.` } : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
+  }
+  return { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
+}
 function headCommit2(dir) {
   const r = sh2("git", ["-C", dir, "rev-parse", "HEAD"], { timeoutMs: 1e4 });
   return r.ok ? r.stdout.trim() || void 0 : void 0;
@@ -16843,6 +17736,13 @@ function headCommit2(dir) {
 function originUrl(dir) {
   const r = sh2("git", ["-C", dir, "remote", "get-url", "origin"], { timeoutMs: 1e4 });
   return r.ok ? r.stdout.trim() || void 0 : void 0;
+}
+var MIN_ABBREV = 7;
+function sameCommit(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= MIN_ABBREV && long.startsWith(short);
 }
 var COMPOSE_YAML = `# Optional, fully-local, no-API-key stack for a semantic mode, web
 # search and content extraction. Start it with \`{{CLI}} semantic up\` (or
@@ -17103,11 +18003,11 @@ LOGGING_LEVEL=info
 function renderAsset(template) {
   return template.replaceAll("{{CLI}}", brand().cli);
 }
-function cacheRoot() {
+function cacheRoot2() {
   return env("CACHE_DIR") ?? brand().cacheDir ?? join32(tmpdir3(), brand().name);
 }
 function ensureComposeMaterialized() {
-  const base = join32(cacheRoot(), "compose");
+  const base = join32(cacheRoot2(), "compose");
   const composePath = join32(base, "docker-compose.yml");
   const settingsPath = join32(base, "docker", "searxng", "settings.yml");
   const firecrawlEnvPath = join32(base, "docker", "firecrawl", "firecrawl.env");
@@ -17799,6 +18699,26 @@ configure({
   envPrefix: "ULTRADOC",
   cli: "ultradoc",
   contactUrl: "https://github.com/maxgfr/ultradoc",
+  // The real release, not the engine's generic "1.x". A maintainer reading their
+  // logs to decide whether to throttle a client has to be able to tell one
+  // ultradoc release from another.
+  version: VERSION,
+  // Identify honestly. This skill reads other projects' documentation sites and
+  // their forge APIs at some volume; a UA naming the tool and where to complain
+  // is what earns polite throttling instead of a block. The engine retries once
+  // as a browser when a host refuses the honest one, which is the concession
+  // this repo's own fetch layer never had.
+  defaultUa: "contact",
+  // Where clones already live: a persistent per-user cache dir, not /tmp, so a
+  // reboot does not force a re-clone. Declared rather than accepting the
+  // engine's default because adopting `ensureClone` would otherwise orphan every
+  // checkout on every machine that has run `ultradoc` before, and this is
+  // exactly what kept that function forked.
+  repoDir: cacheRoot(),
+  // A week for a fetched external docs page, matching what this skill has always
+  // used and what it hands Firecrawl as its own server-side `maxAge` — the two
+  // caches agree on what "fresh" means.
+  cacheTtlMs: extdocsTtlMs(),
   // Two words on top of the engine's shared list, and the reason this skill can
   // use the shared keyword machinery at all. ultradoc reads source repositories,
   // where "test" and "request" appear in nearly every file — keeping them as
@@ -17806,14 +18726,37 @@ configure({
   // byte-for-byte the engine's.
   extraStopwords: ["request", "test"]
 });
+process.env.ULTRADOC_SH_TIMEOUT_MS ??= "120000";
+
+// src/clone.ts
+function migrateLegacyClone(dir, slug) {
+  if (existsSync10(dir)) return;
+  const legacy = join24(tmpdir4(), "ultradoc", slug);
+  if (legacy === dir || !existsSync10(join24(legacy, ".git"))) return;
+  try {
+    mkdirSync5(cacheRoot(), { recursive: true });
+    renameSync2(legacy, dir);
+  } catch {
+  }
+}
+async function ensureRepoClone(ref, opts = {}) {
+  if (!ref.isLocal) migrateLegacyClone(join24(cacheRoot(), ref.slug), ref.slug);
+  return ensureClone(ref, opts);
+}
+
+// src/index/structural.ts
+import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12 } from "fs";
+import { join as join27 } from "path";
 
 // src/util.ts
+import "child_process";
+import { renameSync as renameSync3, unlinkSync, writeFileSync as writeFileSync6 } from "fs";
 var tmpCounter = 0;
 function writeFileAtomic(path, data) {
   const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
   try {
     writeFileSync6(tmp, data);
-    renameSync2(tmp, path);
+    renameSync3(tmp, path);
   } catch (e) {
     try {
       unlinkSync(tmp);
@@ -17822,169 +18765,11 @@ function writeFileAtomic(path, data) {
     throw e;
   }
 }
-function sh3(cmd, args2, opts = {}) {
-  const res = spawnSync3(cmd, args2, {
-    cwd: opts.cwd,
-    input: opts.input,
-    encoding: "utf8",
-    timeout: opts.timeoutMs ?? 12e4,
-    maxBuffer: 64 * 1024 * 1024,
-    env: opts.env ?? process.env
-  });
-  const missing = !!res.error && res.error.code === "ENOENT";
-  return {
-    ok: !res.error && res.status === 0,
-    status: res.status,
-    stdout: res.stdout ?? "",
-    stderr: res.stderr ?? (res.error ? String(res.error.message) : ""),
-    missing
-  };
-}
-var whichCache2 = /* @__PURE__ */ new Map();
-function have2(cmd) {
-  const cached = whichCache2.get(cmd);
-  if (cached !== void 0) return cached;
-  const probe = sh3(process.platform === "win32" ? "where" : "which", [cmd]);
-  const found = probe.ok && probe.stdout.trim().length > 0;
-  whichCache2.set(cmd, found);
-  return found;
-}
 function looksLikeTestFile(rel2) {
   if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel2)) return true;
   const base = (rel2.split("/").pop() ?? "").toLowerCase();
   return /[._-](test|spec)(-d)?\.\w+$/.test(base) || /^(test|conftest)[_.]/.test(base);
 }
-
-// src/config.ts
-import { homedir as homedir2, tmpdir as tmpdir2 } from "os";
-import { join as join23 } from "path";
-function envInt2(name2, def, min = 1) {
-  const raw = process.env[name2];
-  if (raw === void 0) return def;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= min ? Math.floor(n) : def;
-}
-function envStr(name2, def) {
-  const raw = process.env[name2]?.trim();
-  return raw ? raw : def;
-}
-var LIMITS = {
-  maxFiles: envInt2("ULTRADOC_MAX_FILES", 2e4),
-  // files walked/indexed
-  maxFileBytes: envInt2("ULTRADOC_MAX_FILE_BYTES", 1048576),
-  // per-file read cap
-  symbolsPerFile: envInt2("ULTRADOC_MAX_SYMBOLS_PER_FILE", 400),
-  // symbols kept per file
-  // Call sites kept per declared symbol name. Bounds index.json on repos where
-  // a helper is invoked everywhere: at 50, matomo's index grew by 2.7 MB; 30
-  // keeps the evidence (a handful of sites is all a citation ever needs) and
-  // the cap is reported in stats rather than silently applied.
-  callSitesPerSymbol: envInt2("ULTRADOC_MAX_CALL_SITES", 30),
-  releasesFetched: envInt2("ULTRADOC_MAX_RELEASES", 20),
-  // GitHub releases fetched
-  docPackages: envInt2("ULTRADOC_MAX_DOC_PACKAGES", 6),
-  // monorepo packages given doc sections
-  docModules: envInt2("ULTRADOC_MAX_DOC_MODULES", 5),
-  // subsystems given their own doc section
-  verifyPairs: envInt2("ULTRADOC_MAX_VERIFY", 40),
-  // claim↔evidence pairs (CLI --max-verify wins)
-  embedChunks: envInt2("ULTRADOC_MAX_CHUNKS", 800),
-  // semantic chunks embedded per repo
-  embedConcurrency: envInt2("ULTRADOC_EMBED_CONCURRENCY", 4)
-  // parallel embed requests
-};
-function extdocsTtlMs() {
-  return envInt2("ULTRADOC_EXTDOCS_TTL_HOURS", 168) * 36e5;
-}
-var CACHE_DIR_NAME = ".ultradoc";
-function cacheRoot2() {
-  const override = process.env.ULTRADOC_CACHE_DIR?.trim();
-  if (override) return override;
-  const home = homedir2();
-  if (!home) return join23(tmpdir2(), "ultradoc");
-  if (process.platform === "darwin") return join23(home, "Library", "Caches", "ultradoc");
-  if (process.platform === "win32") return join23(process.env.LOCALAPPDATA?.trim() || join23(home, "AppData", "Local"), "ultradoc");
-  return join23(process.env.XDG_CACHE_HOME?.trim() || join23(home, ".cache"), "ultradoc");
-}
-
-// src/clone.ts
-function migrateLegacyClone(dir, slug) {
-  if (existsSync10(dir)) return;
-  const legacy = join24(tmpdir4(), "ultradoc", slug);
-  if (legacy === dir || !existsSync10(join24(legacy, ".git"))) return;
-  try {
-    mkdirSync5(cacheRoot2(), { recursive: true });
-    renameSync3(legacy, dir);
-  } catch {
-  }
-}
-function ensureClone(ref, opts = {}) {
-  if (ref.isLocal) return resolve4(ref.raw);
-  const dir = join24(cacheRoot2(), ref.slug);
-  migrateLegacyClone(dir, ref.slug);
-  const alreadyCloned = existsSync10(join24(dir, ".git"));
-  if (alreadyCloned && !opts.refresh) return dir;
-  if (alreadyCloned && opts.refresh) {
-    sh3("git", ["-C", dir, "fetch", "--depth", "1", "origin"], { timeoutMs: 18e4 });
-    sh3("git", ["-C", dir, "reset", "--hard", "FETCH_HEAD"], { timeoutMs: 6e4 });
-    return dir;
-  }
-  mkdirSync5(cacheRoot2(), { recursive: true });
-  const args2 = ["clone", "--depth", "1", "--filter=blob:none"];
-  if (opts.branch) args2.push("--branch", opts.branch);
-  args2.push(ref.cloneUrl, dir);
-  const res = sh3("git", args2, { timeoutMs: 3e5 });
-  if (!res.ok) {
-    const fallback = sh3("git", ["clone", "--depth", "1", ...opts.branch ? ["--branch", opts.branch] : [], ref.cloneUrl, dir], { timeoutMs: 3e5 });
-    if (!fallback.ok) {
-      throw new Error(`git clone failed for ${ref.cloneUrl}
-${(res.stderr || fallback.stderr).trim()}`);
-    }
-  }
-  if (!existsSync10(dir) || readdirSync5(dir).length === 0) {
-    throw new Error(`clone produced an empty tree at ${dir}`);
-  }
-  return dir;
-}
-var deepened = /* @__PURE__ */ new Map();
-function ensureHistoryDepth(dir) {
-  const cached = deepened.get(dir);
-  if (cached) return cached;
-  let out2;
-  const probe = sh3("git", ["-C", dir, "rev-parse", "--is-shallow-repository"]);
-  const filter = sh3("git", ["-C", dir, "config", "remote.origin.partialclonefilter"]);
-  const shallow = probe.ok && probe.stdout.trim() === "true";
-  const partial = filter.ok && filter.stdout.trim() !== "";
-  if (!probe.ok) {
-    out2 = { ok: false, note: "Not a git working tree \u2014 no commit history available." };
-  } else if (!shallow && !partial) {
-    out2 = { ok: true };
-  } else {
-    if (partial) sh3("git", ["-C", dir, "config", "remote.origin.partialclonefilter", ""]);
-    const args2 = ["-C", dir, "fetch", "--quiet", ...partial ? ["--refetch"] : [], ...shallow ? ["--unshallow"] : [], "origin"];
-    const full = sh3("git", args2, { timeoutMs: 3e5 });
-    if (full.ok) {
-      out2 = { ok: true };
-    } else if (shallow && !partial) {
-      const deepen = sh3("git", ["-C", dir, "fetch", "--quiet", "--deepen=500", "origin"], {
-        timeoutMs: 18e4
-      });
-      out2 = deepen.ok ? { ok: true, note: "History deepened to ~500 commits (full unshallow failed); older changes may be missing." } : { ok: false, note: "Shallow clone could not be deepened (offline?); history is limited to the latest commit." };
-    } else {
-      out2 = { ok: false, note: "Could not fetch full history (offline, or the repo is too large); history results may be incomplete." };
-    }
-  }
-  deepened.set(dir, out2);
-  return out2;
-}
-function sameCommit(a, b) {
-  if (!a || !b) return false;
-  return a === b || a.startsWith(b) || b.startsWith(a);
-}
-
-// src/index/structural.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync12 } from "fs";
-import { join as join27 } from "path";
 
 // src/lang/registry.ts
 function languageOf2(ext) {
@@ -18370,7 +19155,7 @@ function writeDossier(dir, evidence, meta) {
 }
 
 // src/index/search.ts
-import { statSync as statSync8 } from "fs";
+import { statSync as statSync7 } from "fs";
 import { join as join29 } from "path";
 
 // src/index/bm25.ts
@@ -18726,7 +19511,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   const candidates = [...files].filter((rel2) => lexical.has(rel2)).map((rel2) => {
     let len = 1e3;
     try {
-      len = Math.max(1, statSync8(join29(root, rel2)).size / 5);
+      len = Math.max(1, statSync7(join29(root, rel2)).size / 5);
     } catch {
     }
     return { key: rel2, tf: lexical.get(rel2).kwCounts, len };
@@ -18757,7 +19542,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const call = callHits.get(f.rel);
-    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
+    const windows = codeExcerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
     for (let wi = 0; wi < windows.length; wi++) {
       if (items.length >= perSource) break;
       const win = windows[wi];
@@ -18829,7 +19614,7 @@ function searchCode(root, ref, index, question, perSource, scope) {
   return { items, notes, fallback: usedRg ? void 0 : "js-scan" };
 }
 var SYMBOL_FALLBACK_LINES = 18;
-function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
+function codeExcerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
   let primary;
   if (sym) {
     const bodyEnd = sym.endLine ?? sym.line + SYMBOL_FALLBACK_LINES;
@@ -18866,377 +19651,19 @@ function excerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync8 } from "fs";
 import { join as join30, dirname as dirname6 } from "path";
 
-// src/sources/firecrawl.ts
-var FIRECRAWL_DEFAULT_BASE = "http://localhost:3002";
-var EXTRACTOR_FIRECRAWL = "firecrawl";
-var EXTRACTOR_NATIVE = "native";
-var PROBE_TIMEOUT_MS = 2e3;
-var SCRAPE_TIMEOUT_MS = 3e4;
-var SCRAPE_HTTP_TIMEOUT_MS = 45e3;
-var SEARCH_TIMEOUT_MS = 2e4;
-function firecrawlBase(opts = {}) {
-  const raw = (opts.firecrawl?.trim() || envStr("ULTRADOC_FIRECRAWL", FIRECRAWL_DEFAULT_BASE)).trim();
-  if (!raw || raw.toLowerCase() === "off") return null;
-  return raw.replace(/\/+$/, "");
-}
-function firecrawlPinned(opts = {}) {
-  return Boolean(opts.firecrawl?.trim() || process.env.ULTRADOC_FIRECRAWL?.trim());
-}
-function authHeaders() {
-  const key = process.env.ULTRADOC_FIRECRAWL_KEY?.trim();
-  return key ? { authorization: `Bearer ${key}` } : {};
-}
-var probes = /* @__PURE__ */ new Map();
-var prefixes = /* @__PURE__ */ new Map();
-function probeFirecrawl(base) {
-  let p = probes.get(base);
-  if (!p) {
-    p = httpGet(`${base}/`, { timeoutMs: PROBE_TIMEOUT_MS }).then((r) => r.status > 0).catch(() => false);
-    probes.set(base, p);
-  }
-  return p;
-}
-function apiPrefix(base) {
-  return prefixes.get(base) ?? "/v2";
-}
-var str2 = (v) => typeof v === "string" && v.trim() ? v.trim() : void 0;
-function mapScrapeResponse(json) {
-  if (!json || typeof json !== "object") return null;
-  const root = json;
-  if (root.success === false) return null;
-  const data = root.data;
-  if (!data || typeof data !== "object") return null;
-  const d = data;
-  const markdown = typeof d.markdown === "string" ? d.markdown.trim() : "";
-  if (!markdown) return null;
-  const meta = typeof d.metadata === "object" && d.metadata ? d.metadata : {};
-  const status = Number(meta.statusCode);
-  return {
-    markdown,
-    title: str2(meta.title),
-    sourceURL: str2(meta.sourceURL) ?? str2(meta.url),
-    statusCode: Number.isFinite(status) ? status : void 0
-  };
-}
-function mapSearchResponse(json, n) {
-  if (!json || typeof json !== "object") return [];
-  const root = json;
-  if (root.success === false) return [];
-  const data = root.data;
-  const web = Array.isArray(data) ? data : Array.isArray(data?.web) ? data.web : [];
-  const urls = [];
-  for (const row of web) {
-    const url = str2(row?.url);
-    if (url && /^https?:\/\//i.test(url) && !urls.includes(url)) urls.push(url);
-    if (urls.length >= n) break;
-  }
-  return urls;
-}
-async function post(base, path, body2, timeoutMs) {
-  const headers = authHeaders();
-  const prefix = apiPrefix(base);
-  let r = await httpJson("POST", `${base}${prefix}${path}`, body2, { timeoutMs, headers });
-  if (r.status === 404 && prefix === "/v2") {
-    prefixes.set(base, "/v1");
-    r = await httpJson("POST", `${base}/v1${path}`, body2, { timeoutMs, headers });
-  } else if (r.ok) {
-    prefixes.set(base, prefix);
-  }
-  return r;
-}
-async function scrapeViaFirecrawl(url, opts = {}) {
-  const base = firecrawlBase(opts);
-  if (!base) return { page: null, error: "firecrawl is off" };
-  const body2 = {
-    url,
-    formats: ["markdown"],
-    onlyMainContent: true,
-    blockAds: true,
-    removeBase64Images: true,
-    maxAge: extdocsTtlMs(),
-    timeout: SCRAPE_TIMEOUT_MS
-  };
-  const r = await post(base, "/scrape", body2, SCRAPE_HTTP_TIMEOUT_MS);
-  if (!r.ok) return { page: null, error: r.error ?? `HTTP ${r.status}` };
-  const page = mapScrapeResponse(r.data);
-  return page ? { page } : { page: null, error: "no markdown in the response" };
-}
-async function searchViaFirecrawl(query4, n, opts = {}) {
-  const base = firecrawlBase(opts);
-  if (!base) return null;
-  if (!await probeFirecrawl(base)) return null;
-  const r = await post(base, "/search", { query: query4, limit: n, sources: ["web"] }, SEARCH_TIMEOUT_MS);
-  if (!r.ok) return null;
-  const urls = mapSearchResponse(r.data, n);
-  return urls.length ? urls : null;
-}
-
 // src/sources/fetch.ts
-var UA = `ultradoc/${VERSION} (+https://github.com/maxgfr/ultradoc)`;
-var PDF_URL_RE = /\.pdf($|[?#])/i;
-var PDF_FETCH_OPTS2 = { accept: "application/pdf,*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
-var DOC_FETCH_OPTS2 = { accept: "*/*", binary: true, maxBytes: 16 * 1024 * 1024, retries: 2 };
-var RETRY_MAX = 2;
-var RETRY_BASE_MS = 500;
-var RETRY_AFTER_CAP_MS = 1e4;
-var RETRYABLE_STATUS = /* @__PURE__ */ new Set([429, 502, 503, 504]);
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-function detectRateLimited(status, headers) {
-  if (status === 429) return true;
-  return status === 403 && headers.get("x-ratelimit-remaining") === "0";
-}
-function parseRetryAfter(headers) {
-  const h = headers.get("retry-after");
-  if (!h) return void 0;
-  const secs = Number(h);
-  if (Number.isFinite(secs)) return Math.min(Math.max(0, secs) * 1e3, RETRY_AFTER_CAP_MS);
-  const when = Date.parse(h);
-  if (Number.isFinite(when)) return Math.min(Math.max(0, when - Date.now()), RETRY_AFTER_CAP_MS);
-  return void 0;
-}
-async function readCapped(res, max) {
-  const reader = res.body?.getReader?.();
-  if (!reader) {
-    const buf = Buffer.from(await res.arrayBuffer());
-    return buf.subarray(0, max).toString("utf8");
-  }
-  const chunks = [];
-  let total = 0;
-  for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value?.byteLength) continue;
-    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-    const remaining = max - total;
-    if (chunk.length >= remaining) {
-      chunks.push(chunk.subarray(0, remaining));
-      await reader.cancel().catch(() => {
-      });
-      break;
-    }
-    chunks.push(chunk);
-    total += chunk.length;
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-async function readCappedBytes(res, max) {
-  const reader = res.body?.getReader?.();
-  if (!reader) return Buffer.from(await res.arrayBuffer()).subarray(0, max);
-  const chunks = [];
-  let total = 0;
-  for (; ; ) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value?.byteLength) continue;
-    const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
-    const remaining = max - total;
-    if (chunk.length >= remaining) {
-      chunks.push(chunk.subarray(0, remaining));
-      await reader.cancel().catch(() => {
-      });
-      break;
-    }
-    chunks.push(chunk);
-    total += chunk.length;
-  }
-  return Buffer.concat(chunks);
-}
-async function httpGetOnce(url, opts) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 2e4);
-  const max = opts.maxBytes ?? 4 * 1024 * 1024;
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      redirect: "follow",
-      headers: { "user-agent": UA, accept: opts.accept ?? "*/*", ...opts.headers ?? {} }
-    });
-    const contentType = res.headers.get("content-type") ?? "";
-    const rateLimited = detectRateLimited(res.status, res.headers);
-    const retryAfterMs = parseRetryAfter(res.headers);
-    const declared = Number(res.headers.get("content-length"));
-    if (Number.isFinite(declared) && declared > max) {
-      ctrl.abort();
-      return { ok: false, status: res.status, body: "", contentType, error: `response too large: ${declared} bytes > ${max} cap`, rateLimited, retryAfterMs };
-    }
-    if (opts.binary) {
-      const bytes = await readCappedBytes(res, max);
-      return { ok: res.ok, status: res.status, body: "", bytes, contentType, rateLimited, retryAfterMs };
-    }
-    const body2 = await readCapped(res, max);
-    return { ok: res.ok, status: res.status, body: body2, contentType, rateLimited, retryAfterMs };
-  } catch (e) {
-    return { ok: false, status: 0, body: "", contentType: "", error: e.message };
-  } finally {
-    clearTimeout(t);
-  }
-}
-async function httpGet(url, opts = {}) {
-  const retries = Math.max(0, Math.min(opts.retries ?? 0, RETRY_MAX));
-  let res = await httpGetOnce(url, opts);
-  for (let attempt = 0; attempt < retries; attempt++) {
-    if (res.ok || res.status === 403) return res;
-    if (res.status !== 0 && !RETRYABLE_STATUS.has(res.status)) return res;
-    const backoff = Math.min(RETRY_BASE_MS * 2 ** attempt + Math.floor(Math.random() * 250), RETRY_AFTER_CAP_MS);
-    await sleep(res.retryAfterMs ?? backoff);
-    res = await httpGetOnce(url, opts);
-  }
-  return res;
-}
-async function httpJson(method, url, body2, opts = {}) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 3e4);
-  try {
-    const res = await fetch(url, {
-      method,
-      signal: ctrl.signal,
-      headers: { "content-type": "application/json", accept: "application/json", "user-agent": UA, ...opts.headers ?? {} },
-      body: body2 === void 0 ? void 0 : JSON.stringify(body2)
-    });
-    const text = await res.text();
-    let data;
-    try {
-      data = text ? JSON.parse(text) : void 0;
-    } catch {
-      data = text;
-    }
-    return { ok: res.ok, status: res.status, data };
-  } catch (e) {
-    return { ok: false, status: 0, data: void 0, error: e.message };
-  } finally {
-    clearTimeout(t);
-  }
-}
-var ENTITIES = {
-  "&amp;": "&",
-  "&lt;": "<",
-  "&gt;": ">",
-  "&quot;": '"',
-  "&#39;": "'",
-  "&apos;": "'",
-  "&nbsp;": " ",
-  "&mdash;": "\u2014",
-  "&ndash;": "\u2013",
-  "&hellip;": "\u2026",
-  "&copy;": "\xA9"
-};
-function htmlToText(html) {
-  let s = html;
-  s = s.replace(/<!--[\s\S]*?-->/g, " ");
-  s = s.replace(/<(script|style|noscript|head|nav|footer|svg)[\s\S]*?<\/\1>/gi, " ");
-  s = s.replace(/<h([1-6])(?:\s[^>]*)?>/gi, (_m, n) => "\n" + "#".repeat(Number(n)) + " ");
-  s = s.replace(/<\/(p|div|section|article|li|tr|h[1-6]|pre|blockquote|br)>/gi, "\n");
-  s = s.replace(/<(br|hr)\s*\/?>/gi, "\n");
-  s = s.replace(/<[^>]+>/g, " ");
-  s = s.replace(/&#(\d+);/g, (_m, n) => {
-    try {
-      return String.fromCodePoint(Number(n));
-    } catch {
-      return " ";
-    }
-  });
-  for (const [k, v] of Object.entries(ENTITIES)) s = s.split(k).join(v);
-  s = s.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
-  return s.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).join("\n");
-}
-async function nativeExtract(url) {
-  const wantsPdf = PDF_URL_RE.test(url);
-  const wantsDoc = wantsPdf ? void 0 : docFormatForUrl(url);
-  const fetchOpts = wantsPdf ? PDF_FETCH_OPTS2 : wantsDoc ? DOC_FETCH_OPTS2 : { accept: "text/html,text/plain,*/*", retries: 2 };
-  const res = await httpGet(url, fetchOpts);
-  if (!res.ok) {
-    return { text: "", extractor: EXTRACTOR_NATIVE, note: `Could not fetch ${url} (status ${res.status}${res.error ? ", " + res.error : ""}).` };
-  }
-  if (wantsPdf || /application\/pdf/i.test(res.contentType)) {
-    const bytes = res.bytes ?? (await httpGet(url, PDF_FETCH_OPTS2)).bytes;
-    const got = bytes ? await extractPdf(bytes) : { text: "", reason: "empty response body" };
-    if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text \u2014 ${got.reason}.` };
-    return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
-  }
-  const docFmt = wantsDoc ?? docFormatForContentType(res.contentType);
-  if (docFmt) {
-    const bytes = res.bytes ?? (await httpGet(url, DOC_FETCH_OPTS2)).bytes;
-    const got = bytes ? await extractDocument(bytes, docFmt) : { text: "", reason: "empty response body" };
-    if (!got.text && docFmt.textFallback && bytes?.length) return { text: bytes.toString("utf8"), extractor: EXTRACTOR_NATIVE };
-    if (!got.text) return { text: "", extractor: EXTRACTOR_NATIVE, note: `Fetched ${url} but could not extract text \u2014 ${got.reason}.` };
-    return { text: got.text, extractor: got.via ?? EXTRACTOR_NATIVE };
-  }
-  const isHtml = /html/i.test(res.contentType) || /^\s*</.test(res.body);
-  const text = isHtml ? htmlToText(res.body) : res.body;
-  return { text, extractor: EXTRACTOR_NATIVE };
-}
-function withNote(res, note) {
-  return { ...res, note: res.note ? `${note} ${res.note}` : note };
-}
-async function fetchAndExtract(url, opts = {}) {
-  const base = firecrawlBase(opts);
-  if (base && /^https?:\/\//i.test(url)) {
-    if (await probeFirecrawl(base)) {
-      const { page, error } = await scrapeViaFirecrawl(url, opts);
-      if (page) return { text: page.markdown, extractor: EXTRACTOR_FIRECRAWL };
-      return withNote(await nativeExtract(url), `Firecrawl could not extract ${url} (${error}); used the built-in HTML extractor instead.`);
-    }
-    if (firecrawlPinned(opts)) {
-      return withNote(
-        await nativeExtract(url),
-        `Firecrawl unreachable at ${base} (start it with \`ultradoc firecrawl up\`); used the built-in HTML extractor.`
-      );
-    }
-  }
-  return nativeExtract(url);
-}
-function nearestHeading(lines, anchor) {
-  let heading;
-  let inFence = false;
-  for (let i2 = 0; i2 <= anchor && i2 < lines.length; i2++) {
-    const line = lines[i2];
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const m = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
-    if (m) heading = m[1].trim();
-  }
-  return heading;
-}
 function excerptsFromText(text, url, title, source, question, perSource) {
-  const lines = text.split("\n");
-  const matcher = buildMatcher(question);
-  const hits = [];
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    const cov = matcher.matchLine(lines[i2]).size;
-    if (cov > 0) hits.push({ idx: i2, cov });
-  }
-  hits.sort((a, b) => b.cov - a.cov || a.idx - b.idx);
-  const items = [];
-  const seen = /* @__PURE__ */ new Set();
-  const take = hits.length ? hits : [{ idx: 0, cov: 0 }];
   const perDoc = Math.min(2, Math.max(1, perSource));
-  for (const h of take) {
-    if (items.length >= perDoc) break;
-    const block = Math.floor(h.idx / 12);
-    if (seen.has(block)) continue;
-    seen.add(block);
-    const start2 = Math.max(0, h.idx - 3);
-    const end = Math.min(lines.length, h.idx + 12);
-    const snippet = lines.slice(start2, end).join("\n").slice(0, 1500);
-    if (!snippet.trim()) continue;
-    const heading = nearestHeading(lines, h.idx);
-    items.push({
-      source,
-      title: heading ? `${title} \xA7 ${heading}` : title,
-      ref: url,
-      location: `${url}#~${start2 + 1}`,
-      score: Number((h.cov + 1).toFixed(3)),
-      snippet,
-      url,
-      meta: heading ? { heading } : void 0
-    });
-  }
-  return items;
+  return excerptWindows(text, question, { perDoc }).map((w) => ({
+    source,
+    title: w.heading ? `${title} \xA7 ${w.heading}` : title,
+    ref: url,
+    location: `${url}#~${w.start + 1}`,
+    score: Number((w.score + 1).toFixed(3)),
+    snippet: w.snippet,
+    url,
+    meta: w.heading ? { heading: w.heading } : void 0
+  }));
 }
 
 // src/index/semantic/qdrant.ts
@@ -19423,7 +19850,7 @@ import { existsSync as existsSync13, mkdirSync as mkdirSync9, writeFileSync as w
 import { join as join31 } from "path";
 var MODELS_DIR = "models";
 function modelDir() {
-  return join31(cacheRoot2(), MODELS_DIR);
+  return join31(cacheRoot(), MODELS_DIR);
 }
 function modelPath() {
   return join31(modelDir(), "model.json");
@@ -19659,16 +20086,23 @@ async function codeSource(ctx) {
 import { join as join35 } from "path";
 
 // src/sources/page-cache.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync15, statSync as statSync9, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync15, statSync as statSync8, writeFileSync as writeFileSync11 } from "fs";
 import { join as join34 } from "path";
+
+// src/sources/firecrawl.ts
+var EXTRACTOR_FIRECRAWL = "firecrawl";
+var EXTRACTOR_NATIVE = "native";
+
+// src/sources/page-cache.ts
 var CACHE_GEN = "v3";
 function pageCacheFile(dir, url, extractor) {
   return join34(dir, `${url.replace(/[^a-z0-9]+/gi, "_").slice(0, 100)}.${CACHE_GEN}-${extractor}.txt`);
 }
 var PAGES_DIR = "pages";
 function webPageCacheDir() {
-  return join34(cacheRoot2(), PAGES_DIR);
+  return join34(cacheRoot(), PAGES_DIR);
 }
+var asExtractor = (id) => id;
 async function plannedExtractor(opts = {}) {
   const base = firecrawlBase(opts);
   if (!base) return EXTRACTOR_NATIVE;
@@ -19682,14 +20116,15 @@ async function cachedPageText(dir, url, opts = {}) {
   try {
     if (existsSync15(file)) {
       cached = readFileSync15(file, "utf8");
-      fresh = Date.now() - statSync9(file).mtimeMs < extdocsTtlMs();
+      fresh = Date.now() - statSync8(file).mtimeMs < extdocsTtlMs();
     }
   } catch {
   }
-  if (cached !== void 0 && fresh) return { text: cached, extractor: planned };
+  if (cached !== void 0 && fresh) return { text: cached, extractor: asExtractor(planned), finalUrl: url, status: 200 };
   const res = await fetchAndExtract(url, opts);
   if (res.text) {
-    const out2 = res.extractor === planned ? file : pageCacheFile(dir, url, res.extractor);
+    const actual = res.extractor ?? EXTRACTOR_NATIVE;
+    const out2 = actual === planned ? file : pageCacheFile(dir, url, actual);
     try {
       mkdirSync11(dir, { recursive: true });
       writeFileSync11(out2, res.text);
@@ -19697,7 +20132,8 @@ async function cachedPageText(dir, url, opts = {}) {
     }
     return res;
   }
-  if (cached !== void 0) return { text: cached, extractor: planned, note: `served a stale cached copy of ${url} (refetch failed)` };
+  if (cached !== void 0)
+    return { text: cached, extractor: asExtractor(planned), finalUrl: url, status: 200, note: `served a stale cached copy of ${url} (refetch failed)` };
   return res;
 }
 
@@ -19841,7 +20277,7 @@ async function githubReleases(ctx, kws) {
   let body2;
   const perPage = LIMITS.releasesFetched;
   if (have2("gh")) {
-    const res = sh3("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`]);
+    const res = sh2("gh", ["api", `repos/${ref.owner}/${ref.repo}/releases?per_page=${perPage}`]);
     if (res.ok) body2 = res.stdout;
   }
   if (!body2) {
@@ -19937,9 +20373,9 @@ function looksLikeIdentifier(kw) {
 }
 async function historySource(ctx) {
   const notes = [];
-  const depth = ensureHistoryDepth(ctx.repoDir);
+  const depth = await ensureHistoryDepth(ctx.repoDir);
   if (depth.note) notes.push(depth.note);
-  if (!depth.ok && /not a git/i.test(depth.note ?? "")) {
+  if (!depth.ok && /not a git|not installed/i.test(depth.note ?? "")) {
     return { source: "history", items: [], notes };
   }
   const ranked = rankedKeywords2(ctx.options.question).slice(0, 3);
@@ -19949,7 +20385,7 @@ async function historySource(ctx) {
   const hits = /* @__PURE__ */ new Map();
   for (const kw of ranked) {
     const pickaxe = looksLikeIdentifier(kw) ? `-G${kw}` : `-S${kw}`;
-    const res = sh3(
+    const res = sh2(
       "git",
       [
         "-C",
@@ -19980,7 +20416,7 @@ async function historySource(ctx) {
   const top = [...hits.values()].sort((a, b) => b.kws.size - a.kws.size || b.date.localeCompare(a.date)).slice(0, ctx.options.perSource);
   const items = [];
   for (const c2 of top) {
-    const show = sh3("git", ["-C", ctx.repoDir, "show", "--stat", "-s", "--format=%B", c2.sha], {
+    const show = sh2("git", ["-C", ctx.repoDir, "show", "--stat", "-s", "--format=%B", c2.sha], {
       timeoutMs: 3e4
     });
     const body2 = show.ok ? show.stdout.replace(/\r/g, "").trim().slice(0, 1200) : c2.subject;
@@ -20024,7 +20460,7 @@ function toItems(raw, kind) {
 async function query(ref, terms, kind, perSource) {
   const q = `repo:${ref.owner}/${ref.repo} type:${kind} ${terms.join(" ")}`.trim();
   if (have2("gh")) {
-    const res = sh3("gh", ["api", "-X", "GET", "search/issues", "-f", `q=${q}`, "-f", `per_page=${perSource}`, "-f", "sort=updated", "-f", "order=desc"]);
+    const res = sh2("gh", ["api", "-X", "GET", "search/issues", "-f", `q=${q}`, "-f", `per_page=${perSource}`, "-f", "sort=updated", "-f", "order=desc"]);
     if (res.ok) {
       try {
         return { items: toItems(JSON.parse(res.stdout).items, kind) };
@@ -20284,7 +20720,7 @@ ${answer}` : ""),
   return items;
 }
 function searchDiscussions(owner, repo, terms, n) {
-  const res = sh3("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
+  const res = sh2("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
   if (!res.ok) return void 0;
   try {
     return discussionItems(JSON.parse(res.stdout)?.data?.search?.nodes ?? []);
@@ -20424,8 +20860,8 @@ async function discover(query4, engine, n, opts = {}) {
   const notes = [];
   if (engine === "firecrawl") {
     const f = await searchViaFirecrawl(query4, n, opts);
-    if (f?.length) return { urls: f, via: "firecrawl", notes };
-    notes.push(`Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
+    if (f.hits?.length) return { urls: f.hits.map((h) => h.url).slice(0, n), via: "firecrawl", notes };
+    notes.push(f.why ?? `Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
   }
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query4, n);
@@ -20665,10 +21101,10 @@ function writeDrillPlan(dir, plan) {
 }
 
 // src/ask.ts
-function buildContext(options) {
+async function buildContext(options) {
   const t0 = Date.now();
   const repoRef = resolveRepo(options.repo);
-  const repoDir = ensureClone(repoRef, { refresh: options.refresh, branch: options.ref });
+  const repoDir = await ensureRepoClone(repoRef, { refresh: options.refresh, branch: options.ref });
   const cloneMs = Date.now() - t0;
   const project = [repoRef.repo, repoRef.owner].filter((x) => !!x);
   const index = ensureIndex(repoDir, repoRef.slug, { refresh: options.refresh, project });
@@ -20685,7 +21121,7 @@ function buildContext(options) {
 }
 async function runAsk(options) {
   const t0 = Date.now();
-  const ctx = buildContext(options);
+  const ctx = await buildContext(options);
   const results = await runSources(ctx);
   const evidence = assignIds2(results);
   const sourceMs = {};
@@ -20726,18 +21162,18 @@ async function runAsk(options) {
   return { dir, evidence, meta, paths };
 }
 async function runSingleSource(options, kind) {
-  const ctx = buildContext({ ...options, sources: [kind] });
+  const ctx = await buildContext({ ...options, sources: [kind] });
   const results = await runSources(ctx);
   return { ctx, evidence: assignIds2(results), notes: results.flatMap((r) => r.notes) };
 }
 
 // src/doc.ts
 import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync13 } from "fs";
-import { basename as basename6, join as join39 } from "path";
+import { basename as basename5, join as join39 } from "path";
 
 // src/overview.ts
 import { existsSync as existsSync16, mkdirSync as mkdirSync12, readFileSync as readFileSync16 } from "fs";
-import { basename as basename5, dirname as dirname8, join as join38 } from "path";
+import { basename as basename4, dirname as dirname8, join as join38 } from "path";
 
 // src/index/modules.ts
 var NOISE_DIR = /(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e|docs?|website|site)(\/|$)/i;
@@ -20824,7 +21260,7 @@ function apiLines(symbols, prefix, maxFiles = 15, maxSyms = 8) {
   });
 }
 function renderOverview(index, ref, repoDir) {
-  const name2 = ref.repo ?? basename5(repoDir);
+  const name2 = ref.repo ?? basename4(repoDir);
   const out2 = [];
   out2.push(`<!-- ultradoc:overview commit=${index.commit ?? "unknown"} -->`);
   out2.push(`# ${name2} \u2014 repository overview`);
@@ -21063,8 +21499,8 @@ function defaultDocDir(repoDir, scopePkg) {
   return scopePkg ? join39(base, slugify2(scopePkg.name)) : base;
 }
 async function runDoc(options, opts = {}) {
-  const ctx = buildContext(options);
-  const name2 = ctx.repoRef.repo ?? basename6(ctx.repoDir);
+  const ctx = await buildContext(options);
+  const name2 = ctx.repoRef.repo ?? basename5(ctx.repoDir);
   const traits = detectProjectTraits(ctx.repoDir, ctx.index);
   let graph;
   let modules = [];
@@ -21149,7 +21585,7 @@ async function runDoc(options, opts = {}) {
 // src/check.ts
 import { createHash as createHash5 } from "crypto";
 import { existsSync as existsSync18, readFileSync as readFileSync18 } from "fs";
-import { basename as basename7, dirname as dirname9, join as join41, resolve as resolvePath, sep as sep4 } from "path";
+import { basename as basename6, dirname as dirname9, join as join41, resolve as resolvePath, sep as sep4 } from "path";
 
 // src/citations.ts
 var TOKEN_RE2 = /\[([^\]\n]+)\](?!\()/g;
@@ -21774,7 +22210,7 @@ function headingsOf(answer) {
   return out2;
 }
 function missingDocSections(dir, answerPath, answer) {
-  if (basename7(answerPath) !== "DOC.md") return void 0;
+  if (basename6(answerPath) !== "DOC.md") return void 0;
   const planPath = join41(dir, "DOC.plan.json");
   if (!existsSync18(planPath)) return void 0;
   let plan;
@@ -21791,7 +22227,7 @@ function missingDocSections(dir, answerPath, answer) {
 function dossierRepoDir(dir) {
   let d = dir;
   for (let i2 = 0; i2 < 6; i2++) {
-    if (basename7(d) === ".ultradoc") return dirname9(d);
+    if (basename6(d) === ".ultradoc") return dirname9(d);
     const parent = dirname9(d);
     if (parent === d) break;
     d = parent;
@@ -21934,7 +22370,7 @@ function checkRun(dir, opts = {}) {
   const uncited = evidence.map((e) => e.id).filter((id) => !citedIds.has(id));
   const coverage2 = claimCoverage(answer, evidence);
   if (citations.length === 0) {
-    errors.push(`${basename7(answerPath)} contains no citations \u2014 a grounded answer must cite evidence ids like [E1].`);
+    errors.push(`${basename6(answerPath)} contains no citations \u2014 a grounded answer must cite evidence ids like [E1].`);
   }
   if (dangling.length) {
     errors.push(`Dangling citation(s) not in evidence.json: ${dangling.join(", ")}`);
@@ -22174,13 +22610,13 @@ function symbolEvidence(ctx, name2, opts = {}) {
 }
 
 // src/cache.ts
-import { existsSync as existsSync19, readdirSync as readdirSync6, rmSync as rmSync4, statSync as statSync10 } from "fs";
+import { existsSync as existsSync19, readdirSync as readdirSync5, rmSync as rmSync4, statSync as statSync9 } from "fs";
 import { join as join43 } from "path";
 function dirSize(dir) {
   let total = 0;
   let entries;
   try {
-    entries = readdirSync6(dir);
+    entries = readdirSync5(dir);
   } catch {
     return 0;
   }
@@ -22188,7 +22624,7 @@ function dirSize(dir) {
     const p = join43(dir, name2);
     let st;
     try {
-      st = statSync10(p);
+      st = statSync9(p);
     } catch {
       continue;
     }
@@ -22198,13 +22634,13 @@ function dirSize(dir) {
   return total;
 }
 function cacheStatus() {
-  const root = cacheRoot2();
+  const root = cacheRoot();
   const repos = [];
   let slugs = [];
   try {
-    slugs = readdirSync6(root).filter((n) => {
+    slugs = readdirSync5(root).filter((n) => {
       try {
-        return statSync10(join43(root, n)).isDirectory();
+        return statSync9(join43(root, n)).isDirectory();
       } catch {
         return false;
       }
@@ -22226,7 +22662,7 @@ function cacheStatus() {
   };
 }
 function cleanRepoCache(opts) {
-  const root = cacheRoot2();
+  const root = cacheRoot();
   const removed = [];
   if (opts.all) {
     for (const r of cacheStatus().repos) {
@@ -22273,7 +22709,7 @@ function formatCacheStatus(s) {
 
 // src/orchestrate.ts
 import { existsSync as existsSync20, mkdirSync as mkdirSync14, readFileSync as readFileSync19, writeFileSync as writeFileSync15 } from "fs";
-import { join as join45, resolve as resolve5 } from "path";
+import { join as join45, resolve as resolve4 } from "path";
 
 // src/orchestrate-templates.ts
 import { join as join44 } from "path";
@@ -22512,7 +22948,7 @@ var PHASES = ["drill", "verify", "doc"];
 var SMALL_WORKLIST = 3;
 var BATCH_SIZE = 8;
 function listPhases(runDir2, engineAbs) {
-  const run3 = resolve5(runDir2);
+  const run3 = resolve4(runDir2);
   const drillPath = join45(run3, "drill-plan.json");
   let drillIds = [];
   let drillReady = false;
@@ -22580,7 +23016,7 @@ function listPhases(runDir2, engineAbs) {
   ];
 }
 function orchestrateRun(runDir2, engineAbs, opts = {}) {
-  const run3 = resolve5(runDir2);
+  const run3 = resolve4(runDir2);
   if (!existsSync20(run3)) {
     return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run3}`], phases: [] };
   }
@@ -22640,8 +23076,8 @@ function orchestrateRun(runDir2, engineAbs, opts = {}) {
 }
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync21, readFileSync as readFileSync20, realpathSync as realpathSync3, statSync as statSync11 } from "fs";
-import { isAbsolute as isAbsolute2, resolve as resolve6, sep as sep5 } from "path";
+import { existsSync as existsSync21, readFileSync as readFileSync20, realpathSync as realpathSync3, statSync as statSync10 } from "fs";
+import { isAbsolute as isAbsolute2, resolve as resolve5, sep as sep5 } from "path";
 
 // src/repo-lock.ts
 var chains = /* @__PURE__ */ new Map();
@@ -22662,7 +23098,7 @@ function noop() {
 var MAX_READ_LINES = 2e3;
 var WINDOWED_READ_MAX_BYTES = LIMITS.maxFileBytes * 64;
 var SYMBOL_MAX_DEFAULT = 12;
-function str3(v) {
+function str2(v) {
   return typeof v === "string" && v.trim() !== "" ? v : void 0;
 }
 function num2(v) {
@@ -22676,12 +23112,12 @@ function strArray2(v) {
   return Array.isArray(v) && v.every((x) => typeof x === "string") ? v : void 0;
 }
 function requiredRepo(args2, defaults) {
-  const repo = str3(args2.repo) ?? defaults.defaultRepo;
+  const repo = str2(args2.repo) ?? defaults.defaultRepo;
   if (!repo) throw new ToolError("`repo` is required: a git URL, owner/repo, or an absolute local path.");
   return repo;
 }
 function requiredStr(args2, key, hint) {
-  const v = str3(args2[key]);
+  const v = str2(args2[key]);
   if (!v) throw new ToolError(`\`${key}\` is required \u2014 ${hint}`);
   return v;
 }
@@ -22696,17 +23132,17 @@ function askOptions(args2, defaults, opts = {}) {
   }
   const perSource = num2(args2.per_source);
   if (perSource !== void 0 && perSource <= 0) throw new ToolError("`per_source` must be greater than 0.");
-  const out2 = str3(args2.out);
+  const out2 = str2(args2.out);
   if (out2 !== void 0 && !isAbsolute2(out2)) throw new ToolError("`out` must be an absolute path.");
-  const docsUrl = str3(args2.docs_url);
+  const docsUrl = str2(args2.docs_url);
   if (docsUrl !== void 0 && !/^https?:\/\//i.test(docsUrl)) throw new ToolError("`docs_url` must be an absolute http(s) URL.");
   return {
     repo: requiredRepo(args2, defaults),
-    question: opts.question ?? str3(args2.question) ?? "",
+    question: opts.question ?? str2(args2.question) ?? "",
     sources,
-    ref: str3(args2.ref),
+    ref: str2(args2.ref),
     docsUrl,
-    pkg: str3(args2.package),
+    pkg: str2(args2.package),
     out: out2,
     // Opt-in, exactly like --semantic: it degrades to the lexical tier with a
     // note when no backend is reachable, so turning it on is never a failure.
@@ -22815,9 +23251,9 @@ async function callRepoTool(name2, args2, defaults, warmNotes2) {
       throw new ToolError(`unknown tool: ${name2}`);
   }
 }
-function context(options) {
+async function context(options) {
   try {
-    return buildContext(options);
+    return await buildContext(options);
   } catch (e) {
     throw new ToolError(errMessage3(e));
   }
@@ -22825,7 +23261,7 @@ function context(options) {
 async function handleSearch(args2, defaults, warmNotes2) {
   const options = askOptions(args2, defaults, { question: requiredStr(args2, "question", "the precise question to retrieve evidence for.") });
   const t0 = Date.now();
-  const ctx = context(options);
+  const ctx = await context(options);
   const results = await runSources(ctx);
   const evidence = assignIds2(results);
   const sourceMs = {};
@@ -22871,9 +23307,9 @@ async function handleAsk(args2, defaults, warmNotes2) {
     next: `Read ${r.paths.evidenceMd} with ultradoc_read, write an answer citing [E#], then call ultradoc_check with run_dir "${r.dir}".`
   };
 }
-function handleOverview(args2, defaults, warmNotes2) {
+async function handleOverview(args2, defaults, warmNotes2) {
   const options = askOptions(args2, defaults, { question: "" });
-  const ctx = context(options);
+  const ctx = await context(options);
   const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, { refresh: options.refresh });
   return {
     path: r.path,
@@ -22885,11 +23321,11 @@ function handleOverview(args2, defaults, warmNotes2) {
     notes: warmNotes2
   };
 }
-function handleSymbol(args2, defaults, warmNotes2) {
+async function handleSymbol(args2, defaults, warmNotes2) {
   const name2 = requiredStr(args2, "name", "the exact symbol name to resolve.");
   const max = num2(args2.max);
   if (max !== void 0 && max <= 0) throw new ToolError("`max` must be greater than 0.");
-  const ctx = context(askOptions(args2, defaults, { question: name2 }));
+  const ctx = await context(askOptions(args2, defaults, { question: name2 }));
   const { items, notes } = symbolEvidence(ctx, name2, { max: max ?? SYMBOL_MAX_DEFAULT });
   return {
     repo: ctx.repoRef.raw,
@@ -22899,18 +23335,18 @@ function handleSymbol(args2, defaults, warmNotes2) {
     notes: [...warmNotes2, ...notes]
   };
 }
-function handleRead(args2, defaults) {
+async function handleRead(args2, defaults) {
   const rel2 = requiredStr(args2, "path", "a repo-relative path, or an absolute path inside the clone or ultradoc's cache.");
-  const ctx = context(askOptions(args2, defaults, { question: "" }));
+  const ctx = await context(askOptions(args2, defaults, { question: "" }));
   const root = realpathSync3(ctx.repoDir);
-  const target = isAbsolute2(rel2) ? rel2 : resolve6(root, rel2);
+  const target = isAbsolute2(rel2) ? rel2 : resolve5(root, rel2);
   let real;
   try {
     real = realpathSync3(target);
   } catch {
     throw new ToolError(`No such file in ${ctx.repoRef.raw}: ${rel2}`);
   }
-  const cache = safeRealpath(cacheRoot2());
+  const cache = safeRealpath(cacheRoot());
   if (!within(real, root) && !(cache && within(real, cache))) {
     throw new ToolError(
       `\`path\` is outside ${ctx.repoRef.raw} and outside ultradoc's cache: ${rel2}. ultradoc_read only opens files in the clone or in a dossier under the cache \u2014 read anything else with your own file tools.`
@@ -22918,7 +23354,7 @@ function handleRead(args2, defaults) {
   }
   let stat;
   try {
-    stat = statSync11(real);
+    stat = statSync10(real);
   } catch {
     throw new ToolError(`No such file in ${ctx.repoRef.raw}: ${rel2}`);
   }
@@ -22958,7 +23394,7 @@ async function handleFetch(args2) {
   if (bad) throw new ToolError(`\`urls\` must be absolute http(s) URLs \u2014 got "${bad}".`);
   const perSource = num2(args2.per_source);
   if (perSource !== void 0 && perSource <= 0) throw new ToolError("`per_source` must be greater than 0.");
-  const question = str3(args2.question) ?? "";
+  const question = str2(args2.question) ?? "";
   const { items, notes } = await webFetchUrls(urls, question, perSource ?? 6, {});
   return { urls, items: assignIds2([{ source: "web", items, notes: [] }]), notes };
 }
@@ -22974,7 +23410,7 @@ function handleCheck(args2) {
   const answerText = typeof args2.answer_text === "string" ? args2.answer_text : void 0;
   const result = checkRun(dir, {
     answerText,
-    answerFile: str3(args2.answer_file),
+    answerFile: str2(args2.answer_file),
     strict: bool(args2.strict),
     coverageMin,
     semantic: bool(args2.semantic),
@@ -22987,7 +23423,7 @@ function handleVerify(args2) {
   const maxVerify = num2(args2.max_verify);
   if (maxVerify !== void 0 && maxVerify <= 0) throw new ToolError("`max_verify` must be greater than 0.");
   try {
-    return { ...runVerify(dir, { maxVerify, answerFile: str3(args2.answer_file) }), run_dir: dir };
+    return { ...runVerify(dir, { maxVerify, answerFile: str2(args2.answer_file) }), run_dir: dir };
   } catch (e) {
     throw new ToolError(errMessage3(e));
   }
@@ -23011,7 +23447,7 @@ async function handleDoc(args2, defaults, warmNotes2) {
 }
 function handleCacheClean(args2) {
   const all = bool(args2.all);
-  const repo = str3(args2.repo);
+  const repo = str2(args2.repo);
   if (!all && !repo) throw new ToolError("Pass `repo` to drop one cache entry, or `all: true` to drop every one.");
   return { ...cleanRepoCache({ all, repo }), all, repo };
 }
@@ -23317,7 +23753,7 @@ function getPrompt(name2, args2 = {}) {
   const decl = PROMPTS.find((p) => p.name === name2);
   if (!decl) throw new PromptError(`unknown prompt: ${name2 || "(none given)"}`);
   for (const arg of decl.arguments ?? []) {
-    if (arg.required && !str4(args2[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name2}"`);
+    if (arg.required && !str3(args2[arg.name])) throw new PromptError(`\`${arg.name}\` is required for prompt "${name2}"`);
   }
   const text = name2 === "answer_from_source" ? answerFromSource(args2) : documentProject(args2);
   return { description: decl.description, messages: [{ role: "user", content: { type: "text", text } }] };
@@ -23325,10 +23761,10 @@ function getPrompt(name2, args2 = {}) {
 var CORE_RULE = `Do not answer from your own knowledge of this project. Your training data is stale and invents APIs that never existed. Answer ONLY from evidence retrieved by the ultradoc tools. If the evidence does not cover something, say so and retrieve more \u2014 never bridge the gap with a plausible sentence.`;
 var GATE = `\`ultradoc_check\` returning \`ok: false\` is a VERDICT, not a tool failure. Read \`errors\` and \`dangling\`, fix the answer, and check again. Do not explain the failure away, and do not report an answer that has not passed.`;
 function answerFromSource(args2) {
-  const repo = str4(args2.repo);
-  const question = str4(args2.question);
-  const pkg = str4(args2.package);
-  const ref = str4(args2.ref);
+  const repo = str3(args2.repo);
+  const question = str3(args2.question);
+  const pkg = str3(args2.package);
+  const ref = str3(args2.ref);
   const scope = [pkg ? `\`package: "${pkg}"\`` : "", ref ? `\`ref: "${ref}"\`` : ""].filter(Boolean).join(" and ");
   return `Answer this question about \`${repo}\` from its real source:
 
@@ -23351,9 +23787,9 @@ ${CORE_RULE}
 ${GATE}`;
 }
 function documentProject(args2) {
-  const repo = str4(args2.repo);
-  const pkg = str4(args2.package);
-  const ref = str4(args2.ref);
+  const repo = str3(args2.repo);
+  const pkg = str3(args2.package);
+  const ref = str3(args2.ref);
   const scope = [pkg ? `\`package: "${pkg}"\`` : "", ref ? `\`ref: "${ref}"\`` : ""].filter(Boolean).join(" and ");
   return `Write grounded reference documentation for \`${repo}\`${pkg ? `, scoped to the \`${pkg}\` package` : ""}.
 
@@ -23371,7 +23807,7 @@ ${CORE_RULE}
 
 ${GATE}`;
 }
-function str4(v) {
+function str3(v) {
   return typeof v === "string" && v.trim() !== "" ? v : void 0;
 }
 
@@ -23680,7 +24116,7 @@ function buildAskOptions(p, opts = {}) {
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
     pkg: p.values.package,
-    out: p.values.out ? resolve7(p.values.out) : void 0,
+    out: p.values.out ? resolve6(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
@@ -23780,7 +24216,7 @@ async function run2(argv = process.argv.slice(2)) {
       const name2 = p.values.name;
       if (!name2) fail("missing --name <symbol> (e.g. --name retryRequest)");
       const opts = buildAskOptions({ ...p, values: { ...p.values, q: name2 } });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const { items, notes } = symbolEvidence(ctx, name2);
       const evidence = assignIds2([{ source: "code", items, notes }]);
       const meta = {
@@ -23837,7 +24273,7 @@ async function run2(argv = process.argv.slice(2)) {
     }
     case "overview": {
       const opts = buildAskOptions(p, { requireQuestion: false });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, {
         refresh: opts.refresh,
         out: opts.out
@@ -23888,7 +24324,7 @@ async function run2(argv = process.argv.slice(2)) {
     }
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const langs = Object.entries(ctx.index.languages).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`);
       if (opts.json) {
         process.stdout.write(
@@ -23937,7 +24373,7 @@ async function run2(argv = process.argv.slice(2)) {
         coverageMin = Number(p.values["coverage-min"]);
         if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
       }
-      const res = checkRun(resolve7(dir), {
+      const res = checkRun(resolve6(dir), {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
@@ -23945,16 +24381,16 @@ async function run2(argv = process.argv.slice(2)) {
         allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
-      else process.stdout.write(formatCheckReport(res, resolve7(dir)) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve6(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }
     case "verify": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const rdir = resolve7(dir);
+      const rdir = resolve6(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve7(rdir, p.values.apply));
+        const result = applyVerdicts(rdir, resolve6(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
@@ -23987,10 +24423,10 @@ async function run2(argv = process.argv.slice(2)) {
 `);
           process.exit(2);
         }
-        process.stdout.write(JSON.stringify({ phases: listPhases(resolve7(dir), engineAbs) }, null, 2) + "\n");
+        process.stdout.write(JSON.stringify({ phases: listPhases(resolve6(dir), engineAbs) }, null, 2) + "\n");
         return;
       }
-      const res = orchestrateRun(resolve7(dir), engineAbs, {
+      const res = orchestrateRun(resolve6(dir), engineAbs, {
         phase: p.values.phase,
         eco: p.bools.has("eco")
       });
@@ -24013,7 +24449,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join46(resolve7(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join46(resolve6(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
@@ -24109,7 +24545,7 @@ async function run2(argv = process.argv.slice(2)) {
           void running.close().then(() => process.exit(0));
         });
       }
-      await new Promise((resolve8) => running.server.once("close", resolve8));
+      await new Promise((resolve7) => running.server.once("close", resolve7));
       return;
     }
   }

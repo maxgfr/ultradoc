@@ -278,9 +278,9 @@ async function callRepoTool(name: string, args: Record<string, unknown>, default
 // `buildContext` throws a good message on an unresolvable --package and a raw
 // git failure on a bad repo. Both are the caller's to fix, so both become
 // ToolError rather than escaping as an internal error.
-function context(options: AskOptions) {
+async function context(options: AskOptions) {
   try {
-    return buildContext(options);
+    return await buildContext(options);
   } catch (e) {
     throw new ToolError(errMessage(e));
   }
@@ -289,7 +289,7 @@ function context(options: AskOptions) {
 async function handleSearch(args: Record<string, unknown>, defaults: HandlerDefaults, warmNotes: string[]) {
   const options = askOptions(args, defaults, { question: requiredStr(args, "question", "the precise question to retrieve evidence for.") });
   const t0 = Date.now();
-  const ctx = context(options);
+  const ctx = await context(options);
   const results = await runSources(ctx);
   const evidence = assignIds(results);
   const sourceMs: Partial<Record<SourceKind, number>> = {};
@@ -338,9 +338,9 @@ async function handleAsk(args: Record<string, unknown>, defaults: HandlerDefault
   };
 }
 
-function handleOverview(args: Record<string, unknown>, defaults: HandlerDefaults, warmNotes: string[]) {
+async function handleOverview(args: Record<string, unknown>, defaults: HandlerDefaults, warmNotes: string[]) {
   const options = askOptions(args, defaults, { question: "" });
-  const ctx = context(options);
+  const ctx = await context(options);
   const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, { refresh: options.refresh });
   return {
     path: r.path,
@@ -353,13 +353,13 @@ function handleOverview(args: Record<string, unknown>, defaults: HandlerDefaults
   };
 }
 
-function handleSymbol(args: Record<string, unknown>, defaults: HandlerDefaults, warmNotes: string[]) {
+async function handleSymbol(args: Record<string, unknown>, defaults: HandlerDefaults, warmNotes: string[]) {
   const name = requiredStr(args, "name", "the exact symbol name to resolve.");
   const max = num(args.max);
   if (max !== undefined && max <= 0) throw new ToolError("`max` must be greater than 0.");
   // The symbol IS the query: this drill resolves declarations and call sites
   // from the index, it never runs a lexical search.
-  const ctx = context(askOptions(args, defaults, { question: name }));
+  const ctx = await context(askOptions(args, defaults, { question: name }));
   const { items, notes } = symbolEvidence(ctx, name, { max: max ?? SYMBOL_MAX_DEFAULT });
   return {
     repo: ctx.repoRef.raw,
@@ -370,9 +370,9 @@ function handleSymbol(args: Record<string, unknown>, defaults: HandlerDefaults, 
   };
 }
 
-function handleRead(args: Record<string, unknown>, defaults: HandlerDefaults) {
+async function handleRead(args: Record<string, unknown>, defaults: HandlerDefaults) {
   const rel = requiredStr(args, "path", "a repo-relative path, or an absolute path inside the clone or ultradoc's cache.");
-  const ctx = context(askOptions(args, defaults, { question: "" }));
+  const ctx = await context(askOptions(args, defaults, { question: "" }));
 
   const root = realpathSync(ctx.repoDir);
   // Absolute is accepted because ultradoc_ask hands back absolute dossier

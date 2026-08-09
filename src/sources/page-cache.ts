@@ -33,6 +33,13 @@ export function webPageCacheDir(): string {
   return join(cacheRoot(), PAGES_DIR);
 }
 
+// This module keys its files on a plain extractor STRING, because the name goes
+// into a path and a rung the engine does not know about would still have to be
+// spellable. The engine's `ExtractResult` is narrower — a fixed union, with the
+// built-in reader spelled as absence — so a value crossing back into one of its
+// shapes is widened here rather than at four call sites.
+const asExtractor = (id: string) => id as ExtractResult["extractor"];
+
 // Which extractor THIS run will use, decided before the fetch so the cache can
 // be looked up under the right key. The probe is memoised per process, so this
 // costs one 2s probe per run at most.
@@ -61,11 +68,15 @@ export async function cachedPageText(dir: string, url: string, opts: FirecrawlOp
   } catch {
     /* fall through to a live fetch */
   }
-  if (cached !== undefined && fresh) return { text: cached, extractor: planned };
+  if (cached !== undefined && fresh) return { text: cached, extractor: asExtractor(planned), finalUrl: url, status: 200 };
 
   const res = await fetchAndExtract(url, opts);
   if (res.text) {
-    const out = res.extractor === planned ? file : pageCacheFile(dir, url, res.extractor);
+    // The engine reports the built-in reader as an ABSENT extractor rather than
+    // the string "native", and this value is part of the cache FILENAME — so it
+    // is normalised here, at the one place that turns it into a path.
+    const actual = res.extractor ?? EXTRACTOR_NATIVE;
+    const out = actual === planned ? file : pageCacheFile(dir, url, actual);
     try {
       mkdirSync(dir, { recursive: true });
       writeFileSync(out, res.text);
@@ -75,6 +86,7 @@ export async function cachedPageText(dir: string, url: string, opts: FirecrawlOp
     return res;
   }
   // Refetch failed — fall back to the stale copy rather than dropping the page.
-  if (cached !== undefined) return { text: cached, extractor: planned, note: `served a stale cached copy of ${url} (refetch failed)` };
+  if (cached !== undefined)
+    return { text: cached, extractor: asExtractor(planned), finalUrl: url, status: 200, note: `served a stale cached copy of ${url} (refetch failed)` };
   return res;
 }

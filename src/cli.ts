@@ -448,7 +448,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       // The question is the symbol: this drill resolves declarations and call
       // sites from the index, it does not run a lexical query.
       const opts = buildAskOptions({ ...p, values: { ...p.values, q: name } });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const { items, notes } = symbolEvidence(ctx, name);
       const evidence = assignIds([{ source: "code", items, notes }]);
       const meta: DossierMeta = {
@@ -510,7 +510,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
 
     case "overview": {
       const opts = buildAskOptions(p, { requireQuestion: false });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const r = ensureOverview(ctx.index, ctx.repoRef, ctx.repoDir, {
         refresh: opts.refresh,
         out: opts.out,
@@ -565,7 +565,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
 
     case "index": {
       const opts = buildAskOptions(p, { requireQuestion: false });
-      const ctx = buildContext(opts);
+      const ctx = await buildContext(opts);
       const langs = Object.entries(ctx.index.languages)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 8)

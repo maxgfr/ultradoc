@@ -470,7 +470,7 @@ export function searchCode(
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const call = callHits.get(f.rel);
-    const windows = excerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
+    const windows = codeExcerptWindows(lines, matcher, f.sym, f.fh, call?.lines ?? [], symsByFile.get(f.rel) ?? []);
     for (let wi = 0; wi < windows.length; wi++) {
       if (items.length >= perSource) break;
       const win = windows[wi]!;
@@ -566,13 +566,20 @@ export function searchCode(
   return { items, notes, fallback: usedRg ? undefined : "js-scan" };
 }
 
-type ExcerptWindow = { start: number; end: number; label: string; callSite?: boolean; span?: { start: number; end: number } };
+type CodeExcerptWindow = { start: number; end: number; label: string; callSite?: boolean; span?: { start: number; end: number } };
 
 // How far past a matching symbol's definition line to read when the extraction
 // tier gave no `endLine` (regex tier). Kept as the documented fallback: the AST
 // tier reports the declaration's real last line and the excerpt uses that.
 const SYMBOL_FALLBACK_LINES = 18;
 
+// Renamed from `excerptWindows` when webindex v1.14.0 took that name for the
+// PROSE scanner every skill was duplicating. The two are unrelated jobs and the
+// collision was real: this one picks windows into a SOURCE FILE from symbol
+// declarations, AST spans and call sites, and takes a pre-built matcher; the
+// engine's scores lines of a fetched page against a question. Neither is a
+// generalisation of the other, so the local one took the more specific name.
+//
 // Choose the excerpt window(s) for one result. The PRIMARY window: a matching
 // symbol definition wins — anchored at its line and spanning its real body when
 // the AST tier resolved one; else the densest lexical region; else the file
@@ -582,15 +589,15 @@ const SYMBOL_FALLBACK_LINES = 18;
 // the definition is never lost. Returns 1 or 2 windows with 1-based inclusive
 // line numbers; `span` carries the declaration's true range when the excerpt
 // had to clip it.
-export function excerptWindows(
+export function codeExcerptWindows(
   lines: string[],
   matcher: KeywordMatcher,
   sym: CodeSymbol | undefined,
   fh: FileHits | undefined,
   callLines: number[],
   fileSyms: CodeSymbol[] = [],
-): ExcerptWindow[] {
-  let primary: ExcerptWindow;
+): CodeExcerptWindow[] {
+  let primary: CodeExcerptWindow;
   if (sym) {
     // The declaration's real end when the AST tier knows it: a 25-line function
     // is cited whole instead of its first 20 lines, and a 300-line one is

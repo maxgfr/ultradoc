@@ -9,7 +9,7 @@ import type { AskOptions, RunContext, SemanticTier } from "../src/types.js";
 
 const LIB = resolve("tests/fixtures/sample-lib");
 
-function contextFor(dir: string, over: Partial<AskOptions> = {}): RunContext {
+function contextFor(dir: string, over: Partial<AskOptions> = {}): Promise<RunContext> {
   return buildContext({
     repo: dir,
     question: "which helper works out how long to wait before trying again",
@@ -43,27 +43,27 @@ describe("semantic tier cascade", () => {
   });
 
   it("off short-circuits without probing any backend", async () => {
-    const res = await semanticSearch(contextFor(LIB, { semanticTier: "off" }));
+    const res = await semanticSearch(await contextFor(LIB, { semanticTier: "off" }));
     expect(res.available).toBe(false);
     expect(res.notes.join(" ")).toContain("--semantic-tier off");
   });
 
   it("names the command that enables the tier the user asked for", async () => {
-    const res = await semanticSearch(contextFor(LIB, { semanticTier: "static" }));
+    const res = await semanticSearch(await contextFor(LIB, { semanticTier: "static" }));
     expect(res.available).toBe(false);
     // Unavailable is fine; unexplained is not.
     expect(res.notes.join(" ")).toContain("semantic pull");
   });
 
   it("points at the endpoint variable when that tier was requested", async () => {
-    const res = await semanticSearch(contextFor(LIB, { semanticTier: "endpoint" }));
+    const res = await semanticSearch(await contextFor(LIB, { semanticTier: "endpoint" }));
     expect(res.available).toBe(false);
     expect(res.notes.join(" ")).toContain("CODEINDEX_EMBED_ENDPOINT");
   });
 
   it("an explicit tier never silently falls through to another one", async () => {
     for (const tier of ["static", "endpoint"] as SemanticTier[]) {
-      const res = await semanticSearch(contextFor(LIB, { semanticTier: tier }));
+      const res = await semanticSearch(await contextFor(LIB, { semanticTier: tier }));
       expect(res.available).toBe(false);
     }
   });
@@ -72,7 +72,7 @@ describe("semantic tier cascade", () => {
     const dir = mkdtempSync(join(tmpdir(), "ud-empty-"));
     mkdirSync(join(dir, "src"), { recursive: true });
     writeFileSync(join(dir, "src", "a.ts"), "export const a = 1;\n");
-    const res = await codeSource(contextFor(dir, { semanticTier: "static" }));
+    const res = await codeSource(await contextFor(dir, { semanticTier: "static" }));
     // The degradation is reported, and the source still returns its items.
     expect(res.fallbacks).toContain("code: semantic backend unavailable — lexical only");
     expect(res.source).toBe("code");
@@ -88,8 +88,8 @@ describe("static tier (requires a pulled model)", () => {
   it.skipIf(!hasStaticModel())("surfaces a declaration the question never names", async () => {
     const q = "which helper works out how long to wait before trying again";
 
-    const lexical = await codeSource(contextFor(LIB, { question: q, semanticTier: "off" }));
-    const withVectors = await codeSource(contextFor(LIB, { question: q, semanticTier: "static" }));
+    const lexical = await codeSource(await contextFor(LIB, { question: q, semanticTier: "off" }));
+    const withVectors = await codeSource(await contextFor(LIB, { question: q, semanticTier: "static" }));
 
     // The question says neither "backoff" nor "delay", so the lexical tier has
     // no term to match the declaration on.

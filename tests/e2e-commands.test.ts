@@ -224,12 +224,16 @@ describe("drill commands (print evidence, write nothing)", () => {
 
   // `firecrawl` is an explicit engine: with the stack down it must degrade with
   // a note naming what to run, exactly like an explicit `searxng`.
-  it("web --web-engine firecrawl degrades with an honest note when the stack is down", async () => {
+  it("web --web-engine firecrawl degrades with an honest note when the layer is unavailable", async () => {
     const r = await runCli(["web", "--repo", gitRepo, "--q", "retry backoff", "--web-engine", "firecrawl"]);
     expect(r.exitCode).toBe(0);
     expect(r.error).toBeUndefined();
-    expect(r.stdout).toMatch(/Firecrawl search returned nothing/);
-    expect(r.stdout).toMatch(/ultradoc firecrawl up/);
+    // The engine names the ACTUAL reason instead of the caller guessing one.
+    // This suite runs with ULTRADOC_FIRECRAWL=off, and "switched off" is not
+    // "not running" — telling the operator to start a container they deliberately
+    // turned off is advice that cannot work. A run must still exit 0 with a note.
+    expect(r.stdout).toMatch(/Firecrawl disabled/);
+    expect(r.stdout).toMatch(/Skipping/);
   }, 20_000);
 
   it("rejects an unknown --web-engine", async () => {

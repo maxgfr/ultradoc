@@ -263,7 +263,7 @@ export function defaultDocDir(repoDir: string, scopePkg?: WorkspacePackage): str
 // section, merge into one evidence set, and write the worklist. `sourcesOverride`
 // (from an explicit --sources) replaces every section's default sources.
 export async function runDoc(options: AskOptions, opts: { sourcesOverride?: SourceKind[] } = {}): Promise<DocResult> {
-  const ctx = buildContext(options);
+  const ctx = await buildContext(options);
   const name = ctx.repoRef.repo ?? basename(ctx.repoDir);
   const traits = detectProjectTraits(ctx.repoDir, ctx.index);
   // The module graph shapes the outline and the architecture diagram. Derived

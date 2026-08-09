@@ -89,9 +89,12 @@ export async function discover(
 ): Promise<{ urls: string[]; via: string; notes: string[] }> {
   const notes: string[] = [];
   if (engine === "firecrawl") {
+    // The engine answers { hits } or { why } rather than a bare list-or-null, so
+    // "reachable but empty" and "not reachable" stop being the same value — and
+    // the reason it gives is more specific than the one guessed here.
     const f = await searchViaFirecrawl(query, n, opts);
-    if (f?.length) return { urls: f, via: "firecrawl", notes };
-    notes.push(`Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
+    if (f.hits?.length) return { urls: f.hits.map((h) => h.url).slice(0, n), via: "firecrawl", notes };
+    notes.push(f.why ?? `Firecrawl search returned nothing at ${firecrawlBase(opts) ?? "off"}. Run \`ultradoc firecrawl up\`.`);
   }
   if (engine === "searxng" || engine === "auto") {
     const s = await viaSearxng(query, n);

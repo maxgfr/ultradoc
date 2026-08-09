@@ -25,9 +25,13 @@ function looksLikeIdentifier(kw: string): boolean {
 
 export async function historySource(ctx: RunContext): Promise<SourceResult> {
   const notes: string[] = [];
-  const depth = ensureHistoryDepth(ctx.repoDir);
+  // Async since webindex v1.14.0: undoing a blobless filter is a real fetch,
+  // and the engine refuses to do that synchronously.
+  const depth = await ensureHistoryDepth(ctx.repoDir);
   if (depth.note) notes.push(depth.note);
-  if (!depth.ok && /not a git/i.test(depth.note ?? "")) {
+  // Nothing to walk: not a working tree, or no git at all. Either way the
+  // pickaxe loop below would just fail once per keyword.
+  if (!depth.ok && /not a git|not installed/i.test(depth.note ?? "")) {
     return { source: "history", items: [], notes };
   }
 

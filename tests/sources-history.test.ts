@@ -67,15 +67,15 @@ describe("historySource", () => {
 });
 
 describe("ensureHistoryDepth", () => {
-  it("is a no-op on a full (non-shallow) repo", () => {
-    const r = ensureHistoryDepth(repo);
+  it("is a no-op on a full (non-shallow) repo", async () => {
+    const r = await ensureHistoryDepth(repo);
     expect(r.ok).toBe(true);
     expect(r.note).toBeUndefined();
   });
 
-  it("reports a non-git directory honestly", () => {
+  it("reports a non-git directory honestly", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ultradoc-nogit-"));
-    const r = ensureHistoryDepth(dir);
+    const r = await ensureHistoryDepth(dir);
     expect(r.ok).toBe(false);
     expect(r.note).toMatch(/not a git/i);
     rmSync(dir, { recursive: true, force: true });
