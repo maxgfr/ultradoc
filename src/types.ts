@@ -1,3 +1,9 @@
+// The repository reference is the ENGINE's type, not a copy of it: the two
+// were field-for-field identical, which is what a shared definition looks like
+// just before it drifts.
+export type { RepoRef } from "./engine.js";
+import type { RepoRef } from "./engine.js";
+
 // Single source of truth for the version the CLI/bundle reports. Kept in
 // lockstep with package.json and SKILL.md by scripts/sync-version.mjs during a
 // semantic-release run. Do not edit by hand outside a release.
@@ -24,19 +30,6 @@ export interface EvidenceItem {
   snippet: string;
   url?: string;
   meta?: Record<string, unknown>;
-}
-
-// Where a repo lives and how to reach it. Produced by resolveRepo(); the slug
-// keys the on-disk cache at /tmp/ultradoc/<slug>.
-export interface RepoRef {
-  raw: string;
-  host: string; // github.com | gitlab.com | bitbucket.org | "local" | "generic"
-  owner?: string;
-  repo?: string;
-  cloneUrl?: string;
-  webUrl?: string;
-  isLocal: boolean;
-  slug: string;
 }
 
 // A symbol extracted deterministically from source (no LLM). Feeds the

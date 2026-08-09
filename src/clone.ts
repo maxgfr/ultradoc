@@ -5,6 +5,14 @@ import type { RepoRef } from "./types.js";
 import { sh, slugify } from "./util.js";
 import { cacheRoot } from "./config.js";
 
+// Adopted from webindex v1.13. The engine's resolveRepo is a strict superset —
+// it parses ssh://, git:// and file:// URLs, userinfo and ports, all of which
+// this copy fell through to "generic" — and headCommit / originUrl / sameCommit
+// were identical. ensureClone and ensureHistoryDepth stay below: the engine's
+// are async and every call site here is synchronous.
+export { resolveRepo, headCommit, originUrl } from "./engine.js";
+import { resolveRepo } from "./engine.js";
+
 // Re-exported for compatibility: the cache root now lives in config.ts (it is a
 // persistent per-user dir, overridable with ULTRADOC_CACHE_DIR). Everything
 // ultradoc writes for a repo lives under <cacheRoot>/<slug>/.
@@ -23,71 +31,6 @@ function migrateLegacyClone(dir: string, slug: string): void {
   } catch {
     /* cross-device or perms — the repo will just re-clone */
   }
-}
-
-// Parse any repo identifier into a RepoRef. Accepts:
-//   - a local directory path (absolute or relative, existing)
-//   - https://host/owner/repo(.git)
-//   - git@host:owner/repo.git
-//   - host/owner/repo
-//   - owner/repo            (shorthand → github.com)
-// GitLab subgroups are preserved: owner holds the full namespace
-// ("group/subgroup"), repo holds the final segment.
-export function resolveRepo(raw: string): RepoRef {
-  const trimmed = raw.trim();
-
-  // Local directory takes precedence — lets you point ultradoc at a checkout
-  // you already have, with no network.
-  const asPath = resolve(trimmed);
-  if (existsSync(asPath) && statSync(asPath).isDirectory()) {
-    return {
-      raw: trimmed,
-      host: "local",
-      isLocal: true,
-      slug: "local-" + slugify(basename(asPath) + "-" + asPath),
-    };
-  }
-
-  let host: string;
-  let path: string; // owner(/subgroups)/repo, no host, no .git
-
-  const scp = /^git@([^:]+):(.+)$/.exec(trimmed); // git@github.com:owner/repo.git
-  const url = /^https?:\/\/([^/]+)\/(.+)$/.exec(trimmed); // https://host/owner/repo
-  const hostPath = /^([a-z0-9.-]+\.[a-z]{2,})\/(.+)$/i.exec(trimmed); // host/owner/repo
-
-  if (scp) {
-    host = scp[1]!;
-    path = scp[2]!;
-  } else if (url) {
-    host = url[1]!;
-    path = url[2]!;
-  } else if (hostPath) {
-    host = hostPath[1]!;
-    path = hostPath[2]!;
-  } else {
-    // bare "owner/repo" shorthand → github
-    host = "github.com";
-    path = trimmed;
-  }
-
-  path = path.replace(/\.git$/, "").replace(/\/+$/, "");
-  const segments = path.split("/").filter(Boolean);
-  const repo = segments.length ? segments[segments.length - 1] : undefined;
-  const owner = segments.length > 1 ? segments.slice(0, -1).join("/") : undefined;
-
-  const cloneUrl = /^https?:\/\//.test(trimmed) || scp ? trimmed : `https://${host}/${path}.git`;
-  const webUrl = `https://${host}/${path}`;
-
-  return {
-    raw: trimmed,
-    host,
-    owner,
-    repo,
-    cloneUrl: cloneUrl.endsWith(".git") ? cloneUrl : `${cloneUrl}.git`,
-    webUrl,
-    isLocal: false,
-    slug: slugify(`${host}/${path}`),
-  };
 }
 
 // Ensure a working tree exists on disk for `ref`, returning its absolute path.
@@ -170,27 +113,17 @@ export function ensureHistoryDepth(dir: string): { ok: boolean; note?: string } 
   return out;
 }
 
-// The short HEAD commit of a working tree, when it is a git repo. Recorded in
-// the dossier so an answer is pinned to an exact revision.
-export function headCommit(dir: string): string | undefined {
-  const res = sh("git", ["-C", dir, "rev-parse", "--short", "HEAD"]);
-  return res.ok ? res.stdout.trim() : undefined;
-}
-
-// Whether two abbreviated commit SHAs name the same revision. `git rev-parse
-// --short` auto-grows the abbreviation as the object database grows — so after a
-// shallow clone is deepened (e.g. by the history source), the SAME commit reads
-// as `ba00676` at build time and `ba006766` later. Git guarantees a `--short`
-// value is unambiguous when produced, so one being a prefix of the other means
-// they resolve to the same object; a naive `!==` would report false drift.
+/**
+ * Two commits are the same, tolerating either being an ABBREVIATION.
+ *
+ * Not the engine's `sameCommit`, which is strict equality — and that difference
+ * is load-bearing here. A dossier records the commit it was built against, git
+ * abbreviates a SHA almost everywhere it prints one, and this comparison decides
+ * whether a stored excerpt may be re-validated against the working tree. Strict
+ * equality answers "no" to a full SHA against its own 7-character prefix, and
+ * every citation silently stops being checked.
+ */
 export function sameCommit(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
   return a === b || a.startsWith(b) || b.startsWith(a);
-}
-
-// The `origin` remote URL of a working tree, if any. Lets a question asked
-// against a LOCAL checkout still resolve the host's issues/PRs API.
-export function originUrl(dir: string): string | undefined {
-  const res = sh("git", ["-C", dir, "remote", "get-url", "origin"]);
-  return res.ok && res.stdout.trim() ? res.stdout.trim() : undefined;
 }
