@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.21.1](https://github.com/maxgfr/ultradoc/compare/v2.21.0...v2.21.1) (2026-08-09)
+
+
+### Bug Fixes
+
+* **gate:** count ./engine.js imports, and see unexported shadows ([fb33a07](https://github.com/maxgfr/ultradoc/commit/fb33a079e2f9b63fbd3ff7d86bde47e46520479e))
+
 # [2.21.0](https://github.com/maxgfr/ultradoc/compare/v2.20.0...v2.21.0) (2026-08-08)
 
 
