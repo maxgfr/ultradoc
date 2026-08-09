@@ -16001,7 +16001,7 @@ ${HELP}`);
 }
 
 // src/types.ts
-var VERSION = "2.21.1";
+var VERSION = "2.22.0";
 
 // src/clone.ts
 import { existsSync as existsSync10, mkdirSync as mkdirSync5, renameSync as renameSync2 } from "fs";

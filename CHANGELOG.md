@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.22.0](https://github.com/maxgfr/ultradoc/compare/v2.21.1...v2.22.0) (2026-08-09)
+
+
+### Features
+
+* **engine:** adopt webindex v1.14.0 and delete the last 29 forks ([0e1dd09](https://github.com/maxgfr/ultradoc/commit/0e1dd091c917c96684ea3bc142ad710faa3bb7dc))
+
 ## [2.21.1](https://github.com/maxgfr/ultradoc/compare/v2.21.0...v2.21.1) (2026-08-09)
 
 
