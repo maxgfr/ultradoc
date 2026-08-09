@@ -47,7 +47,10 @@ export function discussionItems(nodes: any[]): RawItem[] {
   return items;
 }
 
-function search(owner: string, repo: string, terms: string[], n: number): RawItem[] | undefined {
+// Named searchDiscussions, not search: the engine exports a `search()` of its
+// own (open-web discovery), and a bare `search` here reads like it at every call
+// site while doing something else entirely.
+function searchDiscussions(owner: string, repo: string, terms: string[], n: number): RawItem[] | undefined {
   const res = sh("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
   if (!res.ok) return undefined;
   try {
@@ -84,7 +87,7 @@ export async function discussionsSource(ctx: RunContext): Promise<SourceResult> 
   const per = ctx.options.perSource;
   for (const terms of [ranked.slice(0, 3), ranked.slice(0, 2)]) {
     if (terms.length === 0) continue;
-    const items = search(ref.owner, ref.repo, terms, per * 2);
+    const items = searchDiscussions(ref.owner, ref.repo, terms, per * 2);
     if (items === undefined) {
       return { source: "discussion", items: [], notes: ["GitHub Discussions search failed (gh api graphql)."] };
     }
@@ -94,7 +97,7 @@ export async function discussionsSource(ctx: RunContext): Promise<SourceResult> 
   }
   const seen = new Map<string, RawItem>();
   for (const t of ranked.slice(0, 3)) {
-    const items = search(ref.owner, ref.repo, [t], per * 2) ?? [];
+    const items = searchDiscussions(ref.owner, ref.repo, [t], per * 2) ?? [];
     for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
   }
   const merged = withRankScores(rerank([...seen.values()], ranked).slice(0, per));

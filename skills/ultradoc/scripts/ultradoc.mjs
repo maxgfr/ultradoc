@@ -20036,8 +20036,8 @@ var github = {
 async function query2(ref, terms, kind, perSource) {
   const proj = encodeURIComponent(`${ref.owner}/${ref.repo}`);
   const path = kind === "issue" ? "issues" : "merge_requests";
-  const search2 = encodeURIComponent(terms.join(" "));
-  const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search2}&per_page=${perSource}&order_by=updated_at&sort=desc`;
+  const search = encodeURIComponent(terms.join(" "));
+  const url = `https://${ref.host}/api/v4/projects/${proj}/${path}?search=${search}&per_page=${perSource}&order_by=updated_at&sort=desc`;
   const r = await httpGet(url, { accept: "application/json", headers: gitlabAuthHeaders(), retries: 2 });
   if (!r.ok) return { items: [], error: `GitLab ${kind} search unavailable (status ${r.status}).` };
   try {
@@ -20242,7 +20242,7 @@ ${answer}` : ""),
   }
   return items;
 }
-function search(owner, repo, terms, n) {
+function searchDiscussions(owner, repo, terms, n) {
   const res = sh2("gh", ["api", "graphql", "-f", `query=${QUERY}`, "-f", `q=repo:${owner}/${repo} ${terms.join(" ")}`, "-F", `n=${n}`]);
   if (!res.ok) return void 0;
   try {
@@ -20274,7 +20274,7 @@ async function discussionsSource(ctx) {
   const per = ctx.options.perSource;
   for (const terms of [ranked.slice(0, 3), ranked.slice(0, 2)]) {
     if (terms.length === 0) continue;
-    const items = search(ref.owner, ref.repo, terms, per * 2);
+    const items = searchDiscussions(ref.owner, ref.repo, terms, per * 2);
     if (items === void 0) {
       return { source: "discussion", items: [], notes: ["GitHub Discussions search failed (gh api graphql)."] };
     }
@@ -20284,7 +20284,7 @@ async function discussionsSource(ctx) {
   }
   const seen = /* @__PURE__ */ new Map();
   for (const t of ranked.slice(0, 3)) {
-    const items = search(ref.owner, ref.repo, [t], per * 2) ?? [];
+    const items = searchDiscussions(ref.owner, ref.repo, [t], per * 2) ?? [];
     for (const it of items) if (!seen.has(it.ref)) seen.set(it.ref, it);
   }
   const merged = withRankScores(rerank([...seen.values()], ranked).slice(0, per));

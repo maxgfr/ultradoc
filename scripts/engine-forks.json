@@ -9,6 +9,8 @@
     "src/sources/fetch.ts:ExtractResult": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
     "src/sources/fetch.ts:fetchAndExtract": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
     "src/sources/fetch.ts:nearestHeading": "fetch stack genuinely diverges from the engine's \u2014 conditional GET / streaming caps / consent stripping. Reconciling it is a behaviour decision, not a dedup.",
+    "src/sources/fetch.ts:PDF_URL_RE": "private copy inside the forked fetch stack, surfaced once verify-engine-usage stopped requiring a leading `export` to see a shadow. Goes with fetch.ts, not before it.",
+    "src/sources/fetch.ts:sleep": "private copy inside the forked fetch stack, surfaced once verify-engine-usage stopped requiring a leading `export` to see a shadow. Goes with fetch.ts, not before it.",
     "src/sources/firecrawl.ts:FIRECRAWL_DEFAULT_BASE": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
     "src/sources/firecrawl.ts:FirecrawlOptions": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
     "src/sources/firecrawl.ts:firecrawlBase": "the engine's client is a superset, but this skill's fetch.ts consumes it and fetch.ts is not adopted yet \u2014 swap both together or neither.",
