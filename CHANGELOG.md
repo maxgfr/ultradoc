@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.25.0](https://github.com/maxgfr/ultradoc/compare/v2.24.0...v2.25.0) (2026-08-10)
+
+
+### Bug Fixes
+
+* **drill:** honour --out, and stop telling the reader to write in a folder that does not exist ([81e3dee](https://github.com/maxgfr/ultradoc/commit/81e3dee2284fec99d316eb4edbba9ce55bcc0d2f))
+
+
+### Features
+
+* **engine:** re-pin webindex to v1.18.1 ([890310f](https://github.com/maxgfr/ultradoc/commit/890310f9fe71f1ff4a473d3faf091338fed4cb64))
+* **gate:** add the docs<->CLI drift assertions this repo had lost ([26da356](https://github.com/maxgfr/ultradoc/commit/26da3561d6e213c588ba87cdb85b30d48b9e9904))
+
 # [2.24.0](https://github.com/maxgfr/ultradoc/compare/v2.23.0...v2.24.0) (2026-08-10)
 
 

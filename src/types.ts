@@ -7,7 +7,7 @@ import type { RepoRef } from "./engine.js";
 // Single source of truth for the version the CLI/bundle reports. Kept in
 // lockstep with package.json and SKILL.md by scripts/sync-version.mjs during a
 // semantic-release run. Do not edit by hand outside a release.
-export const VERSION = "2.24.0";
+export const VERSION = "2.25.0";
 
 // Every retrieval source the dossier can draw from. The model cites evidence by
 // id; `source` lets the dossier group items and lets `check` validate citation
