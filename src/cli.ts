@@ -6,7 +6,7 @@ import { VERSION } from "./types.js";
 import type { AskOptions, SourceKind, SemanticTier, WebEngine, DossierMeta } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
 import { runDoc } from "./doc.js";
-import { renderEvidenceMarkdown } from "./dossier.js";
+import { renderEvidenceMarkdown, writeDossier } from "./dossier.js";
 import { checkRun, formatCheckReport } from "./check.js";
 import { runVerify, applyVerdicts, formatVerifyReport, VERIFY_MAX } from "./verify.js";
 import { webFetchUrls } from "./sources/web.js";
@@ -20,7 +20,7 @@ import { PHASES, emitOrchestration, listPhasesFor } from "./orchestrate.js";
 import { runStdioServer, startHttpServer, type CommandArgs, type ParsedArgs, parseArgs, UsageError } from "./engine.js";
 import { ultradocAdapter } from "./mcp/adapter.js";
 
-const HELP = `ultradoc v${VERSION}
+export const HELP = `ultradoc v${VERSION}
 Answer ultra-precise questions about an open-source project from its real source
 code, issues, PRs, docs and the web — grounded retrieval, not the model's memory.
 
@@ -158,7 +158,7 @@ Environment (all optional, keyless by default):
   ULTRADOC_MAX_FILES, …      Raise index/scan/retrieval caps (see references).
 `;
 
-const COMMANDS = new Set([
+export const COMMANDS = new Set([
   "ask",
   "code",
   "issues",
@@ -181,7 +181,7 @@ const COMMANDS = new Set([
   "cache",
   "mcp",
 ]);
-const VALUE_FLAGS = new Set([
+export const VALUE_FLAGS = new Set([
   "repo",
   "q",
   "question",
@@ -210,7 +210,7 @@ const VALUE_FLAGS = new Set([
   "allow-origin",
   "max-response-bytes",
 ]);
-const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list", "allow-remote", "allow-write"]);
+export const BOOL_FLAGS = new Set(["semantic", "json", "refresh", "strict", "all", "allow-unverified", "eco", "list", "allow-remote", "allow-write"]);
 
 function fail(message: string): never {
   process.stderr.write(`ultradoc: ${message}\n`);
@@ -296,12 +296,29 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
 // rest to EVIDENCE.md, which always lists them all.
 const NOTES_SHOWN = 5;
 
+/**
+ * A drill's output.
+ *
+ * With `--out` it persists a real dossier, so what the drill found becomes
+ * citable; the flag used to be accepted and silently dropped, which is the
+ * behaviour this family refuses everywhere else (`--limt 5` ran the whole
+ * search with the default budget and reported success). Without it, nothing is
+ * written and the header says so — a drill's `[E#]` ids belong to no run.
+ */
 function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMarkdown>[0], meta: DossierMeta): void {
   if (p.bools.has("json")) {
     process.stdout.write(JSON.stringify(evidence, null, 2) + "\n");
-  } else {
-    process.stdout.write(renderEvidenceMarkdown(evidence, meta) + "\n");
+    return;
   }
+  const out = p.values.out;
+  if (out) {
+    const paths = writeDossier(out, evidence, meta);
+    process.stdout.write(`ultradoc: ${evidence.length} evidence item(s) → ${paths.dir}\n`);
+    process.stdout.write(`  read ${paths.evidenceMd}, write ANSWER.md there (cite [E#]), then:\n`);
+    process.stdout.write(`  ultradoc check --run ${paths.dir}\n`);
+    return;
+  }
+  process.stdout.write(renderEvidenceMarkdown(evidence, meta, false) + "\n");
 }
 
 // Commands that index the repo — i.e. that extract symbols. Only these pay for
@@ -389,6 +406,10 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         host: ctx.repoRef.host,
         ref: opts.ref,
         commit: ctx.index.commit,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run. Without it `check` warns
+        // that it cannot re-check the cited snippets and passes anyway.
+        repoDir: ctx.repoDir,
         sources: [kind],
         semantic: opts.semantic,
         evidenceCount: evidence.length,
@@ -415,6 +436,9 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         ref: opts.ref,
         commit: ctx.index.commit,
         pkg: ctx.scopePkg?.name,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run.
+        repoDir: ctx.repoDir,
         sources: ["code"],
         semantic: false,
         evidenceCount: evidence.length,
@@ -455,6 +479,9 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         host: ctx.repoRef.host,
         ref: opts.ref,
         commit: ctx.index.commit,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run.
+        repoDir: ctx.repoDir,
         sources: ["web"],
         semantic: opts.semantic,
         evidenceCount: evidence.length,

@@ -47,7 +47,19 @@ export function assignIds(results: SourceResult[]): EvidenceItem[] {
 
 // Render the model-facing evidence document. Every item carries an id the model
 // must cite in ANSWER.md; `ultradoc check` later verifies those citations.
-export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMeta): string {
+/**
+ * Render the dossier.
+ *
+ * `persisted` decides which instruction the header carries, and it is not
+ * cosmetic. A drill (`symbol`, `code`, `issues`, …) prints a dossier with its
+ * OWN `[E1] [E2] …` numbering and writes nothing; telling the reader to "write
+ * the answer to ANSWER.md in this folder" then names a folder that does not
+ * exist, and the natural repair — writing it into the `ask` run instead —
+ * carries the drill's ids into a file where the same ids mean different items.
+ * `check` cannot catch that: every citation still RESOLVES, it just resolves to
+ * the wrong excerpt, and the run comes back green.
+ */
+export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMeta, persisted = true): string {
   const out: string[] = [];
   out.push(`# Evidence dossier`);
   out.push("");
@@ -60,8 +72,14 @@ export function renderEvidenceMarkdown(evidence: EvidenceItem[], meta: DossierMe
   out.push(`**Sources:** ${meta.sources.join(", ")} · **semantic:** ${meta.semantic ? "on" : "off"} · **built:** ${meta.builtAt}`);
   out.push("");
   out.push(
-    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. ` +
-      `Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`,
+    persisted
+      ? `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. ` +
+          `Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
+      : `> Read this to decide what to retrieve next. NOTHING WAS WRITTEN, and these ` +
+          `\`[E#]\` ids are local to this drill — they are NOT the ids of any run, so ` +
+          `citing them in an existing \`ANSWER.md\` would point at different evidence. ` +
+          `To cite what you see here, re-run with \`--out <dir>\` (or fold it into a run with \`ask\`) ` +
+          `and cite the ids from THAT dossier.`,
   );
   out.push("");
 

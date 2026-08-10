@@ -19573,7 +19573,7 @@ function assignIds2(results) {
   flat.sort((a, b) => rank(a.source) - rank(b.source) || b.score - a.score || a.ref.localeCompare(b.ref));
   return flat.map((it, i2) => ({ id: `E${i2 + 1}`, ...it }));
 }
-function renderEvidenceMarkdown(evidence, meta) {
+function renderEvidenceMarkdown(evidence, meta, persisted = true) {
   const out2 = [];
   out2.push(`# Evidence dossier`);
   out2.push("");
@@ -19584,7 +19584,7 @@ function renderEvidenceMarkdown(evidence, meta) {
   out2.push(`**Sources:** ${meta.sources.join(", ")} \xB7 **semantic:** ${meta.semantic ? "on" : "off"} \xB7 **built:** ${meta.builtAt}`);
   out2.push("");
   out2.push(
-    `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.`
+    persisted ? `> Ground every claim in the answer in this evidence. Cite items by id, e.g. \`[E1]\`. Do not assert anything you cannot tie to an item below. Write the answer to \`ANSWER.md\` in this folder, then run \`ultradoc check\`.` : `> Read this to decide what to retrieve next. NOTHING WAS WRITTEN, and these \`[E#]\` ids are local to this drill \u2014 they are NOT the ids of any run, so citing them in an existing \`ANSWER.md\` would point at different evidence. To cite what you see here, re-run with \`--out <dir>\` (or fold it into a run with \`ask\`) and cite the ids from THAT dossier.`
   );
   out2.push("");
   if (meta.notes.length) {
@@ -24303,9 +24303,20 @@ var NOTES_SHOWN = 5;
 function printEvidence(p, evidence, meta) {
   if (p.bools.has("json")) {
     process.stdout.write(JSON.stringify(evidence, null, 2) + "\n");
-  } else {
-    process.stdout.write(renderEvidenceMarkdown(evidence, meta) + "\n");
+    return;
   }
+  const out2 = p.values.out;
+  if (out2) {
+    const paths = writeDossier(out2, evidence, meta);
+    process.stdout.write(`ultradoc: ${evidence.length} evidence item(s) \u2192 ${paths.dir}
+`);
+    process.stdout.write(`  read ${paths.evidenceMd}, write ANSWER.md there (cite [E#]), then:
+`);
+    process.stdout.write(`  ultradoc check --run ${paths.dir}
+`);
+    return;
+  }
+  process.stdout.write(renderEvidenceMarkdown(evidence, meta, false) + "\n");
 }
 var INDEXING_COMMANDS = /* @__PURE__ */ new Set([
   "ask",
@@ -24376,6 +24387,10 @@ async function run2(argv = process.argv.slice(2)) {
         host: ctx.repoRef.host,
         ref: opts.ref,
         commit: ctx.index.commit,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run. Without it `check` warns
+        // that it cannot re-check the cited snippets and passes anyway.
+        repoDir: ctx.repoDir,
         sources: [kind],
         semantic: opts.semantic,
         evidenceCount: evidence.length,
@@ -24399,6 +24414,9 @@ async function run2(argv = process.argv.slice(2)) {
         ref: opts.ref,
         commit: ctx.index.commit,
         pkg: ctx.scopePkg?.name,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run.
+        repoDir: ctx.repoDir,
         sources: ["code"],
         semantic: false,
         evidenceCount: evidence.length,
@@ -24435,6 +24453,9 @@ async function run2(argv = process.argv.slice(2)) {
         host: ctx.repoRef.host,
         ref: opts.ref,
         commit: ctx.index.commit,
+        // Carried so a dossier written with --out can be re-validated against
+        // the pinned clone, exactly like an `ask` run.
+        repoDir: ctx.repoDir,
         sources: ["web"],
         semantic: opts.semantic,
         evidenceCount: evidence.length,
@@ -24737,6 +24758,10 @@ if (invokedAsThisModule()) {
   run2().catch((e) => fail(e.message));
 }
 export {
+  BOOL_FLAGS,
+  COMMANDS,
+  HELP2 as HELP,
+  VALUE_FLAGS2 as VALUE_FLAGS,
   parseCli,
   run2 as run
 };
