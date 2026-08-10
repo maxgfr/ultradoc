@@ -3,16 +3,35 @@
 // maxgfr/<name>` installs a WORKING skill — engine + references included, not
 // just a lone SKILL.md.
 //
-// The `skills` CLI (skills.sh) early-returns the moment it sees a SKILL.md at
-// the repository ROOT and then installs that file ALONE — the sibling
-// scripts/ and references/ are dropped. A skill is only bundled whole when its
-// SKILL.md lives in a SUBDIRECTORY (skills/<name>/). This script asserts that
-// shape and that the embedded engine is byte-identical to the tested bundle.
+// A skill is bundled predictably only when its SKILL.md lives in a
+// SUBDIRECTORY (skills/<name>/), which is the layout every repo in this family
+// targets. This script asserts that shape, that the embedded engine is
+// byte-identical to the tested bundle, and that the docs and the CLI have not
+// drifted apart.
 //
-// Run by CI and by `pnpm run verify:bundle`. Pure Node, no deps, no network.
+// The drift half was missing here for a long time while a sibling had it: a
+// SKILL.md could document a --flag the engine rejects, and every gate stayed
+// green. The matchers come from the vendored webindex engine rather than a
+// local copy, so the subtle cases (a bold flag, a parenthesised one, `--` glued
+// to a word tail) cannot diverge between the two repos that use them.
+//
+// Run by CI and by `pnpm run verify:bundle`. No deps, no network.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { documentedFlags, missingFromHelp } from "../src/vendor/webindex-engine.mjs";
+
+// Flags belonging to OTHER tools that the docs legitimately quote. Each entry
+// names its owner, so the list stays an argued exception rather than a place to
+// silence the gate.
+//   docker compose  --profile --wait          container bring-up lines
+//   npx             --prefer-offline          the pdf-inspector invocation
+//   pdftotext       --layout                  the PDF ladder
+//   anydoc          --format                  the office ladder
+//   git             --depth --filter          the shallow blobless clone
+//                   --refetch --unshallow     deepening it on demand
+//   HF text-embeddings-inference  --model-id  the optional endpoint tier
+const ALLOWED_FOREIGN_FLAGS = ["profile", "wait", "prefer-offline", "layout", "format", "depth", "filter", "refetch", "unshallow", "model-id"];
 
 // Claude Code matches skill descriptions at <=1024 chars; 1000 leaves a safety
 // margin so a future edit can't silently cross the cap.
@@ -73,6 +92,62 @@ else if (!existsSync(pkgEngine)) bad(`missing skills/${name}/${engine} — run \
 else readFileSync(rootEngine).equals(readFileSync(pkgEngine))
   ? ok(`embedded engine skills/${name}/${engine} is byte-identical to ${engine}`)
   : bad(`skills/${name}/${engine} differs from ${engine} — run \`node scripts/copy-bundle.mjs\` and commit`);
+
+// 5. Docs <-> CLI. A documented flag the engine rejects is a doc bug, and the
+// reader who tries it gets an error from an example that was meant to work.
+// Read from the BUILT artifact rather than inferred from source: an earlier
+// sibling recovered the flag surface by pattern-matching call sites, and the
+// moment the CLI changed how it read flags the regex matched nothing, the set
+// went empty, and every documented flag reported as drift at once.
+if (existsSync(pkgEngine) && existsSync(skillMd)) {
+  let cli = null;
+  try {
+    cli = await import(pathToFileURL(pkgEngine).href);
+  } catch (e) {
+    bad(`cannot import skills/${name}/${engine} for the drift gate: ${e.message}`);
+  }
+  if (cli && !(cli.HELP && cli.VALUE_FLAGS && cli.BOOL_FLAGS)) {
+    bad("the bundle no longer exports HELP/VALUE_FLAGS/BOOL_FLAGS — the drift gate needs them");
+    cli = null;
+  }
+  if (cli) {
+    const universe = new Set([...cli.VALUE_FLAGS, ...cli.BOOL_FLAGS, "help", "version", "h", "v", ...ALLOWED_FOREIGN_FLAGS]);
+    const refs = join(skillDir, "references");
+    const docs = [
+      ["SKILL.md", readFileSync(skillMd, "utf8")],
+      ...(existsSync(refs)
+        ? readdirSync(refs)
+            .filter((f) => f.endsWith(".md"))
+            .map((f) => [`references/${f}`, readFileSync(join(refs, f), "utf8")])
+        : []),
+    ];
+
+    // A. docs subset of CLI.
+    let unknown = 0;
+    for (const [file, text] of docs) {
+      for (const flag of documentedFlags(text)) {
+        if (universe.has(flag)) continue;
+        bad(`${file} documents unknown flag --${flag} (add it to ALLOWED_FOREIGN_FLAGS only if it belongs to another tool)`);
+        unknown++;
+      }
+    }
+    if (!unknown) ok(`every --flag documented across ${docs.length} skill file(s) exists in the CLI`);
+
+    // B. CLI subset of --help. A flag the engine accepts but never advertises
+    // is a flag nobody will use.
+    const missing = missingFromHelp(cli.HELP, [...cli.VALUE_FLAGS, ...cli.BOOL_FLAGS]);
+    missing.length === 0 ? ok("--help covers the whole flag surface") : bad(`--help omits: ${missing.map((f) => `--${f}`).join(", ")}`);
+
+    // C. And every command, for the same reason: one stayed invisible for four
+    // releases in a sibling because HELP and the dispatch table were never
+    // compared. Named in --help is the test, not a usage line of its own.
+    for (const cmd of cli.COMMANDS ?? []) {
+      const named = new RegExp(`(^|[^\\w-])${cmd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w-]|$)`, "m").test(cli.HELP);
+      if (!named) bad(`--help never names the \`${cmd}\` command`);
+    }
+    ok(`--help names all ${[...(cli.COMMANDS ?? [])].length} dispatched command(s)`);
+  }
+}
 
 if (errors.length) {
   console.error(`\nverify-skill-bundle: ${errors.length} problem(s) — the published skill would not install correctly.`);
