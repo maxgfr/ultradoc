@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.23.0](https://github.com/maxgfr/ultradoc/compare/v2.22.0...v2.23.0) (2026-08-10)
+
+
+### Features
+
+* **engine:** adopt webindex v1.15's harness layer ([f2b7fa4](https://github.com/maxgfr/ultradoc/commit/f2b7fa4fded64d653a7fc9eb56f40dbffd7b6183))
+
 # [2.22.0](https://github.com/maxgfr/ultradoc/compare/v2.21.1...v2.22.0) (2026-08-09)
 
 
