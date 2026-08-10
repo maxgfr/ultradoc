@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { RunContext, EvidenceItem } from "../../types.js";
+import { embedOne } from "../../engine.js";
 import { readText } from "../../walk.js";
 import { httpGet, httpJson } from "../../sources/fetch.js";
 import { mapLimit } from "../../util.js";
@@ -95,12 +96,21 @@ async function reachable(base: string, path = "/"): Promise<boolean> {
   return r.ok; // a healthy 2xx — a 5xx means up-but-broken, treat as unavailable
 }
 
-async function embed(text: string): Promise<number[] | null> {
-  // 30s per embed: a wedged Ollama should fail the build fast, not after minutes
-  // of stalled requests. Parallelism (mapLimit) keeps throughput up.
-  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 30_000 });
-  const v = r.ok ? r.data?.embedding : undefined;
-  return Array.isArray(v) && v.length ? v : null;
+// Embedding is the engine's as of webindex v1.15.0. Two differences, and both
+// are the engine's favour:
+//
+//   - it posts to /api/embed with `input`, not the legacy /api/embeddings with
+//     `prompt`. Same model, current endpoint.
+//   - it batches, and PRESERVES INPUT ORDER. A vector carries no identity, so a
+//     race-ordered result attaches every one to the wrong chunk — silently,
+//     which is the failure mode a per-chunk call cannot have but also cannot
+//     amortise.
+//
+// Kept singular here under a name the engine does not own, because every call
+// site below wants one vector for one string and `null` for "no vector".
+async function embedOneChunk(text: string): Promise<number[] | null> {
+  const v = await embedOne(text, { base: OLLAMA, model: EMBED_MODEL });
+  return v && v.length ? v : null;
 }
 
 function collectionName(slug: string): string {
@@ -166,7 +176,7 @@ async function buildIfNeeded(ctx: RunContext): Promise<{ name: string; notes: st
 
   // Embed all chunks in parallel (bounded concurrency), preserving order so
   // point ids are stable. A failed embed yields null and is counted.
-  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c) => embed(c.text));
+  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c) => embedOneChunk(c.text));
   const dim = vectors.find((v): v is number[] => Array.isArray(v) && v.length > 0)?.length;
   if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
   const failed = vectors.filter((v) => !v).length;
@@ -231,7 +241,7 @@ export async function qdrantSearch(ctx: RunContext): Promise<SemanticResult> {
   if ("error" in built) return fallbackNote(built.error);
   const buildNotes = built.notes;
 
-  const qv = await embed(ctx.options.question);
+  const qv = await embedOneChunk(ctx.options.question);
   if (!qv) return fallbackNote("could not embed the question");
 
   const res = await httpJson("POST", `${QDRANT}/collections/${built.name}/points/search`, {

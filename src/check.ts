@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
-import { citedEvidenceIds, claimCoverage, codeMask, collectCitations, extractClaimUnits, resolveAlias, SHAPE } from "./citations.js";
+import { citedEvidenceIds, claimCoverage, codeMask, collectCitationTokens, claimUnitsOf, resolveAlias, SHAPE } from "./citations.js";
 import { headCommit, sameCommit } from "./clone.js";
 import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, RevalidationFailure, RevalidationStats, VerifyResult } from "./types.js";
 // Import cycle with verify.ts (which reuses check's claim parsing) — safe: both
@@ -9,7 +9,7 @@ import type { CheckResult, DocPlan, DossierMeta, EvidenceItem, RevalidationFailu
 import { buildWorklist, reduceVerdicts } from "./verify.js";
 
 // Re-exported so existing consumers (verify.ts, tests) keep one import site.
-export { type ClaimUnit, citationTokensIn, citedEvidenceIds, extractClaimUnits } from "./citations.js";
+export { type ClaimUnit, citationsIn, citedEvidenceIds, claimUnitsOf } from "./citations.js";
 
 // A grounded answer must carry a citation on at least this fraction of its claim
 // units. Below it, `check` fails: the guard against "one real [E1] + paragraphs
@@ -301,7 +301,7 @@ function dossierRepoDir(dir: string): string | undefined {
 // block, one per list item) so both sides fingerprint the same claims.
 export function answerClaimSignature(answer: string, evidence: EvidenceItem[]): string {
   const parts: string[] = [];
-  for (const u of extractClaimUnits(answer)) {
+  for (const u of claimUnitsOf(answer)) {
     for (const part of u.kind === "text" ? [u.text] : u.items) {
       const ids = citedEvidenceIds(part, evidence);
       if (!ids.length) continue;
@@ -475,7 +475,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   // Grounding citations come from claim units only; tokens found solely inside
   // code fences/inline code don't count (A3 — one shared tokenizer for check and
   // verify), and are surfaced separately.
-  const { tokens: citations, fencedOnly } = collectCitations(answer);
+  const { tokens: citations, fencedOnly } = collectCitationTokens(answer);
 
   const resolved: string[] = [];
   const dangling: string[] = [];
@@ -540,7 +540,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   const byId = new Map(evidence.map((e) => [e.id, e] as const));
   const issueOnly: string[] = [];
   let issueOnlyCount = 0;
-  for (const u of extractClaimUnits(answer)) {
+  for (const u of claimUnitsOf(answer)) {
     for (const part of u.kind === "text" ? [u.text] : u.items) {
       const cited = citedEvidenceIds(part, evidence)
         .map((id) => byId.get(id))

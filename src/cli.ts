@@ -16,8 +16,8 @@ import { semanticControl, firecrawlControl, pullStaticModel, hasStaticModel, mod
 import { symbolEvidence } from "./index/symbols.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cleanRepoCache, formatCacheStatus } from "./cache.js";
-import { PHASES, listPhases, orchestrateRun } from "./orchestrate.js";
-import { runStdioServer, startHttpServer } from "./engine.js";
+import { PHASES, emitOrchestration, listPhasesFor } from "./orchestrate.js";
+import { runStdioServer, startHttpServer, type CommandArgs, type ParsedArgs, parseArgs, UsageError } from "./engine.js";
 import { ultradocAdapter } from "./mcp/adapter.js";
 
 const HELP = `ultradoc v${VERSION}
@@ -224,78 +224,35 @@ function oneOf<T extends string>(name: string, value: string, allowed: readonly 
   return value as T;
 }
 
-interface Parsed {
-  command: string;
-  positional: string[];
-  values: Record<string, string>;
-  bools: Set<string>;
-}
+/** One parsed invocation — this repo's name for the engine's CommandArgs. */
+type Parsed = CommandArgs;
 
-export function parseArgs(argv: string[]): Parsed {
-  if (argv.length === 0) {
+/**
+ * Parse this CLI's argv against its own flag tables.
+ *
+ * The validating loop is the engine's as of webindex v1.15.0 — it was the same
+ * code in every skill here. What stays local is what is genuinely ultradoc's:
+ * the tables above, what help and version PRINT, and the exit policy. The
+ * engine throws UsageError rather than exiting, so the exit code is decided
+ * here alongside the rest of it.
+ */
+export function parseCli(argv: string[]): Parsed {
+  let parsed: ParsedArgs;
+  try {
+    parsed = parseArgs(argv, { commands: COMMANDS, valueFlags: VALUE_FLAGS, boolFlags: BOOL_FLAGS });
+  } catch (e) {
+    if (!(e instanceof UsageError)) throw e;
+    fail(e.message);
+  }
+  if (parsed.kind === "help") {
     process.stdout.write(HELP);
     process.exit(0);
   }
-  // Global -h/-v work in any position.
-  if (argv[0] === "-h" || argv[0] === "--help") {
-    process.stdout.write(HELP);
+  if (parsed.kind === "version") {
+    process.stdout.write(`${VERSION}\n`);
     process.exit(0);
   }
-  if (argv[0] === "-v" || argv[0] === "--version") {
-    process.stdout.write(VERSION + "\n");
-    process.exit(0);
-  }
-
-  const command = argv[0]!;
-  if (!COMMANDS.has(command)) {
-    fail(`unknown command: ${command} (run --help for usage)`);
-  }
-
-  const values: Record<string, string> = {};
-  const bools = new Set<string>();
-  const positional: string[] = [];
-
-  for (let i = 1; i < argv.length; i++) {
-    const arg = argv[i]!;
-    if (arg === "-h" || arg === "--help") {
-      process.stdout.write(HELP);
-      process.exit(0);
-    }
-    if (arg === "-v" || arg === "--version") {
-      process.stdout.write(VERSION + "\n");
-      process.exit(0);
-    }
-    if (arg.startsWith("--")) {
-      const eq = arg.indexOf("=");
-      const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
-      if (BOOL_FLAGS.has(key)) {
-        if (eq !== -1) fail(`--${key} is a boolean flag and does not take a value`);
-        bools.add(key);
-        continue;
-      }
-      if (!VALUE_FLAGS.has(key)) {
-        fail(`unknown flag: --${key} (run --help for the supported options)`);
-      }
-      let value: string;
-      if (eq !== -1) {
-        value = arg.slice(eq + 1);
-      } else {
-        const next = argv[i + 1];
-        // The next token is the value unless it's itself a flag. `--` (and any
-        // `--foo`) is a flag marker, never a value — pass a leading-dash value
-        // with `--key=value` instead.
-        if (next === undefined || next.startsWith("--")) {
-          fail(`missing value for --${key}`);
-        }
-        value = next;
-        i++;
-      }
-      values[key] = value;
-      continue;
-    }
-    positional.push(arg);
-  }
-  return { command, positional, values, bools };
+  return parsed;
 }
 
 function parseSources(s: string): SourceKind[] {
@@ -368,7 +325,7 @@ const INDEXING_COMMANDS = new Set([
 ]);
 
 export async function run(argv: string[] = process.argv.slice(2)): Promise<void> {
-  const p = parseArgs(argv);
+  const p = parseCli(argv);
 
   // Load the tree-sitter grammars once, up front — the only async step; the
   // index pipeline stays synchronous and parses against the warmed grammars.
@@ -677,10 +634,10 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
           process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.\n`);
           process.exit(2);
         }
-        process.stdout.write(JSON.stringify({ phases: listPhases(resolve(dir), engineAbs) }, null, 2) + "\n");
+        process.stdout.write(JSON.stringify({ phases: listPhasesFor(resolve(dir), engineAbs) }, null, 2) + "\n");
         return;
       }
-      const res = orchestrateRun(resolve(dir), engineAbs, {
+      const res = emitOrchestration(resolve(dir), engineAbs, {
         phase: p.values.phase,
         eco: p.bools.has("eco"),
       });
@@ -824,7 +781,12 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
 // /private/tmp, or a globally-linked skill folder) a raw URL compare silently
 // fails and main() never runs. Realpath both sides, then fall back to the URL
 // compare.
-function isInvokedDirectly(): boolean {
+// Deliberately NOT the engine's `isInvokedDirectly`, and renamed so the two
+// cannot be confused: that one matches argv[1]'s basename against the
+// configured brand, which is right for a binary on PATH. This compares resolved
+// realpaths, which is what keeps a symlinked checkout from auto-running under
+// vitest. Renaming is this repo's documented answer to a homonym.
+function invokedAsThisModule(): boolean {
   const argv1 = process.argv[1];
   if (argv1 === undefined) return false;
   const modulePath = fileURLToPath(import.meta.url);
@@ -836,6 +798,6 @@ function isInvokedDirectly(): boolean {
   return import.meta.url === pathToFileURL(argv1).href;
 }
 
-if (isInvokedDirectly()) {
+if (invokedAsThisModule()) {
   run().catch((e) => fail((e as Error).message));
 }

@@ -6,7 +6,19 @@ import type { CoverageStats, EvidenceItem } from "./types.js";
 //   [issue#123] [pr#45] [discussion#7]   typed issue / PR / discussion alias
 //   [so:678]              StackOverflow question alias
 //   [code:path] [docs:x] [web:x] [release:v1.2] [commit:abc123]   typed aliases
-export const TOKEN_RE = /\[([^\]\n]+)\](?!\()/g;
+// The reading is the engine's as of webindex v1.15.0; the SHAPES below are
+// ultradoc's, and the engine deliberately refuses to guess them.
+export { TOKEN_RE, stripHtmlComments, stripInlineCode, codeMask } from "./engine.js";
+import {
+  citationTokensIn as engineCitationTokens,
+  type ClaimUnit,
+  codeMask,
+  collectCitations as engineCollectCitations,
+  extractClaimUnits as engineClaimUnits,
+  stripHtmlComments,
+  stripInlineCode,
+  TOKEN_RE,
+} from "./engine.js";
 export const SHAPE = {
   id: /^E\d+$/,
   numbered: /^(issue|pr|discussion)#\d+$/,
@@ -112,30 +124,19 @@ export function resolveAlias(tok: string, evidence: EvidenceItem[]): EvidenceIte
 // claim in ANSWER.md with the evidence it cites, so an agent can judge support,
 // and by `check` to gate on citation resolution.
 // ---------------------------------------------------------------------------
-// `declared` marks a unit sitting under an "Unknowns" heading: a declared
-// absence of evidence. It asserts nothing ABOUT the project, so no citation
-// could ever ground it — see UNKNOWNS_HEADING_RE.
-export type ClaimUnit = ({ kind: "text"; text: string } | { kind: "list"; items: string[] }) & { declaredUnknown?: boolean };
+// A claim unit is the engine's as of webindex v1.15.0. The flag this file used
+// to carry — "sits under an Unknowns heading" — is expressed through the
+// engine's generic `section` tag, so the engine never learns what an unknown is
+// while this file keeps deciding.
+export type { ClaimUnit } from "./engine.js";
 
-export function stripHtmlComments(text: string): string {
-  return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+/** Whether a unit sits in a declared-unknowns section. */
+export function isDeclaredUnknown(u: ClaimUnit): boolean {
+  return u.section === UNKNOWNS_SECTION;
 }
-export function stripInlineCode(line: string): string {
-  return line.replace(/`[^`\n]*`/g, " ");
-}
-export function codeMask(lines: string[]): boolean[] {
-  const mask = new Array(lines.length).fill(false);
-  let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*(```|~~~)/.test(lines[i]!)) {
-      mask[i] = true;
-      inFence = !inFence;
-      continue;
-    }
-    mask[i] = inFence;
-  }
-  return mask;
-}
+
+const UNKNOWNS_SECTION = "unknown";
+
 function isHeadingOrRule(t: string): boolean {
   return /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
 }
@@ -164,89 +165,45 @@ function isListItem(line: string): boolean {
   return /^\s*([-*+]|\d+\.)\s+\S/.test(line);
 }
 
-// Split ANSWER.md into claim units: a text block / table row is one claim; a
-// list group yields one claim per item. Code fences and HTML comments are
-// excluded (a citation in code/comment can't ground a claim); headings/rules are
-// structure. Mirrors how the grounded report is read.
-// Structure DETECTION runs on the inline-code-stripped form (a pipe or [E#]
-// inside backticks is not structure), but the STORED text keeps the original
-// spans so downstream warnings echo the claim verbatim (`makeRetriable` must
-// not vanish from an uncited-claim excerpt).
-export function extractClaimUnits(text: string): ClaimUnit[] {
-  const lines = stripHtmlComments(text).split("\n");
-  const code = codeMask(lines);
-  const units: ClaimUnit[] = [];
-  let prose: string[] = [];
-  // Sticky from an "Unknowns" heading until the next heading of any level.
-  let declaredUnknown = false;
-  const tag = <U extends ClaimUnit>(u: U): U => (declaredUnknown ? { ...u, declaredUnknown: true } : u);
-  const flush = () => {
-    if (prose.length) units.push(tag({ kind: "text", text: prose.join(" ") }));
-    prose = [];
-  };
-  let i = 0;
-  while (i < lines.length) {
-    if (code[i]) {
-      flush();
-      i++;
-      continue;
-    }
-    const raw = lines[i]!;
-    const line = stripInlineCode(raw);
-    const t = line.trim();
-    if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
-      flush();
-      if (/^#{1,6}\s/.test(t)) declaredUnknown = UNKNOWNS_HEADING_RE.test(t);
-      i++;
-      continue;
-    }
-    if (isTableRow(line)) {
-      flush();
-      units.push(tag({ kind: "text", text: tableCells(raw) }));
-      i++;
-      continue;
-    }
-    if (/^\s*>/.test(line)) {
-      const dequoted = raw.replace(/^\s*>\s?/, "").trim();
-      if (dequoted) prose.push(dequoted);
-      i++;
-      continue;
-    }
-    if (isListItem(line)) {
-      flush();
-      const items: string[] = [];
-      while (i < lines.length && !code[i]) {
-        const rawL = lines[i]!;
-        const l = stripInlineCode(rawL);
-        const tt = l.trim();
-        if (tt === "" || isHeadingOrRule(tt) || isTableSeparator(l) || isTableRow(l)) break;
-        if (isListItem(l)) items.push(rawL.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
-        else if (items.length) items[items.length - 1] += " " + rawL.trim();
-        else items.push(rawL.trim());
-        i++;
-      }
-      units.push(tag({ kind: "list", items }));
-      continue;
-    }
-    prose.push(raw);
-    i++;
-  }
-  flush();
-  return units;
+/**
+ * Split ANSWER.md into claim units.
+ *
+ * The parser is the engine's; the four reading decisions below are ultradoc's,
+ * and each is a real choice the engine refuses to make for a caller:
+ *
+ *   blockquotes "prose"   a quotation here is part of the surrounding claim,
+ *                         not a claim of its own.
+ *   keepInlineCode        the STORED text keeps its spans so an uncited-claim
+ *                         warning can echo the claim verbatim (`makeRetriable`
+ *                         must not vanish from the excerpt). Structure
+ *                         DETECTION still runs on the stripped form, so a pipe
+ *                         or an [E#] inside backticks is never read as markup.
+ *   skipTableHeader false every table row is a claim here.
+ *   sectionTag            an "Unknowns" heading opens a region that states what
+ *                         the evidence does NOT settle — the one kind of
+ *                         sentence a grounded answer must contain and can never
+ *                         cite. Without it `check --strict` and "always state
+ *                         the unknowns" contradict each other, and the agent
+ *                         resolves that by dropping the unknowns.
+ */
+export function claimUnitsOf(text: string): ClaimUnit[] {
+  return engineClaimUnits(text, {
+    blockquotes: "prose",
+    keepInlineCode: true,
+    skipTableHeader: false,
+    sectionTag: (heading) => (UNKNOWNS_HEADING_RE.test(heading) ? UNKNOWNS_SECTION : undefined),
+  });
 }
 
-// The citation tokens within a claim (inline code stripped, so a [E#] in
-// backticks is not a citation).
-export function citationTokensIn(text: string): string[] {
-  const masked = stripInlineCode(text);
-  const out: string[] = [];
-  TOKEN_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = TOKEN_RE.exec(masked))) {
-    const tok = m[1]!.trim();
-    if (isCitation(tok) && !out.includes(tok)) out.push(tok);
-  }
-  return out;
+/**
+ * The citation tokens within a claim.
+ *
+ * The scan is the engine's; `isCitation` is ultradoc's, and the engine has no
+ * default for it on purpose — [E12], [issue#45] and [code:src/foo.ts] are
+ * citations to this tool and prose to every other one.
+ */
+export function citationsIn(text: string): string[] {
+  return engineCitationTokens(text, isCitation);
 }
 
 // The evidence ids a claim cites: a canonical [E#] directly, plus a typed alias
@@ -258,7 +215,7 @@ export function citedEvidenceIds(text: string, evidence: EvidenceItem[]): string
   const push = (id: string) => {
     if (!out.includes(id)) out.push(id);
   };
-  for (const tok of citationTokensIn(text)) {
+  for (const tok of citationsIn(text)) {
     if (SHAPE.id.test(tok)) {
       if (ids.has(tok)) push(tok);
       continue;
@@ -284,23 +241,22 @@ export interface CollectedCitations {
   fencedOnly: string[];
 }
 
-// Split an answer's citations into grounding tokens vs fence-only tokens. The
-// grounding set is what `check` resolves against evidence; fence-only tokens are
-// surfaced so a citation buried in a code block doesn't silently "count".
-export function collectCitations(text: string): CollectedCitations {
-  const tokens: string[] = [];
-  for (const u of extractClaimUnits(text)) {
-    const parts = u.kind === "text" ? [u.text] : u.items;
-    for (const part of parts) for (const t of citationTokensIn(part)) if (!tokens.includes(t)) tokens.push(t);
-  }
-  const all: string[] = [];
-  TOKEN_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = TOKEN_RE.exec(text))) {
-    const tok = m[1]!.trim();
-    if (isCitation(tok) && !all.includes(tok)) all.push(tok);
-  }
-  return { tokens, fencedOnly: all.filter((t) => !tokens.includes(t)) };
+/**
+ * Split an answer's citations into the ones that ground a claim and the ones
+ * that only look like it.
+ *
+ * The second list is the useful half: a token living solely inside a fence or
+ * inline code reads as grounding to someone skimming the file and grounds
+ * nothing. What to DO about it stays with `check`.
+ */
+export function collectCitationTokens(text: string): CollectedCitations {
+  const { grounding, inertOnly } = engineCollectCitations(text, isCitation, {
+    blockquotes: "prose",
+    keepInlineCode: true,
+    skipTableHeader: false,
+    sectionTag: (heading) => (UNKNOWNS_HEADING_RE.test(heading) ? UNKNOWNS_SECTION : undefined),
+  });
+  return { tokens: grounding, fencedOnly: inertOnly };
 }
 
 // Claim units shorter than this (after trimming) are exempt from the coverage
@@ -314,12 +270,12 @@ const MIN_CLAIM_LEN = 25;
 export function claimCoverage(text: string, _evidence: EvidenceItem[]): CoverageStats {
   const claims: string[] = [];
   const unknowns: string[] = [];
-  for (const u of extractClaimUnits(text)) {
+  for (const u of claimUnitsOf(text)) {
     // A declared unknown asserts the ABSENCE of evidence; requiring it to cite
     // evidence would make "state your unknowns" and `--strict` mutually
     // exclusive, and the unknowns would be what gets dropped. Exempted, but
     // counted and reported — an exemption nobody can see is a loophole.
-    const sink = u.declaredUnknown ? unknowns : claims;
+    const sink = isDeclaredUnknown(u) ? unknowns : claims;
     if (u.kind === "text") sink.push(u.text);
     else for (const it of u.items) sink.push(it);
   }
@@ -333,7 +289,7 @@ export function claimCoverage(text: string, _evidence: EvidenceItem[]): Coverage
     // keeps the original spans.
     if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
     counted++;
-    if (citationTokensIn(trimmed).length > 0) cited++;
+    if (citationsIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
   }
   let declaredUnknowns = 0;
@@ -345,7 +301,7 @@ export function claimCoverage(text: string, _evidence: EvidenceItem[]): Coverage
     // An "unknown" that cites evidence is not an unknown — it is a claim parked
     // where the coverage gate cannot see it. Surface it rather than exempt it
     // silently.
-    if (citationTokensIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
+    if (citationsIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
   }
   return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited, declaredUnknowns, unknownsWithCitations };
 }

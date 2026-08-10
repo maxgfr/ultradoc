@@ -23,14 +23,11 @@ function rank(s: SourceKind): number {
   return i < 0 ? 99 : i;
 }
 
-// Two-digit zero pad for the readable run id.
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-export function runId(d: Date = new Date()): string {
-  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` + `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
+// The readable run id is the engine's as of v1.15.0 — three repos had the same
+// timestamp format, which for a shared on-disk convention is exactly the thing
+// that must not be written twice.
+export { runId } from "./engine.js";
+import { runId } from "./engine.js";
 
 // Persist runs beside the clone under <repoDir>/.ultradoc/runs/<id> — the same
 // stable, commit-pinned data home as the index and OVERVIEW.md — so a repo's

@@ -119,6 +119,10 @@ for (const f of files) {
   }
 }
 
+// 120 against a real 124, after adopting webindex v1.15's harness layer:
+// atomic writes, the run id, the CLI parser, the citation reading and the whole
+// orchestration emitter.
+//
 // Raise this when a layer lands. Never lower it to make a red run pass — a drop
 // means a layer stopped being used, which is a decision, not a detail.
 //
@@ -130,7 +134,7 @@ for (const f of files) {
 // layer, the clone and its history depth, the fetch stack and the Firecrawl
 // client. engine-forks.json is now EMPTY — this floor and that empty object say
 // the same thing from two directions, and the first one to move is the warning.
-const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 100);
+const FLOOR = Number(process.env.ENGINE_USAGE_FLOOR ?? 120);
 
 let ok = true;
 

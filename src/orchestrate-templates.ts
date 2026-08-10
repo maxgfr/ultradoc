@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { PhaseInfo } from "./orchestrate.js";
+import type { PhaseInfo } from "./engine.js";
 
 // ---------------------------------------------------------------------------
 // Templates for `ultradoc orchestrate` — the generator that turns the run's
@@ -24,7 +24,7 @@ Return ONLY the structured output specified above. Do NOT write, edit, or delete
 // Structured-output schemas the emitted workflows pass to agent(..., { schema }).
 // They mirror what the folds enforce — a verdict fragment that validates here
 // still gets re-checked by `verify --apply` + `check --semantic` at fold time.
-const DRILL_SCHEMA = {
+export const DRILL_SCHEMA = {
   type: "object",
   required: ["items"],
   properties: {
@@ -48,7 +48,7 @@ const DRILL_SCHEMA = {
   },
 };
 
-const VERIFY_SCHEMA = {
+export const VERIFY_SCHEMA = {
   type: "object",
   required: ["verdicts"],
   properties: {
@@ -68,7 +68,7 @@ const VERIFY_SCHEMA = {
   },
 };
 
-const DOC_SCHEMA = {
+export const DOC_SCHEMA = {
   type: "object",
   required: ["sections"],
   properties: {
@@ -86,97 +86,6 @@ const DOC_SCHEMA = {
     },
   },
 };
-
-interface PhaseSpec {
-  role: string;
-  title: string;
-  schema: unknown;
-  description: (items: number) => string;
-  /** How the orchestrator folds the returned fragments (one line, shown in the workflow tail). */
-  fold: string;
-  /** The orchestrator's gate step after the fold, shown as a comment in the workflow tail + in the runbook. */
-  applyHint: (engineAbs: string, worklist: string, runAbs: string) => string;
-}
-
-const PHASE_SPECS: Record<string, PhaseSpec> = {
-  drill: {
-    role: "explorer",
-    title: "Drill",
-    schema: DRILL_SCHEMA,
-    description: (n) => `Fan out the ${n} retrieval drill cell(s) of an ultradoc run (explorer fan-out, triaged returns)`,
-    fold: "triages the returned items into the answer (citing resolvable [E#]/refs, drilling any new lead itself)",
-    applyHint: (engine, _worklist, run) => `node ${engine} check --run ${run} --strict`,
-  },
-  verify: {
-    role: "skeptic",
-    title: "Verify",
-    schema: VERIFY_SCHEMA,
-    description: (n) => `Adversarially verify the ${n} claim↔evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
-    fold: 'merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ … ] })',
-    applyHint: (engine, _worklist, run) => `node ${engine} verify --apply verdicts.json --run ${run} && node ${engine} check --run ${run} --semantic`,
-  },
-  doc: {
-    role: "section-writer",
-    title: "Write",
-    schema: DOC_SCHEMA,
-    description: (n) => `Draft the ${n} outline section(s) of an ultradoc reference doc (section-writer fan-out)`,
-    fold: "assembles the returned section drafts into DOC.md in plan order",
-    applyHint: (engine, _worklist, run) => `node ${engine} check --run ${run}`,
-  },
-};
-
-export function phaseSpec(name: string): PhaseSpec {
-  const spec = PHASE_SPECS[name];
-  if (!spec) throw new Error(`no phase spec for "${name}"`);
-  return spec;
-}
-
-/** Chunk worklist ids into batches, one subagent per batch (order-preserving, deterministic). */
-export function toBatches(ids: string[], batchSize: number): string[][] {
-  const out: string[][] = [];
-  for (let i = 0; i < ids.length; i += batchSize) out.push(ids.slice(i, i + batchSize));
-  return out;
-}
-
-export function phaseWorkflowScript(ph: PhaseInfo, runAbs: string, engineAbs: string, batchSize: number): string {
-  const spec = phaseSpec(ph.name);
-  const scriptPath = join(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
-  const meta = { name: `ultradoc-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
-  return [
-    `export const meta = ${JSON.stringify(meta)}`,
-    ``,
-    `// NOT a plain Node script: launch via the Workflow tool — Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
-    `// Emitted by \`ultradoc orchestrate\` from the CURRENT worklist. The worklist is the source`,
-    `// of truth: if it changes, re-run \`orchestrate --phase ${ph.name}\` before launching.`,
-    ``,
-    `// Constants for THIS run (injected at emit time; no Date.now/Math.random in this harness).`,
-    `const RUN = ${JSON.stringify(runAbs)}`,
-    `const ENGINE = ${JSON.stringify(engineAbs)}`,
-    `const WORKLIST = ${JSON.stringify(ph.worklist)}`,
-    `const AGENTS = RUN + '/orchestration/agents'`,
-    `const BATCHES = ${JSON.stringify(toBatches(ph.ids, batchSize))}`,
-    `const SCHEMA = ${JSON.stringify(spec.schema)}`,
-    ``,
-    `function contract(name, extra) {`,
-    `  return 'Read and follow the dispatch contract at ' + AGENTS + '/' + name + '.md VERBATIM.\\n'`,
-    `    + 'Constants: RUN=' + RUN + '  ENGINE=' + ENGINE + '  WORKLIST=' + WORKLIST + '.\\n'`,
-    `    + 'Invoke the engine only by its ABSOLUTE path: node ' + ENGINE + ' <cmd> — read-only commands only.'`,
-    `    + (extra ? '\\n' + extra : '')`,
-    `}`,
-    ``,
-    `log('ultradoc ${ph.name}: ' + ${JSON.stringify(String(ph.items))} + ' item(s) across ' + BATCHES.length + ' agent(s)')`,
-    ``,
-    `phase(${JSON.stringify(spec.title)})`,
-    `const results = await pipeline(BATCHES, (batch, _item, i) =>`,
-    `  agent(contract('${spec.role}', 'ITEMS=' + batch.join(',')), { label: '${ph.name}:' + (i + 1), phase: ${JSON.stringify(spec.title)}, agentType: 'general-purpose', schema: SCHEMA }))`,
-    ``,
-    `// One-writer rule: this workflow only COLLECTS fragments. The main agent`,
-    `// ${spec.fold}, then runs:`,
-    `//   ${spec.applyHint(engineAbs, ph.worklist, runAbs)}`,
-    `return { phase: ${JSON.stringify(ph.name)}, worklist: WORKLIST, results: results.filter(Boolean) }`,
-    ``,
-  ].join("\n");
-}
 
 export function agentContracts(runAbs: string, engineAbs: string): Record<string, string> {
   // Function form: a path containing `$&`-style sequences must substitute literally.
@@ -240,14 +149,16 @@ ${footer}`,
   };
 }
 
-export function runbookMd(phases: PhaseInfo[], runAbs: string, engineAbs: string): string {
+// ultradoc's OWN runbook prose — its pipeline, not shared machinery. Handed
+// to the engine as the preamble; the engine appends its per-phase listing.
+// No H1 and no `Run:` line: the engine emits both above this.
+export function runbookPreamble(phases: PhaseInfo[], runAbs: string, engineAbs: string): string[] {
   const status = phases
     .map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`)
     .join("\n");
   const engine = `node ${engineAbs}`;
-  return `# ultradoc — sequential RUNBOOK (eco / no-subagent fallback)
-
-Run: \`${runAbs}\` · Engine: \`${engine}\`
+  return [
+    `Engine: \`${engine}\`
 
 Generated by \`ultradoc orchestrate\` from the CURRENT run state. This sequential path is
 correctness-identical to the multi-agent workflows — same worklists, same contracts, same
@@ -269,5 +180,6 @@ ${status}
 6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join(runAbs, "DOC.plan.json")}\` + \`${join(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join(runAbs, "DOC.md")}\` in plan order; then steps 4–5 (the gates auto-detect DOC.md).
 
 With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` — you stay the sole writer either way.
-`;
+`,
+  ];
 }

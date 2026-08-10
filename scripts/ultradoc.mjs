@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import { join as join46, resolve as resolve6 } from "path";
+import { join as join45, resolve as resolve5 } from "path";
 import { pathToFileURL as pathToFileURL3, fileURLToPath as fileURLToPath4 } from "url";
-import { existsSync as existsSync23, realpathSync as realpathSync4 } from "fs";
+import { existsSync as existsSync21, realpathSync as realpathSync4 } from "fs";
 
 // src/vendor/codeindex-engine.mjs
 import { spawnSync } from "child_process";
@@ -2011,13 +2011,13 @@ async function Module2(moduleArg = {}) {
       }
       readAsync = /* @__PURE__ */ __name(async (url) => {
         if (isFileURI(url)) {
-          return new Promise((resolve32, reject) => {
+          return new Promise((resolve33, reject) => {
             var xhr = new XMLHttpRequest();
             xhr.open("GET", url, true);
             xhr.responseType = "arraybuffer";
             xhr.onload = () => {
               if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-                resolve32(xhr.response);
+                resolve33(xhr.response);
                 return;
               }
               reject(xhr.status);
@@ -2213,9 +2213,9 @@ async function Module2(moduleArg = {}) {
     __name(receiveInstantiationResult, "receiveInstantiationResult");
     var info2 = getWasmImports();
     if (Module["instantiateWasm"]) {
-      return new Promise((resolve32, reject) => {
+      return new Promise((resolve33, reject) => {
         Module["instantiateWasm"](info2, (mod, inst) => {
-          resolve32(receiveInstance(mod, inst));
+          resolve33(receiveInstance(mod, inst));
         });
       });
     }
@@ -3546,8 +3546,8 @@ async function Module2(moduleArg = {}) {
   if (runtimeInitialized) {
     moduleRtn = Module;
   } else {
-    moduleRtn = new Promise((resolve32, reject) => {
-      readyPromiseResolve = resolve32;
+    moduleRtn = new Promise((resolve33, reject) => {
+      readyPromiseResolve = resolve33;
       readyPromiseReject = reject;
     });
   }
@@ -7754,50 +7754,50 @@ var init_extract = __esm({
 });
 function topDocComment(content) {
   const lines = content.split(/\r?\n/);
-  const collected = [];
+  const collected2 = [];
   let inBlock = null;
   for (let i2 = 0; i2 < Math.min(lines.length, 40); i2++) {
     const raw = lines[i2];
     const line = raw.trim();
     if (inBlock === "c") {
-      collected.push(line.replace(/\*+\/\s*$/, "").replace(/^\*+/, "").trim());
+      collected2.push(line.replace(/\*+\/\s*$/, "").replace(/^\*+/, "").trim());
       if (line.includes("*/")) inBlock = null;
       continue;
     }
     if (inBlock === "py") {
       if (line.includes('"""') || line.includes("'''")) {
-        collected.push(line.replace(/['"]{3}.*$/, "").trim());
+        collected2.push(line.replace(/['"]{3}.*$/, "").trim());
         inBlock = null;
-      } else collected.push(line);
+      } else collected2.push(line);
       continue;
     }
-    if (line === "" && collected.length === 0) continue;
+    if (line === "" && collected2.length === 0) continue;
     if (line.startsWith("#!")) continue;
     if (line.startsWith("//")) {
-      collected.push(line.replace(/^\/+/, "").trim());
+      collected2.push(line.replace(/^\/+/, "").trim());
       continue;
     }
     if (line.startsWith("#")) {
-      collected.push(line.replace(/^#+/, "").trim());
+      collected2.push(line.replace(/^#+/, "").trim());
       continue;
     }
     if (line.startsWith("/*")) {
-      collected.push(line.replace(/^\/\*+!?/, "").replace(/\*+\/\s*$/, "").trim());
+      collected2.push(line.replace(/^\/\*+!?/, "").replace(/\*+\/\s*$/, "").trim());
       if (!line.includes("*/")) inBlock = "c";
       continue;
     }
     if (line.startsWith('"""') || line.startsWith("'''")) {
       const rest = line.slice(3);
-      if (rest.includes('"""') || rest.includes("'''")) collected.push(rest.replace(/['"]{3}.*$/, "").trim());
+      if (rest.includes('"""') || rest.includes("'''")) collected2.push(rest.replace(/['"]{3}.*$/, "").trim());
       else {
-        collected.push(rest.trim());
+        collected2.push(rest.trim());
         inBlock = "py";
       }
       continue;
     }
     break;
   }
-  const text = collected.filter((l) => l && !isDirective(l) && !isBanner(l)).join(" ").replace(/\s+/g, " ").trim();
+  const text = collected2.filter((l) => l && !isDirective(l) && !isBanner(l)).join(" ").replace(/\s+/g, " ").trim();
   if (text.length < 8) return void 0;
   const sentence = /^(.*?[.!?])(\s|$)/.exec(text);
   return (sentence ? sentence[1] : text).slice(0, 200);
@@ -14062,7 +14062,7 @@ runExtractWorker(workerData.input, (o) => parentPort.postMessage(o)).catch((e) =
   try {
     const outputs = await Promise.all(
       shards.map(
-        (jobsForShard) => new Promise((resolve32, reject) => {
+        (jobsForShard) => new Promise((resolve33, reject) => {
           const w = new Worker(bootstrap, {
             eval: true,
             workerData: { input: { jobs: jobsForShard, grammarKeys: wanted, maxCallsPerFile: opts.maxCallsPerFile } }
@@ -14076,7 +14076,7 @@ runExtractWorker(workerData.input, (o) => parentPort.postMessage(o)).catch((e) =
             fn();
           };
           w.once("message", (m) => {
-            settle(() => resolve32(m));
+            settle(() => resolve33(m));
             void w.terminate();
           });
           w.once("error", (e) => settle(() => reject(e)));
@@ -16004,7 +16004,7 @@ ${HELP}`);
 var VERSION = "2.22.0";
 
 // src/clone.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, renameSync as renameSync2 } from "fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, renameSync as renameSync3 } from "fs";
 import { tmpdir as tmpdir4 } from "os";
 import { join as join24 } from "path";
 
@@ -16070,8 +16070,13 @@ import { spawnSync as spawnSync22 } from "child_process";
 import { existsSync as existsSync32, mkdirSync as mkdirSync22, readFileSync as readFileSync22, writeFileSync as writeFileSync22 } from "fs";
 import { tmpdir as tmpdir3 } from "os";
 import { dirname as dirname5, join as join32 } from "path";
-import { existsSync as existsSync52, readdirSync as readdirSync32, readFileSync as readFileSync42, realpathSync as realpathSync2, statSync as statSync32 } from "fs";
-import { basename as basename22, dirname as dirname22, join as join52, resolve as resolve22, sep as sep3 } from "path";
+import { mkdirSync as mkdirSync32, renameSync as renameSync2, unlinkSync, writeFileSync as writeFileSync32 } from "fs";
+import { readFileSync as readFileSync42 } from "fs";
+import { existsSync as existsSync52 } from "fs";
+import { join as join72, resolve as resolve22 } from "path";
+import { join as join62 } from "path";
+import { existsSync as existsSync62, readdirSync as readdirSync32, readFileSync as readFileSync52, realpathSync as realpathSync2, statSync as statSync32 } from "fs";
+import { basename as basename32, dirname as dirname22, join as join82, resolve as resolve32, sep as sep3 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 import { createInterface as createInterface2 } from "readline";
 import { createServer as createHttpServer } from "http";
@@ -16265,12 +16270,12 @@ function binaryName(name2) {
   return process.platform === "win32" && name2 === "npx" ? "npx.cmd" : name2;
 }
 function runWithInput(cmd, args2, input, timeoutMs) {
-  return new Promise((resolve32) => {
+  return new Promise((resolve42) => {
     let child;
     try {
       child = spawn(binaryName(cmd), args2, { stdio: ["pipe", "pipe", "pipe"] });
     } catch (e) {
-      resolve32({ ok: false, stdout: "", error: e.message });
+      resolve42({ ok: false, stdout: "", error: e.message });
       return;
     }
     const chunks = [];
@@ -16280,7 +16285,7 @@ function runWithInput(cmd, args2, input, timeoutMs) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve32(r);
+      resolve42(r);
     };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
@@ -17499,7 +17504,17 @@ async function fetchAndExtract(url, opts = {}) {
   const title = isHtml ? htmlTitle(res.body) : void 0;
   const canonical = isHtml ? htmlCanonicalUrl(res.body) : void 0;
   const metaDescription = isHtml ? metaDescriptionOf(res.body) : void 0;
-  return { text, title, canonical, metaDescription, finalUrl: res.url, status: res.status, note: firecrawlNote, ...validators };
+  return {
+    text,
+    title,
+    canonical,
+    metaDescription,
+    ...opts.keepHtml && isHtml ? { html: res.body } : {},
+    finalUrl: res.url,
+    status: res.status,
+    note: firecrawlNote,
+    ...validators
+  };
 }
 var CONSENT_PATTERNS = [
   /\bcookies?\b/i,
@@ -17575,13 +17590,13 @@ function sh2(cmd, args2, opts = {}) {
 }
 function shAsync(cmd, args2, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? defaultTimeoutMs();
-  return new Promise((resolve32) => {
+  return new Promise((resolve42) => {
     let settled = false;
     const done = (r) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve32(r);
+      resolve42(r);
     };
     const child = spawn2(cmd, args2, { cwd: opts.cwd, env: opts.env ?? process.env, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -18155,7 +18170,482 @@ async function mapLimit(items, limit, fn) {
   await Promise.all(workers);
   return results;
 }
+var flagged = false;
+function isNoWrite() {
+  return flagged || envFlag("NO_WRITE");
+}
+var collected = [];
+function ensureDir(dir) {
+  if (isNoWrite()) return;
+  mkdirSync32(dir, { recursive: true });
+}
+function writeArtifact(path, content) {
+  if (isNoWrite()) {
+    const at = collected.findIndex((a) => a.path === path);
+    if (at !== -1) collected[at] = { path, content };
+    else collected.push({ path, content });
+    return path;
+  }
+  writeFileAtomic(path, content);
+  return path;
+}
+var tmpCounter = 0;
+function writeFileAtomic(path, content) {
+  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
+  try {
+    writeFileSync32(tmp, content);
+    renameSync2(tmp, path);
+  } catch (e) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+    }
+    throw e;
+  }
+}
 var DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
+function runId(d = /* @__PURE__ */ new Date()) {
+  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+function shq(s) {
+  return `'${s.replace(/\r?\n/g, " ").replaceAll("'", `'"'"'`)}'`;
+}
+function readJsonSafe(path) {
+  try {
+    return JSON.parse(readFileSync42(path, "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function ollamaBase() {
+  return env("OLLAMA") ?? "http://localhost:11434";
+}
+function embedConcurrency() {
+  return Math.max(1, envInt("EMBED_CONCURRENCY", 4));
+}
+function embedBatch() {
+  return Math.max(1, envInt("EMBED_BATCH", 16));
+}
+var probed;
+async function probeOllama(base = ollamaBase()) {
+  if (base.toLowerCase() === "off") return false;
+  if (probed !== void 0) return probed;
+  const r = await httpJson("GET", `${base.replace(/\/+$/, "")}/api/tags`, void 0, { timeoutMs: 2e3, retries: 0 });
+  probed = r.ok;
+  return probed;
+}
+async function embed(texts, opts = {}) {
+  const model = opts.model ?? embedModel();
+  if (texts.length === 0) return { vectors: [], model };
+  const base = (opts.base ?? ollamaBase()).replace(/\/+$/, "");
+  if (base.toLowerCase() === "off") return { vectors: [], model, note: "embeddings are disabled (OLLAMA=off)." };
+  if (!await probeOllama(base)) {
+    return { vectors: [], model, note: `no embedding server at ${base} \u2014 \`${brand().cli} semantic up\` starts Ollama and pulls ${model}.` };
+  }
+  const batches = [];
+  const width = embedBatch();
+  for (let i2 = 0; i2 < texts.length; i2 += width) batches.push(texts.slice(i2, i2 + width));
+  let note;
+  const results = await mapLimit(batches, opts.concurrency ?? embedConcurrency(), async (batch) => {
+    const r = await httpJson("POST", `${base}/api/embed`, { model, input: batch }, { timeoutMs: 6e4 });
+    const got = r.ok ? r.data?.embeddings : void 0;
+    if (!got || got.length !== batch.length) {
+      note ??= `embedding failed at ${base} (${r.error ?? `status ${r.status}`}) \u2014 is \`${model}\` pulled? \`${brand().cli} semantic up\` pulls it.`;
+      return void 0;
+    }
+    return got;
+  });
+  if (results.some((r) => r === void 0)) return { vectors: [], model, ...note ? { note } : {} };
+  return { vectors: results.flat(), model };
+}
+async function embedOne(text, opts = {}) {
+  const r = await embed([text], opts);
+  return r.vectors[0];
+}
+var TOKEN_RE2 = /\[([^\]\n]+)\](?!\()/g;
+function stripHtmlComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+}
+function stripInlineCode(line) {
+  return line.replace(/`[^`\n]*`/g, " ");
+}
+function codeMask(lines) {
+  const mask = new Array(lines.length).fill(false);
+  let inFence = false;
+  for (let i2 = 0; i2 < lines.length; i2++) {
+    if (/^\s*(```|~~~)/.test(lines[i2])) {
+      mask[i2] = true;
+      inFence = !inFence;
+      continue;
+    }
+    mask[i2] = inFence;
+  }
+  return mask;
+}
+var isHeadingOrRule = (t) => /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
+var isTableSeparator = (line) => /\|/.test(line) && /^[\s:|-]+$/.test(line.trim()) && /-/.test(line);
+var isTableRow = (line) => /\|/.test(line.trim()) && !isTableSeparator(line);
+var isListItem = (line) => /^\s*([-*+]|\d+\.)\s+\S/.test(line);
+function tableCells(line) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c2) => c2.trim()).join(" ");
+}
+function extractClaimUnits(text, opts = {}) {
+  const lines = stripHtmlComments(text).split("\n");
+  const code = codeMask(lines);
+  const extra = opts.exclude ? opts.exclude(lines) : [];
+  const skip = (i22) => code[i22] === true || extra[i22] === true;
+  const quoteMode = opts.blockquotes ?? "unit";
+  const skipHeader = opts.skipTableHeader !== false;
+  const stored = (raw) => opts.keepInlineCode ? raw : stripInlineCode(raw);
+  const units = [];
+  let prose = [];
+  let section;
+  const tag = (u) => section === void 0 ? u : { ...u, section };
+  const flush = () => {
+    if (prose.length) units.push(tag({ kind: "text", text: prose.join(" ") }));
+    prose = [];
+  };
+  let i2 = 0;
+  while (i2 < lines.length) {
+    if (skip(i2)) {
+      flush();
+      i2++;
+      continue;
+    }
+    const raw = lines[i2];
+    const line = stripInlineCode(raw);
+    const t = line.trim();
+    if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
+      flush();
+      if (/^#{1,6}\s/.test(t)) section = opts.sectionTag?.(t);
+      i2++;
+      continue;
+    }
+    if (isTableRow(line)) {
+      flush();
+      const next = i2 + 1 < lines.length && !skip(i2 + 1) ? stripInlineCode(lines[i2 + 1]) : "";
+      if (!(skipHeader && isTableSeparator(next))) units.push(tag({ kind: "text", text: tableCells(stored(raw)) }));
+      i2++;
+      continue;
+    }
+    if (/^\s*>/.test(line)) {
+      if (quoteMode === "prose") {
+        const dequoted = stored(raw).replace(/^\s*>\s?/, "").trim();
+        if (dequoted) prose.push(dequoted);
+        i2++;
+        continue;
+      }
+      flush();
+      const quoted = [];
+      while (i2 < lines.length && !skip(i2)) {
+        if (!/^\s*>/.test(stripInlineCode(lines[i2]))) break;
+        const dq = stored(lines[i2]).replace(/^\s*>\s?/, "").trim();
+        if (dq) quoted.push(dq);
+        i2++;
+      }
+      if (quoted.length) units.push(tag({ kind: "text", text: quoted.join(" ") }));
+      continue;
+    }
+    if (isListItem(line)) {
+      flush();
+      const items = [];
+      while (i2 < lines.length && !skip(i2)) {
+        const rawL = lines[i2];
+        const l = stripInlineCode(rawL);
+        const tt = l.trim();
+        if (tt === "" || isHeadingOrRule(tt) || isTableSeparator(l) || isTableRow(l)) break;
+        if (isListItem(l))
+          items.push(
+            stored(rawL).replace(/^\s*([-*+]|\d+\.)\s+/, "").trim()
+          );
+        else if (items.length) items[items.length - 1] += ` ${stored(rawL).trim()}`;
+        else items.push(stored(rawL).trim());
+        i2++;
+      }
+      units.push(tag({ kind: "list", items }));
+      continue;
+    }
+    prose.push(stored(raw));
+    i2++;
+  }
+  flush();
+  return units;
+}
+function unitTexts(unit) {
+  return unit.kind === "text" ? [unit.text] : unit.items;
+}
+function citationTokensIn(text, isCitation2) {
+  const masked = stripInlineCode(text);
+  const out2 = [];
+  for (const m of masked.matchAll(TOKEN_RE2)) {
+    const tok = m[1].trim();
+    if (isCitation2(tok) && !out2.includes(tok)) out2.push(tok);
+  }
+  return out2;
+}
+function collectCitations(text, isCitation2, opts = {}) {
+  const grounding = [];
+  for (const unit of extractClaimUnits(text, opts)) {
+    for (const part of unitTexts(unit)) {
+      for (const tok of citationTokensIn(part, isCitation2)) if (!grounding.includes(tok)) grounding.push(tok);
+    }
+  }
+  const all = [];
+  for (const m of text.matchAll(TOKEN_RE2)) {
+    const tok = m[1].trim();
+    if (isCitation2(tok) && !all.includes(tok)) all.push(tok);
+  }
+  return { grounding, inertOnly: all.filter((t) => !grounding.includes(t)) };
+}
+var WORKFLOW_FORBIDDEN = ["Date.now(", "Math.random(", "new Date("];
+function toBatches(ids, batchSize) {
+  const width = Math.max(1, Math.floor(batchSize));
+  const out2 = [];
+  for (let i2 = 0; i2 < ids.length; i2 += width) out2.push(ids.slice(i2, i2 + width));
+  return out2;
+}
+function assertWorkflowSafe(script, phaseName) {
+  for (const bad of WORKFLOW_FORBIDDEN) {
+    if (script.includes(bad)) {
+      throw new Error(
+        `orchestrate: the emitted workflow for phase "${phaseName}" contains ${bad}) \u2014 it throws in the workflow harness, which must stay resumable. Inject the value as a constant at emit time instead.`
+      );
+    }
+  }
+}
+function emitWorkflowScript(phase, emission, runAbs, engineAbs, smallWorklist) {
+  const cli = brand().cli;
+  const scriptPath = join62(runAbs, "orchestration", `${phase.name}.workflow.mjs`);
+  const meta = { name: `${cli}-${phase.name}`, description: emission.description(phase.items), phases: [{ title: emission.title }] };
+  const floor = emission.collapseFloor ? emission.collapseFloor(smallWorklist) : smallWorklist;
+  const batches = phase.items <= floor ? [phase.ids] : toBatches(phase.ids, emission.batchSize);
+  const hint = emission.applyHint(runAbs, engineAbs, phase);
+  const script = [
+    `export const meta = ${JSON.stringify(meta)}`,
+    ``,
+    `// NOT a plain Node script: launch it with the Workflow tool \u2014`,
+    `// Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
+    `//`,
+    `// Emitted by \`${cli} orchestrate\` from the CURRENT worklist. The worklist is the`,
+    `// source of truth: if it changes, re-run \`${cli} orchestrate --phase ${phase.name}\``,
+    `// before launching this.`,
+    ``,
+    `// Constants for THIS run, injected at emit time \u2014 the harness forbids reading`,
+    `// the clock or a random source, so nothing here may compute them.`,
+    `const RUN = ${JSON.stringify(runAbs)}`,
+    `const ENGINE = ${JSON.stringify(engineAbs)}`,
+    `const WORKLIST = ${JSON.stringify(phase.worklist)}`,
+    `const AGENTS = RUN + '/orchestration/agents'`,
+    `const BATCHES = ${JSON.stringify(batches)}`,
+    `const SCHEMA = ${JSON.stringify(emission.schema)}`,
+    ``,
+    `function contract(role, extra) {`,
+    `  return 'Read and follow the dispatch contract at ' + AGENTS + '/' + role + '.md VERBATIM.\\n'`,
+    `    + 'Constants: RUN=' + RUN + '  ENGINE=' + ENGINE + '  WORKLIST=' + WORKLIST + '.\\n'`,
+    `    + 'Invoke the engine only by its ABSOLUTE path: node ' + ENGINE + ' <cmd> \u2014 and stay within the contract write rules.'`,
+    `    + (extra ? '\\n' + extra : '')`,
+    `}`,
+    ``,
+    `log(${JSON.stringify(`${cli} ${phase.name}: ${phase.items} item(s) across `)} + BATCHES.length + ' agent(s)')`,
+    ``,
+    `phase(${JSON.stringify(emission.title)})`,
+    `const results = await pipeline(BATCHES, (batch, _item, i) =>`,
+    `  agent(contract(${JSON.stringify(emission.role)}, 'ITEMS=' + batch.join(',')), {`,
+    `    label: ${JSON.stringify(`${phase.name}:`)} + (i + 1),`,
+    `    phase: ${JSON.stringify(emission.title)},`,
+    `    agentType: 'general-purpose',`,
+    `    schema: SCHEMA,`,
+    `  }))`,
+    ``,
+    `// One-writer rule: this workflow only COLLECTS the subagents' fragments.`,
+    `// The main agent runs the fold itself:`,
+    ...hint.map((l) => `//   ${l}`),
+    `return { phase: ${JSON.stringify(phase.name)}, worklist: WORKLIST, results: results.filter(Boolean) }`,
+    ``
+  ].join("\n");
+  assertWorkflowSafe(script, phase.name);
+  return script;
+}
+function runbookMd(phases, defs, runAbs, engineAbs, cli, preamble = []) {
+  const lines = [`# ${cli} \u2014 orchestration runbook`, ``, `Run: \`${runAbs}\``, ``];
+  if (preamble.length) lines.push(...preamble, ``);
+  lines.push(
+    `The subagents return fragments; **you** are the sole writer. Each phase below`,
+    `either fans out through its \`*.workflow.mjs\` or runs sequentially here \u2014 the`,
+    `fold at the end of a phase is yours either way.`,
+    ``
+  );
+  phases.forEach((ph, i2) => {
+    const emission = defs[i2];
+    lines.push(`## ${ph.name}`, ``);
+    if (!ph.ready) {
+      lines.push(`Not ready \u2014 \`${ph.worklist}\` does not exist yet. Produce it first:`, ``, `    ${ph.prerequisite}`, ``);
+      return;
+    }
+    lines.push(`${ph.items} item(s) in \`${ph.worklist}\`.`, ``);
+    if (ph.items === 0) {
+      lines.push(`Nothing to do for this phase.`, ``);
+      return;
+    }
+    if (emission) {
+      const batches = toBatches(ph.ids, emission.batchSize);
+      lines.push(
+        `Fan out: \`Workflow({ scriptPath: "${join62(runAbs, "orchestration", `${ph.name}.workflow.mjs`)}" })\``,
+        `(${batches.length} agent(s) of at most ${emission.batchSize} item(s), contract \`agents/${emission.role}.md\`).`,
+        ``,
+        `Sequentially instead: play \`agents/${emission.role}.md\` yourself over ${shq(ph.ids.join(","))}.`,
+        ``,
+        `Then fold, as the sole writer:`,
+        ``,
+        ...emission.applyHint(runAbs, engineAbs, ph).map((l) => `    ${l}`),
+        ``
+      );
+    }
+  });
+  return `${lines.join("\n")}
+`;
+}
+var SMALL_WORKLIST = 3;
+function listPhases(runDir2, engineAbs, defs) {
+  const run3 = resolve22(runDir2);
+  return defs.map((def) => {
+    const worklist = join72(run3, def.worklist);
+    const parsed = readJsonSafe(worklist);
+    const ids = parsed === void 0 ? void 0 : def.ids(parsed);
+    const ready = ids !== void 0;
+    return {
+      name: def.name,
+      ready,
+      worklist,
+      items: ids?.length ?? 0,
+      ids: ids ?? [],
+      prerequisite: def.prerequisite(run3, engineAbs, parsed),
+      ...ready ? { parsed } : {}
+    };
+  });
+}
+function orchestrateRun(runDir2, engineAbs, defs, contracts, opts = {}) {
+  const run3 = resolve22(runDir2);
+  if (!existsSync52(run3)) {
+    return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run3}`], phases: [] };
+  }
+  const phases = listPhases(run3, engineAbs, defs);
+  const byName = new Map(defs.map((d) => [d.name, d]));
+  const small = opts.smallWorklist ?? SMALL_WORKLIST;
+  let selected = phases.filter((p) => p.ready);
+  if (opts.phase !== void 0) {
+    const ph = phases.find((p) => p.name === opts.phase);
+    if (!ph) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`unknown phase "${opts.phase}" \u2014 expected one of: ${defs.map((d) => d.name).join(", ")}.`],
+        phases
+      };
+    }
+    if (!ph.ready) {
+      return {
+        exitCode: 2,
+        written: [],
+        notices: [],
+        errors: [`phase "${ph.name}" is not ready \u2014 its worklist ${ph.worklist} does not exist yet. Produce it first: ${ph.prerequisite}`],
+        phases
+      };
+    }
+    selected = [ph];
+  }
+  const orchDir = join72(run3, "orchestration");
+  const agentsDir = join72(orchDir, "agents");
+  ensureDir(join72(orchDir, "out"));
+  ensureDir(agentsDir);
+  const written = [];
+  const notices = [];
+  for (const [name2, content] of Object.entries(contracts(run3, engineAbs, phases))) {
+    written.push(writeArtifact(join72(agentsDir, `${name2}.md`), content));
+  }
+  if (!opts.eco) {
+    for (const ph of selected) {
+      const def = byName.get(ph.name);
+      if (!def) continue;
+      if (ph.items === 0) {
+        notices.push(`phase "${ph.name}": worklist is empty \u2014 nothing to orchestrate.`);
+        continue;
+      }
+      const floor = def.collapseFloor ? def.collapseFloor(small) : small;
+      if (ph.items <= floor) {
+        notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
+      }
+      written.push(writeArtifact(join72(orchDir, `${ph.name}.workflow.mjs`), emitWorkflowScript(ph, def, run3, engineAbs, small)));
+    }
+  }
+  written.push(writeArtifact(join72(orchDir, "RUNBOOK.md"), runbookMd(phases, defs, run3, engineAbs, brand().cli, opts.runbookPreamble)));
+  return { exitCode: 0, written, notices, errors: [], phases };
+}
+var EXIT_USAGE = 2;
+var UsageError = class extends Error {
+  exitCode = EXIT_USAGE;
+};
+function parseArgs(argv, spec) {
+  const commands = new Set(spec.commands);
+  const valueFlags = new Set(spec.valueFlags);
+  const boolFlags = new Set(spec.boolFlags);
+  if (argv.length === 0) return { kind: "help" };
+  if (isHelpWord(argv[0])) return { kind: "help" };
+  if (isVersionWord(argv[0])) return { kind: "version" };
+  const command = argv[0];
+  if (!commands.has(command)) {
+    throw new UsageError(`unknown command "${command}" \u2014 run --help for the supported commands`);
+  }
+  const values = {};
+  const bools = /* @__PURE__ */ new Set();
+  const positional = [];
+  for (let i2 = 1; i2 < argv.length; i2++) {
+    const arg = argv[i2];
+    if (arg === "--") {
+      positional.push(...argv.slice(i2 + 1));
+      break;
+    }
+    if (!arg.startsWith("--") && arg !== "-h" && arg !== "-v") {
+      positional.push(arg);
+      continue;
+    }
+    const eq = arg.indexOf("=");
+    const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
+    if (!boolFlags.has(key) && !valueFlags.has(key)) {
+      if (isHelpWord(arg)) return { kind: "help" };
+      if (isVersionWord(arg)) return { kind: "version" };
+    }
+    if (boolFlags.has(key)) {
+      if (eq !== -1) throw new UsageError(`--${key} is a boolean flag and takes no value`);
+      bools.add(key);
+      continue;
+    }
+    if (!valueFlags.has(key)) {
+      throw new UsageError(`unknown flag "--${key}" \u2014 run --help for the supported options`);
+    }
+    if (eq !== -1) {
+      values[key] = arg.slice(eq + 1);
+      continue;
+    }
+    const next = argv[i2 + 1];
+    if (next === void 0 || next.startsWith("--")) {
+      throw new UsageError(`missing value for --${key}`);
+    }
+    values[key] = next;
+    i2++;
+  }
+  return { kind: "command", command, positional, values, bools };
+}
+function isHelpWord(a) {
+  return a === "--help" || a === "-h" || a === "help";
+}
+function isVersionWord(a) {
+  return a === "--version" || a === "-v" || a === "version";
+}
 var PROTOCOL_VERSIONS2 = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 var LATEST_PROTOCOL2 = PROTOCOL_VERSIONS2[PROTOCOL_VERSIONS2.length - 1];
 var ASSUMED_HTTP_PROTOCOL = "2025-03-26";
@@ -18243,18 +18733,18 @@ var URI_SCHEME = "skill://";
 function resolveSkillRoot(moduleDir) {
   const here = moduleDir ?? dirname22(fileURLToPath3(import.meta.url));
   const name2 = brand().name;
-  const candidates = [resolve22(here, ".."), resolve22(here, "..", "skills", name2), resolve22(here, "..", "..", "skills", name2)];
-  return candidates.find((dir) => existsSync52(join52(dir, "SKILL.md")));
+  const candidates = [resolve32(here, ".."), resolve32(here, "..", "skills", name2), resolve32(here, "..", "..", "skills", name2)];
+  return candidates.find((dir) => existsSync62(join82(dir, "SKILL.md")));
 }
 function listResources(moduleDir) {
   const root = resolveSkillRoot(moduleDir);
   if (!root) return [];
   const out2 = [describe(root, "SKILL.md", `${skillName()}: the skill`)];
-  const refDir = join52(root, "references");
-  if (!existsSync52(refDir)) return out2;
+  const refDir = join82(root, "references");
+  if (!existsSync62(refDir)) return out2;
   for (const file of readdirSync32(refDir).sort()) {
     if (!file.endsWith(".md")) continue;
-    out2.push(describe(root, join52("references", file), `${skillName()} reference: ${basename22(file, ".md")}`));
+    out2.push(describe(root, join82("references", file), `${skillName()} reference: ${basename32(file, ".md")}`));
   }
   return out2;
 }
@@ -18266,7 +18756,7 @@ function readResource(uri, moduleDir) {
   if (!root) throw new ResourceError("no skill payload found next to this build \u2014 nothing to read");
   const rel2 = uri.slice(URI_SCHEME.length);
   if (!rel2) throw new ResourceError("empty resource path");
-  const target = resolve22(root, rel2);
+  const target = resolve32(root, rel2);
   const rootReal = realpathSync2(root);
   let targetReal;
   try {
@@ -18278,7 +18768,7 @@ function readResource(uri, moduleDir) {
     throw new ResourceError(`resource path escapes the skill root: ${uri}`);
   }
   if (!statSync32(targetReal).isFile()) throw new ResourceError(`not a file: ${uri}`);
-  return { uri, mimeType: "text/markdown", text: readFileSync42(targetReal, "utf8") };
+  return { uri, mimeType: "text/markdown", text: readFileSync52(targetReal, "utf8") };
 }
 var ResourceError = class extends Error {
 };
@@ -18289,14 +18779,14 @@ function describe(root, rel2, fallbackTitle) {
     title: fallbackTitle,
     mimeType: "text/markdown"
   };
-  const summary = firstProse(join52(root, rel2));
+  const summary = firstProse(join82(root, rel2));
   if (summary) decl.description = summary;
   return decl;
 }
 function firstProse(file) {
   let text;
   try {
-    text = readFileSync42(file, "utf8");
+    text = readFileSync52(file, "utf8");
   } catch {
     return void 0;
   }
@@ -18546,14 +19036,14 @@ function startHttpServer(adapter, opts = {}) {
   server.requestTimeout = 0;
   server.headersTimeout = 6e4;
   server.keepAliveTimeout = 12e4;
-  return new Promise((resolve32, reject) => {
+  return new Promise((resolve42, reject) => {
     server.once("error", reject);
     server.listen(opts.port ?? 0, bind, () => {
       server.removeListener("error", reject);
       const addr2 = server.address();
       const port = typeof addr2 === "object" && addr2 ? addr2.port : opts.port ?? 0;
       const host = bind.includes(":") ? `[${bind}]` : bind;
-      resolve32({
+      resolve42({
         server,
         port,
         url: `http://${host}:${port}${MCP_PATH}`,
@@ -18662,7 +19152,7 @@ function sendJson(res, status, body2, origin, extra = {}) {
 }
 var DRAIN_LIMIT = MAX_BODY_BYTES * 8;
 function readBody(req) {
-  return new Promise((resolve32, reject) => {
+  return new Promise((resolve42, reject) => {
     const chunks = [];
     let size = 0;
     let over = false;
@@ -18686,7 +19176,7 @@ function readBody(req) {
     });
     req.on("end", () => {
       if (over) reject(new Error("too large"));
-      else resolve32(Buffer.concat(chunks).toString("utf8"));
+      else resolve42(Buffer.concat(chunks).toString("utf8"));
     });
     req.on("error", reject);
     req.on("aborted", () => reject(new Error("client aborted the request")));
@@ -18735,7 +19225,7 @@ function migrateLegacyClone(dir, slug) {
   if (legacy === dir || !existsSync10(join24(legacy, ".git"))) return;
   try {
     mkdirSync5(cacheRoot(), { recursive: true });
-    renameSync2(legacy, dir);
+    renameSync3(legacy, dir);
   } catch {
   }
 }
@@ -18750,21 +19240,6 @@ import { join as join27 } from "path";
 
 // src/util.ts
 import "child_process";
-import { renameSync as renameSync3, unlinkSync, writeFileSync as writeFileSync6 } from "fs";
-var tmpCounter = 0;
-function writeFileAtomic(path, data) {
-  const tmp = `${path}.${process.pid}.${tmpCounter++}.tmp`;
-  try {
-    writeFileSync6(tmp, data);
-    renameSync3(tmp, path);
-  } catch (e) {
-    try {
-      unlinkSync(tmp);
-    } catch {
-    }
-    throw e;
-  }
-}
 function looksLikeTestFile(rel2) {
   if (/(^|\/)(tests?|__tests__|specs?|fixtures?|examples?|benchmarks?|e2e)\//i.test(rel2)) return true;
   const base = (rel2.split("/").pop() ?? "").toLowerCase();
@@ -19067,7 +19542,7 @@ function ensureIndex(root, slug, opts = {}) {
 }
 
 // src/dossier.ts
-import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync7 } from "fs";
+import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync6 } from "fs";
 import { join as join28 } from "path";
 var SOURCE_ORDER = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var SOURCE_LABEL = {
@@ -19084,12 +19559,6 @@ var SOURCE_LABEL = {
 function rank(s) {
   const i2 = SOURCE_ORDER.indexOf(s);
   return i2 < 0 ? 99 : i2;
-}
-function pad(n) {
-  return String(n).padStart(2, "0");
-}
-function runId(d = /* @__PURE__ */ new Date()) {
-  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 function defaultRunDir(repoDir, d) {
   return join28(indexDir(repoDir), "runs", runId(d));
@@ -19148,9 +19617,9 @@ function writeDossier(dir, evidence, meta) {
   const evidenceJson = join28(dir, "evidence.json");
   const evidenceMd = join28(dir, "EVIDENCE.md");
   const metaJson = join28(dir, "meta.json");
-  writeFileSync7(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync7(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync7(metaJson, JSON.stringify(meta, null, 2));
+  writeFileSync6(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync6(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync6(metaJson, JSON.stringify(meta, null, 2));
   return { dir, evidenceJson, evidenceMd, metaJson };
 }
 
@@ -19648,7 +20117,7 @@ function codeExcerptWindows(lines, matcher, sym, fh, callLines, fileSyms = []) {
 }
 
 // src/index/semantic/qdrant.ts
-import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync8, mkdirSync as mkdirSync8 } from "fs";
+import { existsSync as existsSync12, readFileSync as readFileSync13, writeFileSync as writeFileSync7, mkdirSync as mkdirSync8 } from "fs";
 import { join as join30, dirname as dirname6 } from "path";
 
 // src/sources/fetch.ts
@@ -19716,10 +20185,9 @@ async function reachable(base, path = "/") {
   const r = await httpGet(base + path, { timeoutMs: 2500 });
   return r.ok;
 }
-async function embed(text) {
-  const r = await httpJson("POST", `${OLLAMA}/api/embeddings`, { model: EMBED_MODEL, prompt: text }, { timeoutMs: 3e4 });
-  const v = r.ok ? r.data?.embedding : void 0;
-  return Array.isArray(v) && v.length ? v : null;
+async function embedOneChunk(text) {
+  const v = await embedOne(text, { base: OLLAMA, model: EMBED_MODEL });
+  return v && v.length ? v : null;
 }
 function collectionName(slug) {
   return "ultradoc_" + slug.replace(/[^a-z0-9_]/gi, "_").slice(0, 60);
@@ -19771,7 +20239,7 @@ async function buildIfNeeded(ctx) {
     }
   }
   if (chunks.length === 0) return { error: "no chunkable content to embed" };
-  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c2) => embed(c2.text));
+  const vectors = await mapLimit(chunks, LIMITS.embedConcurrency, (c2) => embedOneChunk(c2.text));
   const dim = vectors.find((v) => Array.isArray(v) && v.length > 0)?.length;
   if (!dim) return { error: `embedding failed (is the '${EMBED_MODEL}' model pulled in Ollama?)` };
   const failed2 = vectors.filter((v) => !v).length;
@@ -19802,7 +20270,7 @@ async function buildIfNeeded(ctx) {
   if (!tooHollow) {
     try {
       mkdirSync8(dirname6(marker), { recursive: true });
-      writeFileSync8(marker, JSON.stringify({ collection: name2, commit, chunks: chunks.length, dim }));
+      writeFileSync7(marker, JSON.stringify({ collection: name2, commit, chunks: chunks.length, dim }));
     } catch {
     }
   }
@@ -19819,7 +20287,7 @@ async function qdrantSearch(ctx) {
   const built = await buildIfNeeded(ctx);
   if ("error" in built) return fallbackNote(built.error);
   const buildNotes = built.notes;
-  const qv = await embed(ctx.options.question);
+  const qv = await embedOneChunk(ctx.options.question);
   if (!qv) return fallbackNote("could not embed the question");
   const res = await httpJson("POST", `${QDRANT}/collections/${built.name}/points/search`, {
     vector: qv,
@@ -19846,7 +20314,7 @@ async function qdrantSearch(ctx) {
 
 // src/index/semantic/model.ts
 import { createHash as createHash4 } from "crypto";
-import { existsSync as existsSync13, mkdirSync as mkdirSync9, writeFileSync as writeFileSync9 } from "fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync9, writeFileSync as writeFileSync8 } from "fs";
 import { join as join31 } from "path";
 var MODELS_DIR = "models";
 function modelDir() {
@@ -19888,7 +20356,7 @@ async function pullStaticModel(opts = {}) {
   }
   try {
     mkdirSync9(modelDir(), { recursive: true });
-    writeFileSync9(path, res.body);
+    writeFileSync8(path, res.body);
   } catch (e) {
     return { ok: false, status: "failed", path, message: `ultradoc semantic: could not write the embedding model to ${path} (${e.message}).` };
   }
@@ -19922,7 +20390,7 @@ function staticModelHint() {
 }
 
 // src/index/semantic/vectors.ts
-import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "fs";
+import { existsSync as existsSync14, mkdirSync as mkdirSync10, readFileSync as readFileSync14, writeFileSync as writeFileSync9 } from "fs";
 import { dirname as dirname7, join as join33 } from "path";
 function artifactPath(repoDir) {
   return join33(repoDir, CACHE_DIR_NAME, "embeddings.bin");
@@ -19942,8 +20410,8 @@ function loadPersisted(ctx, enc) {
 function persist(ctx, enc, index) {
   try {
     mkdirSync10(dirname7(artifactPath(ctx.repoDir)), { recursive: true });
-    writeFileSync10(artifactPath(ctx.repoDir), serializeEmbeddings(index));
-    writeFileSync10(markerPath2(ctx.repoDir), JSON.stringify({ commit: ctx.index.commit ?? "HEAD", tier: enc.tier, modelId: index.modelId }));
+    writeFileSync9(artifactPath(ctx.repoDir), serializeEmbeddings(index));
+    writeFileSync9(markerPath2(ctx.repoDir), JSON.stringify({ commit: ctx.index.commit ?? "HEAD", tier: enc.tier, modelId: index.modelId }));
   } catch {
   }
 }
@@ -20086,7 +20554,7 @@ async function codeSource(ctx) {
 import { join as join35 } from "path";
 
 // src/sources/page-cache.ts
-import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync15, statSync as statSync8, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync15, mkdirSync as mkdirSync11, readFileSync as readFileSync15, statSync as statSync8, writeFileSync as writeFileSync10 } from "fs";
 import { join as join34 } from "path";
 
 // src/sources/firecrawl.ts
@@ -20127,7 +20595,7 @@ async function cachedPageText(dir, url, opts = {}) {
     const out2 = actual === planned ? file : pageCacheFile(dir, url, actual);
     try {
       mkdirSync11(dir, { recursive: true });
-      writeFileSync11(out2, res.text);
+      writeFileSync10(out2, res.text);
     } catch {
     }
     return res;
@@ -21031,7 +21499,7 @@ async function runSources(ctx) {
 }
 
 // src/drill-plan.ts
-import { writeFileSync as writeFileSync12 } from "fs";
+import { writeFileSync as writeFileSync11 } from "fs";
 import { join as join37 } from "path";
 var DRILL_SOURCES = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
 var MAX_DRILL_CELLS = 24;
@@ -21096,7 +21564,7 @@ function buildDrillPlan(opts) {
 }
 function writeDrillPlan(dir, plan) {
   const p = join37(dir, "drill-plan.json");
-  writeFileSync12(p, JSON.stringify(plan, null, 2));
+  writeFileSync11(p, JSON.stringify(plan, null, 2));
   return p;
 }
 
@@ -21168,7 +21636,7 @@ async function runSingleSource(options, kind) {
 }
 
 // src/doc.ts
-import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync13 } from "fs";
+import { mkdirSync as mkdirSync13, writeFileSync as writeFileSync12 } from "fs";
 import { basename as basename5, join as join39 } from "path";
 
 // src/overview.ts
@@ -21560,16 +22028,16 @@ async function runDoc(options, opts = {}) {
   const planJson = join39(dir, "DOC.plan.json");
   const todoMd = join39(dir, "DOC.todo.md");
   const metaJson = join39(dir, "meta.json");
-  writeFileSync13(evidenceJson, JSON.stringify(evidence, null, 2));
-  writeFileSync13(evidenceMd, renderEvidenceMarkdown(evidence, meta));
-  writeFileSync13(planJson, JSON.stringify(plan, null, 2));
-  writeFileSync13(todoMd, renderDocTodo(plan, evidence));
-  writeFileSync13(metaJson, JSON.stringify(meta, null, 2));
+  writeFileSync12(evidenceJson, JSON.stringify(evidence, null, 2));
+  writeFileSync12(evidenceMd, renderEvidenceMarkdown(evidence, meta));
+  writeFileSync12(planJson, JSON.stringify(plan, null, 2));
+  writeFileSync12(todoMd, renderDocTodo(plan, evidence));
+  writeFileSync12(metaJson, JSON.stringify(meta, null, 2));
   let architecturePath;
   if (graph) {
     try {
       architecturePath = join39(dir, "ARCHITECTURE.mmd");
-      writeFileSync13(architecturePath, graph.mermaid());
+      writeFileSync12(architecturePath, graph.mermaid());
     } catch {
       architecturePath = void 0;
     }
@@ -21588,7 +22056,6 @@ import { existsSync as existsSync18, readFileSync as readFileSync18 } from "fs";
 import { basename as basename6, dirname as dirname9, join as join41, resolve as resolvePath, sep as sep4 } from "path";
 
 // src/citations.ts
-var TOKEN_RE2 = /\[([^\]\n]+)\](?!\()/g;
 var SHAPE = {
   id: /^E\d+$/,
   numbered: /^(issue|pr|discussion)#\d+$/,
@@ -21660,112 +22127,21 @@ function resolveAlias(tok, evidence) {
       return [];
   }
 }
-function stripHtmlComments(text) {
-  return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+function isDeclaredUnknown(u) {
+  return u.section === UNKNOWNS_SECTION;
 }
-function stripInlineCode(line) {
-  return line.replace(/`[^`\n]*`/g, " ");
-}
-function codeMask(lines) {
-  const mask = new Array(lines.length).fill(false);
-  let inFence = false;
-  for (let i2 = 0; i2 < lines.length; i2++) {
-    if (/^\s*(```|~~~)/.test(lines[i2])) {
-      mask[i2] = true;
-      inFence = !inFence;
-      continue;
-    }
-    mask[i2] = inFence;
-  }
-  return mask;
-}
-function isHeadingOrRule(t) {
-  return /^#{1,6}\s/.test(t) || /^([-*_])\1{2,}$/.test(t);
-}
+var UNKNOWNS_SECTION = "unknown";
 var UNKNOWNS_HEADING_RE = /^#{1,6}\s+(unknowns?|not settled|open questions?|gaps?)\b/i;
-function isTableSeparator(line) {
-  return /\|/.test(line) && /^[\s:|-]+$/.test(line.trim()) && /-/.test(line);
+function claimUnitsOf(text) {
+  return extractClaimUnits(text, {
+    blockquotes: "prose",
+    keepInlineCode: true,
+    skipTableHeader: false,
+    sectionTag: (heading) => UNKNOWNS_HEADING_RE.test(heading) ? UNKNOWNS_SECTION : void 0
+  });
 }
-function isTableRow(line) {
-  return /\|/.test(line.trim()) && !isTableSeparator(line);
-}
-function tableCells(line) {
-  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c2) => c2.trim()).join(" ");
-}
-function isListItem(line) {
-  return /^\s*([-*+]|\d+\.)\s+\S/.test(line);
-}
-function extractClaimUnits(text) {
-  const lines = stripHtmlComments(text).split("\n");
-  const code = codeMask(lines);
-  const units = [];
-  let prose = [];
-  let declaredUnknown = false;
-  const tag = (u) => declaredUnknown ? { ...u, declaredUnknown: true } : u;
-  const flush = () => {
-    if (prose.length) units.push(tag({ kind: "text", text: prose.join(" ") }));
-    prose = [];
-  };
-  let i2 = 0;
-  while (i2 < lines.length) {
-    if (code[i2]) {
-      flush();
-      i2++;
-      continue;
-    }
-    const raw = lines[i2];
-    const line = stripInlineCode(raw);
-    const t = line.trim();
-    if (t === "" || isHeadingOrRule(t) || isTableSeparator(line)) {
-      flush();
-      if (/^#{1,6}\s/.test(t)) declaredUnknown = UNKNOWNS_HEADING_RE.test(t);
-      i2++;
-      continue;
-    }
-    if (isTableRow(line)) {
-      flush();
-      units.push(tag({ kind: "text", text: tableCells(raw) }));
-      i2++;
-      continue;
-    }
-    if (/^\s*>/.test(line)) {
-      const dequoted = raw.replace(/^\s*>\s?/, "").trim();
-      if (dequoted) prose.push(dequoted);
-      i2++;
-      continue;
-    }
-    if (isListItem(line)) {
-      flush();
-      const items = [];
-      while (i2 < lines.length && !code[i2]) {
-        const rawL = lines[i2];
-        const l = stripInlineCode(rawL);
-        const tt = l.trim();
-        if (tt === "" || isHeadingOrRule(tt) || isTableSeparator(l) || isTableRow(l)) break;
-        if (isListItem(l)) items.push(rawL.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
-        else if (items.length) items[items.length - 1] += " " + rawL.trim();
-        else items.push(rawL.trim());
-        i2++;
-      }
-      units.push(tag({ kind: "list", items }));
-      continue;
-    }
-    prose.push(raw);
-    i2++;
-  }
-  flush();
-  return units;
-}
-function citationTokensIn(text) {
-  const masked = stripInlineCode(text);
-  const out2 = [];
-  TOKEN_RE2.lastIndex = 0;
-  let m;
-  while (m = TOKEN_RE2.exec(masked)) {
-    const tok = m[1].trim();
-    if (isCitation(tok) && !out2.includes(tok)) out2.push(tok);
-  }
-  return out2;
+function citationsIn(text) {
+  return citationTokensIn(text, isCitation);
 }
 function citedEvidenceIds(text, evidence) {
   const ids = new Set(evidence.map((e) => e.id));
@@ -21773,7 +22149,7 @@ function citedEvidenceIds(text, evidence) {
   const push = (id) => {
     if (!out2.includes(id)) out2.push(id);
   };
-  for (const tok of citationTokensIn(text)) {
+  for (const tok of citationsIn(text)) {
     if (SHAPE.id.test(tok)) {
       if (ids.has(tok)) push(tok);
       continue;
@@ -21783,27 +22159,21 @@ function citedEvidenceIds(text, evidence) {
   }
   return out2;
 }
-function collectCitations(text) {
-  const tokens = [];
-  for (const u of extractClaimUnits(text)) {
-    const parts2 = u.kind === "text" ? [u.text] : u.items;
-    for (const part of parts2) for (const t of citationTokensIn(part)) if (!tokens.includes(t)) tokens.push(t);
-  }
-  const all = [];
-  TOKEN_RE2.lastIndex = 0;
-  let m;
-  while (m = TOKEN_RE2.exec(text)) {
-    const tok = m[1].trim();
-    if (isCitation(tok) && !all.includes(tok)) all.push(tok);
-  }
-  return { tokens, fencedOnly: all.filter((t) => !tokens.includes(t)) };
+function collectCitationTokens(text) {
+  const { grounding, inertOnly } = collectCitations(text, isCitation, {
+    blockquotes: "prose",
+    keepInlineCode: true,
+    skipTableHeader: false,
+    sectionTag: (heading) => UNKNOWNS_HEADING_RE.test(heading) ? UNKNOWNS_SECTION : void 0
+  });
+  return { tokens: grounding, fencedOnly: inertOnly };
 }
 var MIN_CLAIM_LEN = 25;
 function claimCoverage(text, _evidence) {
   const claims = [];
   const unknowns = [];
-  for (const u of extractClaimUnits(text)) {
-    const sink = u.declaredUnknown ? unknowns : claims;
+  for (const u of claimUnitsOf(text)) {
+    const sink = isDeclaredUnknown(u) ? unknowns : claims;
     if (u.kind === "text") sink.push(u.text);
     else for (const it of u.items) sink.push(it);
   }
@@ -21814,7 +22184,7 @@ function claimCoverage(text, _evidence) {
     const trimmed = c2.trim();
     if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
     counted++;
-    if (citationTokensIn(trimmed).length > 0) cited++;
+    if (citationsIn(trimmed).length > 0) cited++;
     else if (uncited.length < 8) uncited.push(trimmed.slice(0, 160));
   }
   let declaredUnknowns = 0;
@@ -21823,21 +22193,21 @@ function claimCoverage(text, _evidence) {
     const trimmed = u.trim();
     if (stripInlineCode(trimmed).trim().length < MIN_CLAIM_LEN) continue;
     declaredUnknowns++;
-    if (citationTokensIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
+    if (citationsIn(trimmed).length > 0 && unknownsWithCitations.length < 5) unknownsWithCitations.push(trimmed.slice(0, 160));
   }
   return { claims: counted, cited, ratio: counted === 0 ? 1 : cited / counted, uncited, declaredUnknowns, unknownsWithCitations };
 }
 
 // src/verify.ts
-import { existsSync as existsSync17, readFileSync as readFileSync17, writeFileSync as writeFileSync14 } from "fs";
+import { existsSync as existsSync17, readFileSync as readFileSync17, writeFileSync as writeFileSync13 } from "fs";
 import { join as join40 } from "path";
 var VERIFY_MAX = LIMITS.verifyPairs;
 var VALID_VERDICTS = ["supported", "partial", "refuted", "unsupported"];
 var MIN_UNCITED_LEN = 25;
 function claimStrings(text) {
   const out2 = [];
-  for (const u of extractClaimUnits(text)) {
-    if (u.declaredUnknown) continue;
+  for (const u of claimUnitsOf(text)) {
+    if (isDeclaredUnknown(u)) continue;
     if (u.kind === "text") out2.push(u.text);
     else for (const it of u.items) out2.push(it);
   }
@@ -21889,8 +22259,8 @@ function runVerify(dir, opts = {}) {
     pairs: worklist.pairs.map((p) => ({ ...p, verdict: null, note: "" })),
     uncitedClaims: worklist.uncitedClaims
   };
-  writeFileSync14(join40(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
-  writeFileSync14(join40(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
+  writeFileSync13(join40(dir, "VERIFY.todo.json"), JSON.stringify(todo, null, 2));
+  writeFileSync13(join40(dir, "VERIFY.md"), renderWorklistMd(worklist, total, kept));
   return worklist;
 }
 function renderWorklistMd(wl, total, kept) {
@@ -21965,7 +22335,7 @@ function applyVerdicts(dir, verdictsPath) {
   const result = reduceVerdicts(verdicts);
   const answerSig = answerSignatureFor(dir);
   const claims = expectedClaims(dir) ?? [...new Set(verdicts.map((v) => v.claimId))];
-  writeFileSync14(join40(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
+  writeFileSync13(join40(dir, "VERIFY.json"), JSON.stringify({ ...result, verdicts, ...answerSig ? { answerSig } : {}, claims }, null, 2));
   return result;
 }
 function expectedClaims(dir) {
@@ -22236,7 +22606,7 @@ function dossierRepoDir(dir) {
 }
 function answerClaimSignature(answer, evidence) {
   const parts2 = [];
-  for (const u of extractClaimUnits(answer)) {
+  for (const u of claimUnitsOf(answer)) {
     for (const part of u.kind === "text" ? [u.text] : u.items) {
       const ids = citedEvidenceIds(part, evidence);
       if (!ids.length) continue;
@@ -22359,7 +22729,7 @@ function checkRun(dir, opts = {}) {
   const answer = opts.answerText ?? readFileSync18(answerPath, "utf8");
   const ids = new Set(evidence.map((e) => e.id));
   const refs = new Set(evidence.map((e) => e.ref));
-  const { tokens: citations, fencedOnly } = collectCitations(answer);
+  const { tokens: citations, fencedOnly } = collectCitationTokens(answer);
   const resolved = [];
   const dangling = [];
   for (const c2 of citations) {
@@ -22404,7 +22774,7 @@ function checkRun(dir, opts = {}) {
   const byId = new Map(evidence.map((e) => [e.id, e]));
   const issueOnly = [];
   let issueOnlyCount = 0;
-  for (const u of extractClaimUnits(answer)) {
+  for (const u of claimUnitsOf(answer)) {
     for (const part of u.kind === "text" ? [u.text] : u.items) {
       const cited = citedEvidenceIds(part, evidence).map((id) => byId.get(id)).filter((e) => !!e);
       if (cited.length && cited.every((e) => e.source === "issue" || e.source === "pr")) {
@@ -22707,10 +23077,6 @@ function formatCacheStatus(s) {
   return lines.join("\n");
 }
 
-// src/orchestrate.ts
-import { existsSync as existsSync20, mkdirSync as mkdirSync14, readFileSync as readFileSync19, writeFileSync as writeFileSync15 } from "fs";
-import { join as join45, resolve as resolve4 } from "path";
-
 // src/orchestrate-templates.ts
 import { join as join44 } from "path";
 var ONE_WRITER_FOOTER = `
@@ -22778,81 +23144,6 @@ var DOC_SCHEMA = {
     }
   }
 };
-var PHASE_SPECS = {
-  drill: {
-    role: "explorer",
-    title: "Drill",
-    schema: DRILL_SCHEMA,
-    description: (n) => `Fan out the ${n} retrieval drill cell(s) of an ultradoc run (explorer fan-out, triaged returns)`,
-    fold: "triages the returned items into the answer (citing resolvable [E#]/refs, drilling any new lead itself)",
-    applyHint: (engine, _worklist, run3) => `node ${engine} check --run ${run3} --strict`
-  },
-  verify: {
-    role: "skeptic",
-    title: "Verify",
-    schema: VERIFY_SCHEMA,
-    description: (n) => `Adversarially verify the ${n} claim\u2194evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
-    fold: 'merges EVERY returned verdict into ONE verdicts.json ({ "pairs": [ \u2026 ] })',
-    applyHint: (engine, _worklist, run3) => `node ${engine} verify --apply verdicts.json --run ${run3} && node ${engine} check --run ${run3} --semantic`
-  },
-  doc: {
-    role: "section-writer",
-    title: "Write",
-    schema: DOC_SCHEMA,
-    description: (n) => `Draft the ${n} outline section(s) of an ultradoc reference doc (section-writer fan-out)`,
-    fold: "assembles the returned section drafts into DOC.md in plan order",
-    applyHint: (engine, _worklist, run3) => `node ${engine} check --run ${run3}`
-  }
-};
-function phaseSpec(name2) {
-  const spec = PHASE_SPECS[name2];
-  if (!spec) throw new Error(`no phase spec for "${name2}"`);
-  return spec;
-}
-function toBatches(ids, batchSize) {
-  const out2 = [];
-  for (let i2 = 0; i2 < ids.length; i2 += batchSize) out2.push(ids.slice(i2, i2 + batchSize));
-  return out2;
-}
-function phaseWorkflowScript(ph, runAbs, engineAbs, batchSize) {
-  const spec = phaseSpec(ph.name);
-  const scriptPath = join44(runAbs, "orchestration", `${ph.name}.workflow.mjs`);
-  const meta = { name: `ultradoc-${ph.name}`, description: spec.description(ph.items), phases: [{ title: spec.title }] };
-  return [
-    `export const meta = ${JSON.stringify(meta)}`,
-    ``,
-    `// NOT a plain Node script: launch via the Workflow tool \u2014 Workflow({ scriptPath: ${JSON.stringify(scriptPath)} }).`,
-    `// Emitted by \`ultradoc orchestrate\` from the CURRENT worklist. The worklist is the source`,
-    `// of truth: if it changes, re-run \`orchestrate --phase ${ph.name}\` before launching.`,
-    ``,
-    `// Constants for THIS run (injected at emit time; no Date.now/Math.random in this harness).`,
-    `const RUN = ${JSON.stringify(runAbs)}`,
-    `const ENGINE = ${JSON.stringify(engineAbs)}`,
-    `const WORKLIST = ${JSON.stringify(ph.worklist)}`,
-    `const AGENTS = RUN + '/orchestration/agents'`,
-    `const BATCHES = ${JSON.stringify(toBatches(ph.ids, batchSize))}`,
-    `const SCHEMA = ${JSON.stringify(spec.schema)}`,
-    ``,
-    `function contract(name, extra) {`,
-    `  return 'Read and follow the dispatch contract at ' + AGENTS + '/' + name + '.md VERBATIM.\\n'`,
-    `    + 'Constants: RUN=' + RUN + '  ENGINE=' + ENGINE + '  WORKLIST=' + WORKLIST + '.\\n'`,
-    `    + 'Invoke the engine only by its ABSOLUTE path: node ' + ENGINE + ' <cmd> \u2014 read-only commands only.'`,
-    `    + (extra ? '\\n' + extra : '')`,
-    `}`,
-    ``,
-    `log('ultradoc ${ph.name}: ' + ${JSON.stringify(String(ph.items))} + ' item(s) across ' + BATCHES.length + ' agent(s)')`,
-    ``,
-    `phase(${JSON.stringify(spec.title)})`,
-    `const results = await pipeline(BATCHES, (batch, _item, i) =>`,
-    `  agent(contract('${spec.role}', 'ITEMS=' + batch.join(',')), { label: '${ph.name}:' + (i + 1), phase: ${JSON.stringify(spec.title)}, agentType: 'general-purpose', schema: SCHEMA }))`,
-    ``,
-    `// One-writer rule: this workflow only COLLECTS fragments. The main agent`,
-    `// ${spec.fold}, then runs:`,
-    `//   ${spec.applyHint(engineAbs, ph.worklist, runAbs)}`,
-    `return { phase: ${JSON.stringify(ph.name)}, worklist: WORKLIST, results: results.filter(Boolean) }`,
-    ``
-  ].join("\n");
-}
 function agentContracts(runAbs, engineAbs) {
   const footer = ONE_WRITER_FOOTER.replaceAll("<RUN>", () => runAbs);
   return {
@@ -22913,12 +23204,11 @@ Return (structured output): \`{ "sections": [{ "id", "markdown", "gaps" }] }\` \
 ${footer}`
   };
 }
-function runbookMd(phases, runAbs, engineAbs) {
+function runbookPreamble(phases, runAbs, engineAbs) {
   const status = phases.map((p) => `| ${p.name} | \`${p.worklist}\` | ${p.ready ? `ready (${p.items} item(s))` : "not ready"} | \`${p.prerequisite}\` |`).join("\n");
   const engine = `node ${engineAbs}`;
-  return `# ultradoc \u2014 sequential RUNBOOK (eco / no-subagent fallback)
-
-Run: \`${runAbs}\` \xB7 Engine: \`${engine}\`
+  return [
+    `Engine: \`${engine}\`
 
 Generated by \`ultradoc orchestrate\` from the CURRENT run state. This sequential path is
 correctness-identical to the multi-agent workflows \u2014 same worklists, same contracts, same
@@ -22940,144 +23230,62 @@ ${status}
 6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join44(runAbs, "DOC.plan.json")}\` + \`${join44(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join44(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join44(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
 
 With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join44(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
-`;
+`
+  ];
 }
 
 // src/orchestrate.ts
 var PHASES = ["drill", "verify", "doc"];
-var SMALL_WORKLIST = 3;
-var BATCH_SIZE = 8;
-function listPhases(runDir2, engineAbs) {
-  const run3 = resolve4(runDir2);
-  const drillPath = join45(run3, "drill-plan.json");
-  let drillIds = [];
-  let drillReady = false;
-  if (existsSync20(drillPath)) {
-    try {
-      const plan = JSON.parse(readFileSync19(drillPath, "utf8"));
-      if (plan && Array.isArray(plan.cells)) {
-        drillReady = true;
-        drillIds = plan.cells.map((c2) => c2.id);
-      }
-    } catch {
-    }
-  }
-  const verPath = join45(run3, "VERIFY.todo.json");
-  let verIds = [];
-  let verReady = false;
-  if (existsSync20(verPath)) {
-    try {
-      const todo = JSON.parse(readFileSync19(verPath, "utf8"));
-      if (todo && Array.isArray(todo.pairs)) {
-        verReady = true;
-        verIds = todo.pairs.map((p) => `${p.claimId}:${p.evidenceId}`);
-      }
-    } catch {
-    }
-  }
-  const docPath = join45(run3, "DOC.plan.json");
-  let docIds = [];
-  let docReady = false;
-  if (existsSync20(docPath)) {
-    try {
-      const plan = JSON.parse(readFileSync19(docPath, "utf8"));
-      if (plan && Array.isArray(plan.sections)) {
-        docReady = true;
-        docIds = plan.sections.map((s) => s.id);
-      }
-    } catch {
-    }
-  }
-  return [
-    {
-      name: "drill",
-      ready: drillReady,
-      worklist: drillPath,
-      items: drillIds.length,
-      ids: drillIds,
-      prerequisite: `node ${engineAbs} ask --repo <url|path> --q "<question>" --out ${run3}`
-    },
-    {
-      name: "verify",
-      ready: verReady,
-      worklist: verPath,
-      items: verIds.length,
-      ids: verIds,
-      prerequisite: `node ${engineAbs} verify --run ${run3}`
-    },
-    {
-      name: "doc",
-      ready: docReady,
-      worklist: docPath,
-      items: docIds.length,
-      ids: docIds,
-      prerequisite: `node ${engineAbs} doc --repo <url|path> --out ${run3}`
-    }
-  ];
+var DRILL = {
+  name: "drill",
+  worklist: "drill-plan.json",
+  ids: (plan) => Array.isArray(plan?.cells) ? plan.cells.map((c2) => c2.id) : void 0,
+  prerequisite: (run3, engineAbs) => `node ${engineAbs} ask --repo <url|path> --q "<question>" --out ${run3}`,
+  role: "explorer",
+  title: "Drill",
+  schema: DRILL_SCHEMA,
+  batchSize: 8,
+  description: (n) => `Fan out the ${n} retrieval drill cell(s) of an ultradoc run (explorer fan-out, triaged returns)`,
+  applyHint: (run3, engineAbs) => [`node ${engineAbs} check --run ${run3} --strict`]
+};
+var VERIFY = {
+  name: "verify",
+  worklist: "VERIFY.todo.json",
+  ids: (todo) => Array.isArray(todo?.pairs) ? todo.pairs.map((p) => `${p.claimId}:${p.evidenceId}`) : void 0,
+  prerequisite: (run3, engineAbs) => `node ${engineAbs} verify --run ${run3}`,
+  role: "skeptic",
+  title: "Verify",
+  schema: VERIFY_SCHEMA,
+  batchSize: 8,
+  description: (n) => `Adversarially verify the ${n} claim\u2194evidence pair(s) of an ultradoc answer (skeptic fan-out)`,
+  applyHint: (run3, engineAbs) => [`node ${engineAbs} verify --apply verdicts.json --run ${run3} && node ${engineAbs} check --run ${run3} --semantic`]
+};
+var DOC = {
+  name: "doc",
+  worklist: "DOC.plan.json",
+  ids: (plan) => Array.isArray(plan?.sections) ? plan.sections.map((s) => s.id) : void 0,
+  prerequisite: (run3, engineAbs) => `node ${engineAbs} doc --repo <url|path> --out ${run3}`,
+  role: "section-writer",
+  title: "Write",
+  schema: DOC_SCHEMA,
+  batchSize: 8,
+  description: (n) => `Draft the ${n} outline section(s) of an ultradoc reference doc (section-writer fan-out)`,
+  applyHint: (run3, engineAbs) => [`node ${engineAbs} check --run ${run3}`]
+};
+var PHASE_DEFS = [DRILL, VERIFY, DOC];
+function listPhasesFor(runDir2, engineAbs) {
+  return listPhases(runDir2, engineAbs, PHASE_DEFS);
 }
-function orchestrateRun(runDir2, engineAbs, opts = {}) {
-  const run3 = resolve4(runDir2);
-  if (!existsSync20(run3)) {
-    return { exitCode: 2, written: [], notices: [], errors: [`run dir not found: ${run3}`], phases: [] };
-  }
-  const phases = listPhases(run3, engineAbs);
-  let selected = phases.filter((p) => p.ready);
-  if (opts.phase !== void 0) {
-    const ph = phases.find((p) => p.name === opts.phase);
-    if (!ph) {
-      return {
-        exitCode: 2,
-        written: [],
-        notices: [],
-        errors: [`unknown phase "${opts.phase}" \u2014 expected one of: ${PHASES.join(", ")}.`],
-        phases
-      };
-    }
-    if (!ph.ready) {
-      return {
-        exitCode: 2,
-        written: [],
-        notices: [],
-        errors: [`phase "${ph.name}" is not ready \u2014 its worklist ${ph.worklist} does not exist yet. Produce it first: ${ph.prerequisite}`],
-        phases
-      };
-    }
-    selected = [ph];
-  }
-  const orchDir = join45(run3, "orchestration");
-  const agentsDir = join45(orchDir, "agents");
-  mkdirSync14(join45(orchDir, "out"), { recursive: true });
-  mkdirSync14(agentsDir, { recursive: true });
-  const written = [];
-  const notices = [];
-  for (const [name2, content] of Object.entries(agentContracts(run3, engineAbs))) {
-    const p = join45(agentsDir, `${name2}.md`);
-    writeFileSync15(p, content);
-    written.push(p);
-  }
-  if (!opts.eco) {
-    for (const ph of selected) {
-      if (ph.items === 0) {
-        notices.push(`phase "${ph.name}": worklist is empty \u2014 nothing to orchestrate.`);
-        continue;
-      }
-      if (ph.items <= SMALL_WORKLIST) {
-        notices.push(`phase "${ph.name}": only ${ph.items} item(s) \u2014 the sequential --eco path is equivalent and cheaper.`);
-      }
-      const p = join45(orchDir, `${ph.name}.workflow.mjs`);
-      writeFileSync15(p, phaseWorkflowScript(ph, run3, engineAbs, BATCH_SIZE));
-      written.push(p);
-    }
-  }
-  const rb = join45(orchDir, "RUNBOOK.md");
-  writeFileSync15(rb, runbookMd(phases, run3, engineAbs));
-  written.push(rb);
-  return { exitCode: 0, written, notices, errors: [], phases };
+function emitOrchestration(runDir2, engineAbs, opts = {}) {
+  return orchestrateRun(runDir2, engineAbs, PHASE_DEFS, agentContracts, {
+    ...opts,
+    runbookPreamble: runbookPreamble(listPhasesFor(runDir2, engineAbs), runDir2, engineAbs)
+  });
 }
 
 // src/mcp/handlers.ts
-import { existsSync as existsSync21, readFileSync as readFileSync20, realpathSync as realpathSync3, statSync as statSync10 } from "fs";
-import { isAbsolute as isAbsolute2, resolve as resolve5, sep as sep5 } from "path";
+import { existsSync as existsSync20, readFileSync as readFileSync19, realpathSync as realpathSync3, statSync as statSync10 } from "fs";
+import { isAbsolute as isAbsolute2, resolve as resolve4, sep as sep5 } from "path";
 
 // src/repo-lock.ts
 var chains = /* @__PURE__ */ new Map();
@@ -23339,7 +23547,7 @@ async function handleRead(args2, defaults) {
   const rel2 = requiredStr(args2, "path", "a repo-relative path, or an absolute path inside the clone or ultradoc's cache.");
   const ctx = await context(askOptions(args2, defaults, { question: "" }));
   const root = realpathSync3(ctx.repoDir);
-  const target = isAbsolute2(rel2) ? rel2 : resolve5(root, rel2);
+  const target = isAbsolute2(rel2) ? rel2 : resolve4(root, rel2);
   let real;
   try {
     real = realpathSync3(target);
@@ -23370,7 +23578,7 @@ async function handleRead(args2, defaults) {
       `${rel2} is ${stat.size} bytes, over the ${LIMITS.maxFileBytes}-byte whole-file cap \u2014 pass start_line/end_line and the window will be returned.`
     );
   }
-  const lines = readFileSync20(real, "utf8").split("\n");
+  const lines = readFileSync19(real, "utf8").split("\n");
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const total = lines.length;
   const start2 = Math.max(1, Math.trunc(num2(args2.start_line) ?? 1));
@@ -23400,7 +23608,7 @@ async function handleFetch(args2) {
 }
 function runDir(args2) {
   const dir = requiredStr(args2, "run_dir", "the dossier directory returned by ultradoc_ask.");
-  if (!existsSync21(dir)) throw new ToolError(`No dossier at ${dir} \u2014 run ultradoc_ask first, and pass the run_dir it returned.`);
+  if (!existsSync20(dir)) throw new ToolError(`No dossier at ${dir} \u2014 run ultradoc_ask first, and pass the run_dir it returned.`);
   return dir;
 }
 function handleCheck(args2) {
@@ -24035,64 +24243,24 @@ function oneOf(name2, value, allowed) {
   }
   return value;
 }
-function parseArgs(argv) {
-  if (argv.length === 0) {
+function parseCli(argv) {
+  let parsed;
+  try {
+    parsed = parseArgs(argv, { commands: COMMANDS, valueFlags: VALUE_FLAGS2, boolFlags: BOOL_FLAGS });
+  } catch (e) {
+    if (!(e instanceof UsageError)) throw e;
+    fail(e.message);
+  }
+  if (parsed.kind === "help") {
     process.stdout.write(HELP2);
     process.exit(0);
   }
-  if (argv[0] === "-h" || argv[0] === "--help") {
-    process.stdout.write(HELP2);
+  if (parsed.kind === "version") {
+    process.stdout.write(`${VERSION}
+`);
     process.exit(0);
   }
-  if (argv[0] === "-v" || argv[0] === "--version") {
-    process.stdout.write(VERSION + "\n");
-    process.exit(0);
-  }
-  const command = argv[0];
-  if (!COMMANDS.has(command)) {
-    fail(`unknown command: ${command} (run --help for usage)`);
-  }
-  const values = {};
-  const bools = /* @__PURE__ */ new Set();
-  const positional = [];
-  for (let i2 = 1; i2 < argv.length; i2++) {
-    const arg = argv[i2];
-    if (arg === "-h" || arg === "--help") {
-      process.stdout.write(HELP2);
-      process.exit(0);
-    }
-    if (arg === "-v" || arg === "--version") {
-      process.stdout.write(VERSION + "\n");
-      process.exit(0);
-    }
-    if (arg.startsWith("--")) {
-      const eq = arg.indexOf("=");
-      const key = eq !== -1 ? arg.slice(2, eq) : arg.slice(2);
-      if (BOOL_FLAGS.has(key)) {
-        if (eq !== -1) fail(`--${key} is a boolean flag and does not take a value`);
-        bools.add(key);
-        continue;
-      }
-      if (!VALUE_FLAGS2.has(key)) {
-        fail(`unknown flag: --${key} (run --help for the supported options)`);
-      }
-      let value;
-      if (eq !== -1) {
-        value = arg.slice(eq + 1);
-      } else {
-        const next = argv[i2 + 1];
-        if (next === void 0 || next.startsWith("--")) {
-          fail(`missing value for --${key}`);
-        }
-        value = next;
-        i2++;
-      }
-      values[key] = value;
-      continue;
-    }
-    positional.push(arg);
-  }
-  return { command, positional, values, bools };
+  return parsed;
 }
 function parseSources(s) {
   const { sources, error } = parseSourceList(s.split(","), "--sources");
@@ -24116,7 +24284,7 @@ function buildAskOptions(p, opts = {}) {
     ref: p.values.ref,
     docsUrl: p.values["docs-url"],
     pkg: p.values.package,
-    out: p.values.out ? resolve6(p.values.out) : void 0,
+    out: p.values.out ? resolve5(p.values.out) : void 0,
     semantic: p.bools.has("semantic"),
     semanticTier,
     webEngine,
@@ -24151,7 +24319,7 @@ var INDEXING_COMMANDS = /* @__PURE__ */ new Set([
   "index"
 ]);
 async function run2(argv = process.argv.slice(2)) {
-  const p = parseArgs(argv);
+  const p = parseCli(argv);
   if (p.command && INDEXING_COMMANDS.has(p.command)) await warmGrammars({ label: "ultradoc" });
   switch (p.command) {
     case "ask": {
@@ -24373,7 +24541,7 @@ async function run2(argv = process.argv.slice(2)) {
         coverageMin = Number(p.values["coverage-min"]);
         if (!Number.isFinite(coverageMin) || coverageMin < 0 || coverageMin > 1) fail("invalid --coverage-min (expected a number in [0,1])");
       }
-      const res = checkRun(resolve6(dir), {
+      const res = checkRun(resolve5(dir), {
         semantic: p.bools.has("semantic"),
         answerFile: p.values.answer,
         strict: p.bools.has("strict"),
@@ -24381,16 +24549,16 @@ async function run2(argv = process.argv.slice(2)) {
         allowUnverified: p.bools.has("allow-unverified")
       });
       if (p.bools.has("json")) process.stdout.write(JSON.stringify(res, null, 2) + "\n");
-      else process.stdout.write(formatCheckReport(res, resolve6(dir)) + "\n");
+      else process.stdout.write(formatCheckReport(res, resolve5(dir)) + "\n");
       if (!res.ok) process.exit(1);
       return;
     }
     case "verify": {
       const dir = p.values.run ?? p.values.out;
       if (!dir) fail("missing --run <dossier-dir>");
-      const rdir = resolve6(dir);
+      const rdir = resolve5(dir);
       if (p.values.apply) {
-        const result = applyVerdicts(rdir, resolve6(rdir, p.values.apply));
+        const result = applyVerdicts(rdir, resolve5(rdir, p.values.apply));
         if (p.bools.has("json")) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
         else process.stdout.write(formatVerifyReport(result) + "\n");
         if (!result.ok) process.exit(1);
@@ -24418,15 +24586,15 @@ async function run2(argv = process.argv.slice(2)) {
       }
       const engineAbs = realpathSync4(fileURLToPath4(import.meta.url));
       if (p.bools.has("list")) {
-        if (!existsSync23(dir)) {
+        if (!existsSync21(dir)) {
           process.stderr.write(`ultradoc orchestrate: run dir not found: ${dir}.
 `);
           process.exit(2);
         }
-        process.stdout.write(JSON.stringify({ phases: listPhases(resolve6(dir), engineAbs) }, null, 2) + "\n");
+        process.stdout.write(JSON.stringify({ phases: listPhasesFor(resolve5(dir), engineAbs) }, null, 2) + "\n");
         return;
       }
-      const res = orchestrateRun(resolve6(dir), engineAbs, {
+      const res = emitOrchestration(resolve5(dir), engineAbs, {
         phase: p.values.phase,
         eco: p.bools.has("eco")
       });
@@ -24449,7 +24617,7 @@ async function run2(argv = process.argv.slice(2)) {
           "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
         );
       } else {
-        process.stdout.write(`Follow ${join46(resolve6(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
+        process.stdout.write(`Follow ${join45(resolve5(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
 `);
         if (p.values.phase === void 0 && !p.bools.has("eco")) {
           process.stderr.write(`ultradoc orchestrate: no ready phase \u2014 phases are ${PHASES.join(", ")} (see --list).
@@ -24545,12 +24713,12 @@ async function run2(argv = process.argv.slice(2)) {
           void running.close().then(() => process.exit(0));
         });
       }
-      await new Promise((resolve7) => running.server.once("close", resolve7));
+      await new Promise((resolve6) => running.server.once("close", resolve6));
       return;
     }
   }
 }
-function isInvokedDirectly() {
+function invokedAsThisModule() {
   const argv1 = process.argv[1];
   if (argv1 === void 0) return false;
   const modulePath = fileURLToPath4(import.meta.url);
@@ -24560,11 +24728,11 @@ function isInvokedDirectly() {
   }
   return import.meta.url === pathToFileURL3(argv1).href;
 }
-if (isInvokedDirectly()) {
+if (invokedAsThisModule()) {
   run2().catch((e) => fail(e.message));
 }
 export {
-  parseArgs,
+  parseCli,
   run2 as run
 };
 // "Copyright" and "@license" are already caught by DIRECTIVE_RE.

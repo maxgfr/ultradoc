@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
-import { answerClaimSignature, extractClaimUnits, citedEvidenceIds, resolveAnswerPath } from "./check.js";
-import { stripInlineCode } from "./citations.js";
+import { answerClaimSignature, claimUnitsOf, citedEvidenceIds, resolveAnswerPath } from "./check.js";
+import { stripInlineCode, isDeclaredUnknown } from "./citations.js";
 import { LIMITS } from "./config.js";
 
 // Bounds the verification loop (claim↔evidence pairs adjudicated per run).
@@ -29,11 +29,11 @@ const MIN_UNCITED_LEN = 25;
 // one claim; each list item is its own claim.
 function claimStrings(text: string): string[] {
   const out: string[] = [];
-  for (const u of extractClaimUnits(text)) {
+  for (const u of claimUnitsOf(text)) {
     // Declared unknowns cite nothing by construction — listing them as
     // "uncited claims to cite or delete" would tell the agent to delete exactly
     // the honesty the skill demands.
-    if (u.declaredUnknown) continue;
+    if (isDeclaredUnknown(u)) continue;
     if (u.kind === "text") out.push(u.text);
     else for (const it of u.items) out.push(it);
   }

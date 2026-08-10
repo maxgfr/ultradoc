@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claimCoverage, collectCitations, resolveAlias } from "../src/citations.js";
+import { claimCoverage, collectCitationTokens, resolveAlias } from "../src/citations.js";
 import type { EvidenceItem } from "../src/types.js";
 
 const EVIDENCE: EvidenceItem[] = [
@@ -66,16 +66,16 @@ describe("resolveAlias (strict per-prefix)", () => {
   });
 });
 
-describe("collectCitations (fence-aware)", () => {
+describe("collectCitationTokens (fence-aware)", () => {
   it("collects grounding tokens and flags fence-only tokens", () => {
     const answer = ["A grounded claim [E1].", "", "```", "example [E2]", "```", "", "Another claim with `[E3]` inline only."].join("\n");
-    const { tokens, fencedOnly } = collectCitations(answer);
+    const { tokens, fencedOnly } = collectCitationTokens(answer);
     expect(tokens).toEqual(["E1"]);
     expect(fencedOnly.sort()).toEqual(["E2", "E3"]);
   });
 
   it("does not treat a markdown link as a citation", () => {
-    const { tokens } = collectCitations("See [the docs](https://example.com) and [E1].");
+    const { tokens } = collectCitationTokens("See [the docs](https://example.com) and [E1].");
     expect(tokens).toEqual(["E1"]);
   });
 });
