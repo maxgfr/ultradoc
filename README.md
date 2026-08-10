@@ -356,7 +356,7 @@ from memory.
 
 ```bash
 pnpm install
-pnpm test            # vitest — unit + offline integration (454 tests)
+pnpm test            # vitest — unit + offline integration (605 tests)
 pnpm run typecheck
 pnpm run build       # bundles src/ → scripts/ultradoc.mjs (committed, zero-dep)
 pnpm run check:build # asserts the committed bundle is reproducible
@@ -371,14 +371,14 @@ MIT licensed.
 ## PDF sources
 
 A `.pdf` URL or an `application/pdf` response goes through an **extractor
-ladder** (`src/sources/pdf/`): `npx @firecrawl/pdf-inspector@1` → `npx @firecrawl/anydoc@0.1` (the PDF on stdin,
+ladder** (in the vendored webindex engine, behind `src/sources/pdf.ts`): `npx @firecrawl/pdf-inspector@1` → `npx @firecrawl/anydoc@0.1` (the PDF on stdin,
 in a child process) → the self-hosted Firecrawl → `pdftotext` → a built-in
 dependency-free reader — stopping at the first rung whose output passes a
 quality gate, and REFUSING rather than quoting a PDF none of them could read.
 
 **Office documents** — `.docx`/`.doc`/`.odt`/`.rtf`, `.pptx`/`.ppt`/`.odp`,
 `.xlsx`/`.xls`/`.ods`, `.epub`, `.csv` — go through their own two-rung ladder
-(`src/sources/doc/`): `npx @firecrawl/anydoc@0.1` (the bytes on stdin, converted to
+(in the vendored webindex engine, behind `src/sources/doc.ts`): `npx @firecrawl/anydoc@0.1` (the bytes on stdin, converted to
 GitHub-Flavored Markdown) → the self-hosted Firecrawl. Same gate, same refusal.
 
 The refusal is the point: these are ZIP and OLE containers, so the fall-through

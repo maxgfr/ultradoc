@@ -9,8 +9,9 @@
 //
 //   - it decides whether the thing answering on :3002 IS Firecrawl. 3002 is a
 //     common dev port, so a Vite app squatting it answers 200 and every page
-//     extraction then POSTs to something that 404s — while `doctor` cheerfully
-//     reports "firecrawl answering". A false positive there is invisible.
+//     extraction then POSTs to something that 404s — while a liveness probe
+//     cheerfully reports "firecrawl answering". A false positive there is
+//     invisible. (This repo exposes no `doctor` command; the probe is internal.)
 //     The check is skipped when the user NAMED the instance, which is what this
 //     copy's `firecrawlPinned` distinction was already reaching for.
 //   - `/search` and `/scrape` report WHY they produced nothing, so a dossier note
