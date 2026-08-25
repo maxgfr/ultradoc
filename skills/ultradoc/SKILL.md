@@ -1,6 +1,6 @@
 ---
 name: ultradoc
-description: "Use when the user asks a precise question about a NAMED open-source project (library, framework, CLI, tool) and the answer must come from its real source rather than the model's memory. Triggers: 'how does X work in <lib>', 'why does <lib> do <thing>', 'does <lib> support X', 'what is the default for <option>', 'where is X used / who calls X', 'is there an open issue or PR about <behavior>', 'when was X added / which version introduced it', 'what changed in <repo>', 'is this a bug in <lib> or in my code', 'explain this error from <lib>', 'which package of <monorepo> implements X', 'v1 vs v2 of <lib>'. Also when the user wants cited REFERENCE DOCUMENTATION written for a library or one package: 'document this project', 'generate docs for <lib>'. Not for the user's own working repo, and not for general web research."
+description: "Use when the user asks a precise question about a NAMED open-source project (library, framework, CLI, tool) and the answer must come from its real source rather than the model's memory. Triggers include: how does X work in this library; why does it do this; does it support X; what is an option's default; where is X used or called; is there an issue or PR about this behavior; when was X added; what changed in this repo; is this a library bug; explain this library error; which monorepo package implements X; compare v1 and v2. Also use to write cited reference documentation for a library or package. Not for the user's own working repo or general web research."
 license: MIT
 metadata:
   version: 2.27.0
@@ -208,7 +208,7 @@ node scripts/ultradoc.mjs orchestrate --run <dir> [--phase drill|verify|doc] [--
 | Your harness | How to run each phase |
 |---|---|
 | Has the Workflow tool | `orchestrate --run <RUN> --phase <p>`, then `Workflow({ scriptPath: "<RUN>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments (triaged evidence · verdicts · section drafts); you fold them yourself (ANSWER.md · one `verdicts.json` · DOC.md), then run the gates as usual. |
-| Subagents but no Workflow tool | Same `orchestrate`; dispatch one subagent per batch following `<RUN>/orchestration/agents/<role>.md`. One writer: you fold results in. |
+| Subagents but no Workflow tool (including Codex) | Same `orchestrate`; dispatch one native subagent per batch following `<RUN>/orchestration/agents/<role>.md`. One writer: you fold results in. |
 | Eco mode, or no subagents | `orchestrate --run <RUN> --eco` → follow `<RUN>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
 
 Fan-out is an optimization, never a requirement — the gates are
