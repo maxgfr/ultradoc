@@ -42,11 +42,14 @@ const SEARCH_FIXTURE = {
 
 // Build a fetch Response stand-in carrying a JSON body (what httpJson reads).
 function jsonRes(status: number, body: unknown): Response {
+  const text = JSON.stringify(body);
   return {
     ok: status >= 200 && status < 300,
     status,
     headers: new Headers({ "content-type": "application/json" }),
-    text: async () => JSON.stringify(body),
+    body: null, // httpJson reads through readCapped too since webindex v1.18.7
+    arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+    text: async () => text,
   } as unknown as Response;
 }
 
