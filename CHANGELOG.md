@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.29.0](https://github.com/maxgfr/ultradoc/compare/v2.28.0...v2.29.0) (2026-09-04)
+
+
+### Bug Fixes
+
+* **tests:** let jsonRes answer readCapped like htmlRes already does ([24833fe](https://github.com/maxgfr/ultradoc/commit/24833fe5ebe44edea4247adc2d30f893c153011e))
+
+
+### Features
+
+* **engine:** re-pin codeindex v2.28.1 -> v2.28.4, webindex v1.18.6 -> v1.18.9 ([0db963d](https://github.com/maxgfr/ultradoc/commit/0db963d7ef0bcf71f303f95dd17a3bf8f018d298))
+
 # [2.28.0](https://github.com/maxgfr/ultradoc/compare/v2.27.1...v2.28.0) (2026-08-31)
 
 
