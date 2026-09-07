@@ -36,7 +36,7 @@ export interface SymbolResult {
 // enough that an answer must not rest on it silently.
 const UNCORROBORATED = "unique-name";
 
-export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: number } = {}): SymbolResult {
+export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: number; role?: "definition" | "caller" | "test" } = {}): SymbolResult {
   const max = opts.max ?? ctx.options.perSource;
   const notes: string[] = [];
   const items: RawItem[] = [];
@@ -68,6 +68,7 @@ export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: numb
   }
 
   for (const def of defs) {
+    if (opts.role && opts.role !== "definition") break;
     if (items.length >= max) break;
     const lines = linesOf(def.file);
     if (!lines) continue;
@@ -102,6 +103,7 @@ export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: numb
   // `compose` has 37 call sites, and file order alone shows only its test file.
   const callers = refs.callSites
     .filter((c) => inScope(c.file))
+    .filter((c) => !opts.role || (opts.role === "test" ? looksLikeTestFile(c.file) : opts.role === "caller" && !looksLikeTestFile(c.file)))
     .sort((a, b) => Number(looksLikeTestFile(a.file)) - Number(looksLikeTestFile(b.file)) || a.file.localeCompare(b.file) || a.line - b.line);
   let uncorroborated = 0;
   for (const site of callers) {
@@ -125,6 +127,7 @@ export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: numb
           symbol: name,
           callSite: true,
           callLine: site.line,
+          ...(host ? { callerSymbol: host.parent ? `${host.parent}/${host.name}` : host.name } : {}),
           // "corroborated" means an import path ties this file to the
           // declaration; "unique-name" means only the name matched.
           ...(site.confidence ? { confidence: site.confidence } : {}),
@@ -133,8 +136,9 @@ export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: numb
     );
   }
 
-  if (defs.length && !callers.length) {
-    notes.push(`No call site for "${name}" in this repo — it may be public API called from outside, invoked dynamically, or dead.`);
+  if (defs.length && !callers.length && opts.role !== "definition") {
+    const kind = opts.role === "test" ? "test " : opts.role === "caller" ? "implementation " : "";
+    notes.push(`No ${kind}call site for "${name}" in this repo — it may be public API called from outside, invoked dynamically, or dead.`);
   }
   if (uncorroborated) {
     notes.push(
@@ -142,13 +146,15 @@ export function symbolEvidence(ctx: RunContext, name: string, opts: { max?: numb
     );
   }
   if (callers.length > items.filter((i) => i.meta?.callSite).length) {
-    notes.push(`Showing ${items.filter((i) => i.meta?.callSite).length} of ${callers.length} call site(s); raise --per-source for more.`);
+    notes.push(
+      `Showing ${items.filter((i) => i.meta?.callSite).length} of ${callers.length} call site(s); raise ${opts.role ? "--max-evidence" : "--per-source"} for more.`,
+    );
   }
   if (ctx.index.stats?.astTier === false) {
     notes.push("Built without the tree-sitter grammars: methods nested in classes are invisible and call sites include matches inside comments and strings.");
   }
   const otherFiles = refs.referencingFiles.filter((f) => inScope(f) && !items.some((i) => i.ref === f));
-  if (otherFiles.length) {
+  if (otherFiles.length && !opts.role) {
     notes.push(`Also mentioned (not a call) in: ${otherFiles.slice(0, 8).join(", ")}${otherFiles.length > 8 ? `, +${otherFiles.length - 8} more` : ""}.`);
   }
 

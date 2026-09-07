@@ -1,6 +1,7 @@
 ---
 name: ultradoc
-description: "Use when the user asks a precise question about a NAMED open-source project (library, framework, CLI, tool) and the answer must come from its real source rather than the model's memory. Triggers include: how does X work in this library; why does it do this; does it support X; what is an option's default; where is X used or called; is there an issue or PR about this behavior; when was X added; what changed in this repo; is this a library bug; explain this library error; which monorepo package implements X; compare v1 and v2. Also use to write cited reference documentation for a library or package. Not for the user's own working repo or general web research."
+description: "Answer questions about an open-source project and write reference documentation with citations to its actual source."
+disable-model-invocation: true
 license: MIT
 metadata:
   version: 2.29.0
@@ -8,13 +9,9 @@ metadata:
 
 # ultradoc — answer questions from the source, not from memory
 
-`ultradoc` answers ultra-precise questions about an open-source project by
-**retrieving grounded evidence** and reasoning over it. The deterministic engine
-(`scripts/ultradoc.mjs`, zero-dependency Node, no keys, no `npm install`) does
-the searching and indexing **with code**; your job is to read the retrieved
-evidence and write a precise, **cited** answer. This is enforced: `ultradoc
-check` fails if any citation does not resolve to retrieved evidence, and
-re-validates each code/docs excerpt against the pinned clone.
+`scripts/ultradoc.mjs` (zero-dependency Node, no keys or install) retrieves
+evidence; you read it and write a precise, cited answer. `check` rejects
+unresolved citations and re-validates code/docs excerpts against the pinned clone.
 
 > **The core rule:** do not answer from your own knowledge of the library. Your
 > training data is stale and hallucinates APIs. Answer **only** from the
@@ -29,6 +26,7 @@ re-validates each code/docs excerpt against the pinned clone.
 |---|---|
 | answer one question | `ask --repo <url\|path> --q "…"` → read `EVIDENCE.md` → write `ANSWER.md` → `check --strict` |
 | resolve ONE declaration: its body, its callers, whether anything still calls it | `symbol --name <sym>` (**not** `code --q <sym>` — lexical search cannot tell a call from a mention). `--name Class/method` works |
+| trace implementations → callers → tests | `trace --repo <url\|path> --q "…"` or `--name <sym>`; `--out <dir>` persists evidence; `--json` exposes roles |
 | know when / in which version something changed | `--sources releases,history` (`history` = git pickaxe) |
 | orient on an unfamiliar repo before drilling | `overview` — cached markdown digest (packages, layout, **core modules** ranked by what depends on them, public API, docs map). Navigation, **never citable** |
 | expand ONE thin area | `code`·`issues`·`prs`·`docs`·`releases`·`history`·`discussions`·`so`·`web` `--q "…"` — prints evidence, writes nothing |
@@ -38,6 +36,9 @@ re-validates each code/docs excerpt against the pinned clone.
 | fan the run's worklists out | `orchestrate` (see **Orchestration**) |
 | reach what no wording will match | `--semantic` (see **Optional semantic mode**) |
 | tune caps, cost, cache | `--help` · `references/tuning.md` · `cache status\|clean` |
+
+For `trace`, read `references/trace.md`: budgets, ambiguity stops and coverage
+limits. Validate the answer with `check --strict`, as for `ask`.
 
 `ask` persists a run (`EVIDENCE.md`, `evidence.json`, `meta.json`,
 `drill-plan.json`) beside the clone at `<clone>/.ultradoc/runs/<id>` — a stable,

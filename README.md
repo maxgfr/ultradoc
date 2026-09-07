@@ -12,6 +12,13 @@ npx skills add maxgfr/ultradoc
 
 </div>
 
+## Manual skill invocation
+
+Invoke `$ultradoc` explicitly in Codex or `/ultradoc` in Claude Code.
+The shipped skill disables automatic activation in both hosts; CLI commands
+remain unchanged. Other hosts may not honor these settings. Existing installed
+copies need to be updated to receive this invocation policy.
+
 ---
 
 Ask things like *"In this library, does `retryRequest()` back off on 429, and is
@@ -153,6 +160,7 @@ Two retrieval tiers:
 | `code` / `issues` / `prs` / `docs` / `releases` / `history` / `discussions` / `so` | Drill into one source (prints evidence) |
 | `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
 | `symbol --name <sym>` | Resolve one declaration: its real body, every call site with the caller it sits in, and where else it is only mentioned — for "where is X used / who calls X / is X dead" |
+| `trace --q "…"` / `trace --name <sym>` | Resolve a question or symbol, retrieve implementations, follow callers and reserve evidence for test calls within explicit budgets |
 | `overview` | Generate a cached markdown digest of the repo (packages, layout, core modules, public API, docs map) |
 | `doc` | Generate a grounded **reference doc**: a section outline + a dossier per section + a `DOC.todo` worklist you fill into a cited `DOC.md` |
 | `check --run <dir>` | Validate `ANSWER.md`/`DOC.md` citations **and** claim coverage against the dossier (`--strict` requires every claim cited; `--semantic` folds in `verify`'s verdicts) |
@@ -162,12 +170,29 @@ Two retrieval tiers:
 | `semantic up\|down\|status` | Manage the optional local Docker stack (Qdrant + Ollama + SearXNG) |
 | `firecrawl up\|down\|status` | Manage the optional self-hosted Firecrawl stack (page extraction, keyless) |
 | `cache status\|clean` | Inspect or clear the persistent clone/index cache |
-| `mcp` | Serve everything above over the Model Context Protocol (see below) |
+| `mcp` | Serve the MCP tools listed below (`trace` is CLI-only) |
 
 `node scripts/ultradoc.mjs --help` for every flag. Useful ones: `--sources
 code,issues,prs,docs,releases,history,discussions,web,so`, `--ref <branch>`
 (pin a version), `--package <name|dir>` (scope a monorepo), `--docs-url <url>`,
 `--semantic`, `--firecrawl off`.
+
+```bash
+ultradoc trace --repo ./project --name retryDelay --max-depth 2 --out /tmp/retry-trace --json
+ultradoc trace --repo ./project --q "how is retry delay calculated?" --max-evidence 12
+```
+
+`trace` is a code-only CLI drill using the existing structural index and citation
+checker. Defaults: 2 caller hops, 6 symbol queries, 18 evidence items and 20,000
+snippet characters; hard maxima are 4, 20, 100 and 200,000 respectively. Set
+`--max-depth`, `--max-symbols`, `--max-evidence` and `--max-chars` to bound output
+and traversal (repository indexing retains its own existing limits). Definitions,
+implementation callers and test calls share the evidence budget in that order,
+round-robin. Tiny budgets may omit a role. JSON includes roles, depths, seeds,
+visited symbols and budget notes; `--out` also writes the ordinary checkable dossier.
+Caller expansion stops at ambiguous names and uncorroborated name-only links.
+This is a bounded static trace, not a complete call graph or proof of test coverage;
+read the coverage notes, then write and validate `ANSWER.md` with `check --strict`.
 
 ## Use it as an MCP server
 
@@ -413,6 +438,13 @@ used to define three separate projects on the same host ports, so only one could
 be up at a time — starting a second failed on the port *after* leaving its
 sidecars running. Bringing it up from any of them now targets the same
 containers, so the second is a no-op and the RAM is paid once.
+
+Compose files and bind-mounted settings use the shared directory
+`~/.cache/skills/compose`. Set `ULTRA_STACK_CACHE_DIR` to the same directory
+for all three tools to override its parent. Per-tool HTTP and clone cache
+overrides still apply only to those caches. The first startup after upgrading
+from per-tool Compose directories may recreate SearXNG once to move its mount;
+subsequent startups from another tool reuse it.
 
 Upgrading from a version with per-skill container names? Remove the old ones
 once — this file can no longer stop them, and they still hold the ports:

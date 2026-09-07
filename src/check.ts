@@ -361,12 +361,12 @@ function applySemantic(dir: string, result: CheckResult, answer: string, evidenc
     );
     return;
   }
-  // Every claim the answer cites must still carry an adjudicated verdict. A
-  // claim whose rows were deleted (or dropped by an incomplete fold) leaves the
-  // answer partly unverified — reduceVerdicts is blind to a claim with no rows,
+  // Every claim/evidence pair must still carry a recognized verdict. A
+  // pair deleted or dropped by an incomplete fold leaves the answer partly
+  // unverified — reduceVerdicts is blind to a pair with no row,
   // so fail closed rather than silently pass it.
   //
-  // TRUSTLESS: re-derive the expected cited-claim set from the CURRENT answer +
+  // TRUSTLESS: re-derive the expected cited-pair set from the CURRENT answer +
   // evidence using verify's exact worklist derivation (`buildWorklist`) — same
   // claim granularity, claimId numbering, and cap. The persisted `claims[]` is
   // only a diagnostic and is NOT trusted: an attacker who deletes a claim's
@@ -380,24 +380,32 @@ function applySemantic(dir: string, result: CheckResult, answer: string, evidenc
   // capped run; a run capped with a smaller custom maxVerify may report claims
   // here it intentionally excluded — re-verify at the default cap or pass
   // --allow-unverified.
-  let expectedClaims: string[] = [];
+  const pairKey = (p: { claimId: string; evidenceId: string }): string => `${p.claimId}/${p.evidenceId}`;
+  let expectedPairs: string[];
+  let currentPairs: Set<string>;
   try {
-    expectedClaims = [...new Set(buildWorklist(dir, { answerFile }).worklist.pairs.map((p) => p.claimId))];
+    expectedPairs = buildWorklist(dir, { answerFile }).worklist.pairs.map(pairKey);
+    // Coverage retains the default cap, but any supplied verdict about a current
+    // pair still matters, including a refutation beyond that cap.
+    currentPairs = new Set(buildWorklist(dir, { answerFile, maxVerify: Number.MAX_SAFE_INTEGER }).worklist.pairs.map(pairKey));
   } catch {
-    expectedClaims = [];
+    unverified("the current claim/evidence worklist cannot be derived");
+    return;
   }
-  if (expectedClaims.length) {
-    const adjudicatedClaims = new Set(sem.verdicts.filter((v) => !!v.verdict).map((v) => v.claimId));
-    const missing = expectedClaims.filter((c) => !adjudicatedClaims.has(c));
+  if (expectedPairs.length) {
+    const valid = ["supported", "partial", "refuted", "unsupported"];
+    const adjudicatedPairs = new Set(sem.verdicts.filter((v) => v && valid.includes(v.verdict)).map(pairKey));
+    const missing = expectedPairs.filter((p) => !adjudicatedPairs.has(p));
     if (missing.length) {
       unverified(
-        `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim(s) (${missing.join(", ")}) — the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``,
+        `VERIFY.json is missing an adjudicated verdict for ${missing.length} cited claim/evidence pair(s) (${missing.join(", ")}) — the ledger does not cover the whole answer; re-run \`verify\` and \`verify --apply\``,
       );
       return;
     }
   }
-  const reduced = reduceVerdicts(sem.verdicts);
-  result.semantic = { ...reduced, verdicts: sem.verdicts };
+  const currentVerdicts = sem.verdicts.filter((v) => v && currentPairs.has(pairKey(v)));
+  const reduced = reduceVerdicts(currentVerdicts);
+  result.semantic = { ...reduced, verdicts: currentVerdicts };
   // A green semantic exit must mean the gate ENGAGED: rows whose verdicts were
   // all dropped/absent leave 0 adjudications — that is a bypass, not a pass.
   if (reduced.adjudicated === 0) {

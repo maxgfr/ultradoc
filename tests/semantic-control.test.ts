@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { firecrawlControl, semanticControl } from "../src/index/semantic/index.js";
 
 // The compose file and the orchestration live in the engine, which tests them
@@ -156,6 +158,6 @@ describe("firecrawlControl — the extraction stack", () => {
     const file = calls[0]!.args[calls[0]!.args.indexOf("-f") + 1]!;
     expect(file).toMatch(/docker-compose\.yml$/);
     expect(existsSync(file)).toBe(true);
-    expect(file).toContain("ultradoc"); // under OUR cache dir, not a shared one
+    expect(file).toBe(join(process.env.ULTRA_STACK_CACHE_DIR || join(homedir(), ".cache", "skills"), "compose", "docker-compose.yml"));
   });
 });

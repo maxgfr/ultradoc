@@ -54,6 +54,7 @@ configure({
 });
 
 export * from "./vendor/webindex-engine.mjs";
+export { materializeSharedStack as ensureComposeMaterialized, sharedStackControl as stackControl } from "./stack.js";
 
 // Shell commands here include clones and full-history fetches of large
 // repositories, not `rev-parse`. Declared through the environment because the

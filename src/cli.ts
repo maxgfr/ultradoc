@@ -14,6 +14,7 @@ import { DEFAULT_SOURCES, parseSourceList } from "./sources/kinds.js";
 import { assignIds } from "./dossier.js";
 import { semanticControl, firecrawlControl, pullStaticModel, hasStaticModel, modelPath } from "./index/semantic/index.js";
 import { symbolEvidence } from "./index/symbols.js";
+import { traceEvidence, type TraceBudget } from "./trace.js";
 import { ensureOverview } from "./overview.js";
 import { cacheStatus, cleanRepoCache, formatCacheStatus } from "./cache.js";
 import { PHASES, emitOrchestration, listPhasesFor } from "./orchestrate.js";
@@ -29,6 +30,7 @@ Usage:
   ultradoc code|issues|prs|docs|releases|history|discussions|so --repo <url|path> --q "<question>" [options]
   ultradoc web  --repo <url|path> [--q "<question>"] [--web-engine <e>] [--url <u,...>]
   ultradoc symbol --repo <url|path> --name <symbol> [--package <p>]
+  ultradoc trace --repo <url|path> (--q "<question>" | --name <symbol>) [--out <dir>] [--json]
   ultradoc overview --repo <url|path> [--out <file>] [--refresh]
   ultradoc doc  --repo <url|path> [--package <p>] [--sources <list>] [--out <dir>]
   ultradoc index --repo <url|path> [--semantic] [--refresh]
@@ -54,6 +56,9 @@ Commands:
              Use it for "where is X used / who calls X / is X dead" — lexical
              search answers those badly, since the name also appears in prose,
              imports and unrelated identifiers.
+  trace      Resolve a question/symbol, follow implementation callers, and
+             reserve evidence for test calls. Reports traversal budgets and
+             citation-ready excerpts; --out persists a normal evidence dossier.
   overview   Generate (once) a cached markdown digest of the repo — packages,
              layout, public API, docs map — to answer follow-up questions
              without re-indexing. Reused while the commit is unchanged.
@@ -109,6 +114,10 @@ Options:
   --name <symbol>      For 'symbol': the declaration to resolve (Class/method
                        also works, e.g. --name HttpClient/request)
   --per-source <n>     Max evidence items kept per source           (default: 6)
+  --max-depth <n>      For trace: caller hops, 0..4                 (default: 2)
+  --max-symbols <n>    For trace: symbol queries explored, 1..20     (default: 6)
+  --max-evidence <n>   For trace: evidence items, 1..100             (default: 18)
+  --max-chars <n>      For trace: total snippet characters, 1..200000 (default: 20000)
   --out <dir>          Dossier output dir   (default: <clone>/.ultradoc/runs/<id>)
   --run <dir>          For 'check'/'verify': the dossier dir to validate (also --out)
   --answer <file>      For 'check'/'verify': answer file to validate inside --run
@@ -170,6 +179,7 @@ export const COMMANDS = new Set([
   "so",
   "web",
   "symbol",
+  "trace",
   "overview",
   "doc",
   "index",
@@ -201,6 +211,10 @@ export const VALUE_FLAGS = new Set([
   "coverage-min",
   "phase",
   "name",
+  "max-depth",
+  "max-symbols",
+  "max-evidence",
+  "max-chars",
   "semantic-tier",
   // `mcp` only. The flag sets are global, so these are accepted (and ignored)
   // on every command — the same as --phase and --list already are.
@@ -325,6 +339,7 @@ function printEvidence(p: Parsed, evidence: Parameters<typeof renderEvidenceMark
 // the grammar warm-up; `check`/`verify`/`cache`/`semantic` re-read an existing
 // dossier or manage state and must never trigger the ~22 MB grammar pull.
 const INDEXING_COMMANDS = new Set([
+  "trace",
   "ask",
   "code",
   "issues",
@@ -417,6 +432,43 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
         notes,
       };
       printEvidence(p, evidence, meta);
+      return;
+    }
+
+    case "trace": {
+      const opts = buildAskOptions({ ...p, values: { ...p.values, q: p.values.q ?? p.values.question ?? p.values.name ?? "" } });
+      const asked: Partial<TraceBudget> = {};
+      for (const [flag, key] of [
+        ["max-depth", "maxDepth"],
+        ["max-symbols", "maxSymbols"],
+        ["max-evidence", "maxEvidence"],
+        ["max-chars", "maxChars"],
+      ] as const) {
+        if (p.values[flag] !== undefined) asked[key] = Number(p.values[flag]);
+      }
+      const ctx = await buildContext({ ...opts, sources: ["code"], semantic: false });
+      const result = traceEvidence(ctx, p.values.name, asked);
+      const meta: DossierMeta = {
+        question: opts.question,
+        repo: ctx.repoRef.raw,
+        host: ctx.repoRef.host,
+        ref: opts.ref,
+        commit: ctx.index.commit,
+        pkg: ctx.scopePkg?.name,
+        repoDir: ctx.repoDir,
+        sources: ["code"],
+        semantic: false,
+        evidenceCount: result.evidence.length,
+        builtAt: new Date().toISOString(),
+        notes: [
+          ...result.notes,
+          `Trace budget: ${JSON.stringify(result.budget)}; visited ${result.visited.length} symbol(s), ${result.characters} snippet characters.`,
+        ],
+      };
+      if (opts.out) writeDossier(opts.out, result.evidence, meta);
+      if (opts.json) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      else if (opts.out) process.stdout.write(`ultradoc trace: ${result.evidence.length} evidence item(s) → ${opts.out}\n`);
+      else process.stdout.write(renderEvidenceMarkdown(result.evidence, meta, false) + "\n");
       return;
     }
 
