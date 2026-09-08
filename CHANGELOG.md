@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.31.2](https://github.com/maxgfr/ultradoc/compare/v2.31.1...v2.31.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **engine:** measure CodeIndex adoption independently of WebIndex ([d023201](https://github.com/maxgfr/ultradoc/commit/d0232018a75d48b6a120656a4cab8f263d3f96f9))
+
 ## [2.31.1](https://github.com/maxgfr/ultradoc/compare/v2.31.0...v2.31.1) (2026-09-08)
 
 
