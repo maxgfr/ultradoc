@@ -15,9 +15,8 @@ For engine evidence and coverage limits, read [engine-evidence](references/engin
 evidence; you read it and write a precise, cited answer. `check` rejects
 unresolved citations and re-validates code/docs excerpts against the pinned clone.
 
-> **The core rule:** do not answer from your own knowledge of the library. Your
-> training data is stale and hallucinates APIs. Answer **only** from the
-> evidence `ultradoc` retrieves from the actual repo, issues, PRs, docs and web.
+> **The core rule:** answer **only** from evidence `ultradoc` retrieves from
+> the repo, issues, PRs, docs and web. Memory can contain stale or invented APIs.
 > If the evidence does not cover it, say so and retrieve more — never guess.
 
 ## Route the ask
