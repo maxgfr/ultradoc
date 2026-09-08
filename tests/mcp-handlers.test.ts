@@ -116,15 +116,15 @@ describe("lifecycle methods", () => {
     expect((await call("ultradoc_search", { repo: LIB, question: "x", sources: ["telepathy"] })).error).toMatchObject({ code: -32602 });
   });
 
-  it("drops the response to a cancelled request", async () => {
+  it("ignores cancellation of unknown requests without poisoning later IDs", async () => {
     const server = createServer(ultradocAdapter());
     const sent: JsonRpcMessage[] = [];
     await server.handle({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 } }, (m) => void sent.push(m));
     await server.handle({ jsonrpc: "2.0", id: 7, method: "ping" }, (m) => void sent.push(m));
-    expect(sent).toEqual([]);
-    // Only that id is cancelled.
+    expect(sent).toEqual([{ jsonrpc: "2.0", id: 7, result: {} }]);
+    // The next request also receives its response.
     await server.handle({ jsonrpc: "2.0", id: 8, method: "ping" }, (m) => void sent.push(m));
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
   });
 });
 

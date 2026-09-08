@@ -178,10 +178,10 @@ describe("the bundled MCP server over stdio", () => {
     expect(s.code).toBe(0);
   });
 
-  it("does not answer a request the client cancelled", async () => {
+  it("ignores cancellation before a request becomes active", async () => {
     const s = await session([INIT, { jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 2 } }, { jsonrpc: "2.0", id: 2, method: "ping" }]);
     const msgs = s.lines.map((l) => JSON.parse(l));
-    expect(msgs.map((m) => m.id)).toEqual([1]);
+    expect(msgs.map((m) => m.id)).toEqual([1, 2]);
   });
 
   it("answers a batch with a single array frame", async () => {

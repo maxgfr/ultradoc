@@ -1,4 +1,0 @@
-{
-  "_comment": "Declarations in this repo that shadow a webindex export, with why they have not been adopted. A ratchet: entries may leave, never arrive. Anything not listed fails verify-engine-usage, so the next fork is an argued decision rather than a quiet copy. An entry that no longer matches anything also fails, so the list cannot rot. EMPTY as of webindex v1.14.0 — every remaining argument was answered IN the engine (Brand.repoDir / cacheTtlMs, an async ensureHistoryDepth that also undoes the blobless filter, an abbreviation-tolerant sameCommit, excerptWindows) rather than by adopting a regression. The two genuine homonyms were RENAMED instead: config.ts's envIntRaw reads a raw variable where the engine's envInt resolves a branded suffix, and index/search.ts's codeExcerptWindows picks windows into a source file where the engine's excerptWindows scores a fetched page. Keep it empty.",
-  "forks": {}
-}

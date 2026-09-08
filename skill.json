@@ -1,0 +1,74 @@
+{
+  "name": "ultradoc",
+  "vendorDir": "src/vendor",
+  "engines": {
+    "codeindex": {
+      "repo": "maxgfr/codeindex",
+      "minRef": "v2.27.1",
+      "meta": "engine.meta.json",
+      "files": [
+        {
+          "remote": "scripts/engine.mjs",
+          "local": "codeindex-engine.mjs"
+        },
+        {
+          "remote": "scripts/engine.d.mts",
+          "local": "codeindex-engine.d.mts"
+        }
+      ],
+      "forks": {
+        "src/index/excerpt.ts:enclosingSymbol": "Selects the smallest fully enclosing CodeSymbol for excerpt titles.",
+        "src/index/structural.ts:SCHEMA_VERSION": "Version of the persisted Ultradoc index schema.",
+        "src/index/structural.ts:isDoc": "Documentation ranking policy includes project-specific basenames and directories.",
+        "src/lang/registry.ts:extractSymbols": "Result adapter selecting symbols from engineExtractCode.",
+        "src/lang/registry.ts:languageOf": "Compatibility adapter calling engineLanguageOf.",
+        "src/types.ts:CodeSymbol": "Consumer symbol shape used by excerpts and persisted evidence.",
+        "src/types.ts:WorkspacePackage": "Consumer package shape used by the evidence index.",
+        "src/util.ts:clip": "Evidence display contract includes the exact omitted character count.",
+        "src/walk.ts:WalkOptions": "Ultradoc file-budget options.",
+        "src/walk.ts:WalkedFile": "Consumer inventory schema.",
+        "src/walk.ts:WalkResult": "Maps engine capped to consumer truncated.",
+        "src/walk.ts:walk": "Result adapter over walkDetailed, which delegates traversal to CodeIndex."
+      },
+      "usageFloor": 41
+    },
+    "webindex": {
+      "repo": "maxgfr/webindex",
+      "minRef": "v1.15.1",
+      "meta": "webindex.meta.json",
+      "files": [
+        {
+          "remote": "scripts/engine.mjs",
+          "local": "webindex-engine.mjs"
+        },
+        {
+          "remote": "scripts/engine.d.mts",
+          "local": "webindex-engine.d.mts"
+        }
+      ],
+      "forks": {},
+      "usageFloor": 125
+    }
+  },
+  "repin": {
+    "artifacts": [
+      "src/vendor",
+      "scripts",
+      "skills",
+      "package.json",
+      "pnpm-lock.yaml",
+      "skill.json",
+      ".github/workflows/engine-repin.yml",
+      "tests/__snapshots__/golden-index.test.ts.snap"
+    ],
+    "workflows": [
+      "ci.yml",
+      "release.yml"
+    ],
+    "recall": {
+      "paths": [
+        "tests/__snapshots__/golden-index.test.ts.snap"
+      ]
+    }
+  }
+}
