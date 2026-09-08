@@ -4,7 +4,7 @@ description: "Answer questions about an open-source project and write reference 
 disable-model-invocation: true
 license: MIT
 metadata:
-  version: 2.31.2
+  version: 2.31.3
 ---
 
 # ultradoc — answer questions from the source, not from memory
