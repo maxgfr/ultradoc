@@ -30,7 +30,7 @@
         "src/walk.ts:WalkResult": "Maps engine capped to consumer truncated.",
         "src/walk.ts:walk": "Result adapter over walkDetailed, which delegates traversal to CodeIndex."
       },
-      "usageFloor": 41
+      "usageFloor": 32
     },
     "webindex": {
       "repo": "maxgfr/webindex",
