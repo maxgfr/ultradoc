@@ -18139,7 +18139,7 @@ ${HELP}`);
 init_text();
 
 // src/types.ts
-var VERSION = "2.31.0";
+var VERSION = "2.31.1";
 
 // src/clone.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync5, renameSync as renameSync4 } from "fs";
