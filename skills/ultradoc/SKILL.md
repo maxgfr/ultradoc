@@ -9,7 +9,7 @@ metadata:
 
 # ultradoc — answer questions from the source, not from memory
 
-Use the bundled CodeIndex-backed commands to locate relevant files, symbols and relationships, then inspect the cited source before drawing conclusions. Use the bundled WebIndex-backed commands to retrieve and inspect source pages; search snippets identify candidates, while the fetched passages support citations. Report caps, skipped files, unavailable extractors and blocked sources as coverage limits. An empty or partial result does not establish that nothing exists.
+For engine evidence and coverage limits, read [engine-evidence](references/engine-evidence.md).
 
 `scripts/ultradoc.mjs` (zero-dependency Node, no keys or install) retrieves
 evidence; you read it and write a precise, cited answer. `check` rejects
