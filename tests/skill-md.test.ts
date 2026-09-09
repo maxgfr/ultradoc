@@ -85,12 +85,18 @@ describe("SKILL.md is installable by the `skills` CLI", () => {
 
   it("keeps the load-bearing sections an agent routes with", () => {
     const body = match?.[2] ?? "";
+    const workflow = readFileSync(join(SKILL_DIR, "references", "workflow.md"), "utf8");
     // Each of these answers a question the engine cannot: which command fits
     // this ask, how much effort it deserves, what the deliverable looks like,
     // and how to catch yourself answering from memory. Losing one silently
     // would regress the skill without failing any other gate.
-    for (const heading of ["## Route the ask", "## Budget the run", "## The answer contract", "## Red flags"]) {
+    for (const heading of ["## Choose the smallest sufficient route", "## Fast answer", "## Standard answer and semantic verification", "## Evidence rules"]) {
       expect(body).toContain(heading);
+    }
+    // The detailed budget/answer procedure remains reachable through the router.
+    expect(body).toContain("references/workflow.md");
+    for (const heading of ["## Route the ask", "## Budget the run", "## The answer contract", "## Red flags"]) {
+      expect(workflow).toContain(heading);
     }
     // The grounding gates are the whole point — they must stay spelled out.
     expect(body).toContain("check --strict");
