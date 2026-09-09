@@ -17,7 +17,7 @@ to do it inline when you can't.
 > `VERIFY.todo.json`, `DOC.plan.json` — into one launchable Workflow script per
 > ready phase, the `agents/<role>.md` dispatch contracts (explorer · skeptic ·
 > section-writer, each ending with the one-writer rule), and a sequential
-> `RUNBOOK.md`, all under `<run>/orchestration/` (`--eco` for the runbook +
+> `RUNBOOK.md`, all under `<RUN>/orchestration/` (`--eco` for the runbook +
 > contracts only; `--list` for readiness as JSON). This file remains the
 > rationale and the inline recipe when you run without it — the contracts below
 > are the same ones `orchestrate` bakes into per-run files.

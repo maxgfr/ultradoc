@@ -77,7 +77,7 @@ Commands:
              worklists (drill-plan.json, VERIFY.todo.json, DOC.plan.json):
              one launchable workflow per ready phase + the agents/<role>.md
              dispatch contracts + a sequential RUNBOOK.md fallback, under
-             <run>/orchestration/. Subagents RETURN fragments; the folds
+             <RUN>/orchestration/. Subagents RETURN fragments; the folds
              (verdicts.json, ANSWER.md/DOC.md) stay with the orchestrator.
   semantic   Manage the optional vector backends. 'pull' fetches the local
              static model (~21 MB, once per machine) so --semantic works with

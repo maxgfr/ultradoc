@@ -6,7 +6,7 @@ import type { SourceKind } from "./types.js";
 // The retrieval fan-out plan. `ask` already runs one broad seed retrieval; the
 // playbook then says to drill {remaining query variants} × {drill sources}.
 // This module derives that matrix DETERMINISTICALLY from the question (no LLM,
-// no timestamps) and persists it as <run>/drill-plan.json so `orchestrate` can
+// no timestamps) and persists it as <RUN>/drill-plan.json so `orchestrate` can
 // fan the drill cells out to explorer subagents — or a sequential agent can
 // walk them one by one. Each cell maps to ONE read-only single-source CLI call
 // (`code|issues|prs|… --repo … --q …`), which prints evidence and writes
