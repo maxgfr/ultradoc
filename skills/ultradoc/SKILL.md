@@ -1,10 +1,11 @@
 ---
 name: ultradoc
-description: "Answer questions about an open-source project and write reference documentation with citations to its actual source."
+description: Answer questions about an open-source project and write reference documentation with citations to its actual source.
 disable-model-invocation: true
 license: MIT
 metadata:
   version: 2.31.6
+  opencode/autoinvoke: 'false'
 ---
 
 # ultradoc
