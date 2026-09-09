@@ -40,9 +40,14 @@ For one fact settled by at most three literal code/docs claims:
 2. Read [citation-format.md](references/citation-format.md), write `ANSWER.md`
    in the run directory: answer first, one claim per sentence, each cited `[E#]`.
    Put the pinned commit from `meta.json` in an HTML comment. Put unresolved
-   matters under `## Unknowns`; never fill them from memory.
+   matters under `## Unknowns`; never fill them from memory. Before describing
+   an effect, inspect callback defaults and injected dependencies: distinguish
+   computed/requested values from executed effects. A no-op implementation is
+   evidence of no effect, not an unknown or a real timer/write/network call.
 3. Run `check --run <run-dir> --strict`. Repair citation/coverage failures and
-   rerun. Present the answer, clickable source refs, commit and unknowns.
+   rerun. If its coverage summary counts more than three claims, use the
+   standard semantic verification below; a strict pass does not waive that
+   gate. Present the answer, clickable source refs, commit and unknowns.
 
 Stop when the excerpt settles the question and the gate passes. Do not execute
 unrelated project tests for a read-only explanation. Additional retrieval is for

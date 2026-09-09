@@ -46,3 +46,12 @@ real; this proves the answer is actually *good*.
 
 A good answer reads like a knowledgeable maintainer replying with receipts —
 direct, specific, and every claim backed by a pointer to the source.
+
+## Observable effects
+
+Trace default arguments, injected callbacks and adapters before claiming an
+observable effect. Distinguish a value passed to a callback from an effect the
+callback performs: a no-op callback does not wait, persist or send anything.
+When source makes that distinction explicit, report it as known behavior rather
+than hiding it under Unknowns. For a fast answer, count the strict check's claim
+units; more than three requires the standard semantic verification gate.
