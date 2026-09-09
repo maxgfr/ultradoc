@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.31.6](https://github.com/maxgfr/ultradoc/compare/v2.31.5...v2.31.6) (2026-09-09)
+
+
+### Bug Fixes
+
+* distinguish computed values from observed effects in answers ([c5f883e](https://github.com/maxgfr/ultradoc/commit/c5f883ede6b4adefe08543862095d10c2b46d1cf))
+* validate evidence identity and streamline grounded answers ([7f561df](https://github.com/maxgfr/ultradoc/commit/7f561dfb875e18e6618c66a61b728c5b09475021))
+
 ## [2.31.5](https://github.com/maxgfr/ultradoc/compare/v2.31.4...v2.31.5) (2026-09-09)
 
 
