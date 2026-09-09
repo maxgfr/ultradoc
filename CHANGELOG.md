@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.31.5](https://github.com/maxgfr/ultradoc/compare/v2.31.4...v2.31.5) (2026-09-09)
+
+
+### Bug Fixes
+
+* réépingler webindex après harmonisation du chemin d’orchestration ([f09e34d](https://github.com/maxgfr/ultradoc/commit/f09e34db1c3ea0f3fb8603b6345adbd7a496560a))
+
 ## [2.31.4](https://github.com/maxgfr/ultradoc/compare/v2.31.3...v2.31.4) (2026-09-08)
 
 
