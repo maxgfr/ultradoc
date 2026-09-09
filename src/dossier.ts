@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EvidenceItem, SourceResult, DossierMeta, SourceKind } from "./types.js";
 import { indexDir } from "./index/structural.js";
@@ -6,6 +6,28 @@ import { indexDir } from "./index/structural.js";
 // Canonical ordering so evidence ids are stable and grouped predictably,
 // regardless of which order the sources finished in.
 export const SOURCE_ORDER: SourceKind[] = ["code", "docs", "release", "history", "issue", "pr", "discussion", "so", "web"];
+
+export function readEvidence(path: string): EvidenceItem[] {
+  const evidence: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(evidence)) throw new Error("evidence.json must contain an array");
+  const ids = new Set<string>();
+  for (const [index, item] of evidence.entries()) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      typeof item.id !== "string" ||
+      !item.id.trim() ||
+      typeof item.ref !== "string" ||
+      typeof item.snippet !== "string" ||
+      !SOURCE_ORDER.includes(item.source)
+    ) {
+      throw new Error(`evidence.json has an invalid evidence record at row ${index + 1}`);
+    }
+    if (ids.has(item.id)) throw new Error(`evidence.json contains duplicate evidence id: ${item.id}`);
+    ids.add(item.id);
+  }
+  return evidence as EvidenceItem[];
+}
 const SOURCE_LABEL: Record<SourceKind, string> = {
   code: "Code",
   docs: "Documentation",

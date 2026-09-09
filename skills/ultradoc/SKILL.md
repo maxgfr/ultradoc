@@ -7,255 +7,96 @@ metadata:
   version: 2.31.5
 ---
 
-# ultradoc — answer questions from the source, not from memory
+# ultradoc
 
-For engine evidence and coverage limits, read [engine-evidence](references/engine-evidence.md).
+Answer from retrieved source evidence and deliver a cited answer or reference
+manual. The bundled `scripts/ultradoc.mjs` is a zero-dependency Node engine.
+Resolve script paths relative to this skill directory, not the target checkout.
 
-`scripts/ultradoc.mjs` (zero-dependency Node, no keys or install) retrieves
-evidence; you read it and write a precise, cited answer. `check` rejects
-unresolved citations and re-validates code/docs excerpts against the pinned clone.
+## Choose the smallest sufficient route
 
-> **The core rule:** answer **only** from evidence `ultradoc` retrieves from
-> the repo, issues, PRs, docs and web. Memory can contain stale or invented APIs.
-> If the evidence does not cover it, say so and retrieve more — never guess.
-
-## Route the ask
-
-`node scripts/ultradoc.mjs <command>` — run `--help` for the full flag surface.
-
-| You want to… | Run |
+| Request | Route |
 |---|---|
-| answer one question | `ask --repo <url\|path> --q "…"` → read `EVIDENCE.md` → write `ANSWER.md` → `check --strict` |
-| resolve ONE declaration: its body, its callers, whether anything still calls it | `symbol --name <sym>` (**not** `code --q <sym>` — lexical search cannot tell a call from a mention). `--name Class/method` works |
-| trace implementations → callers → tests | `trace --repo <url\|path> --q "…"` or `--name <sym>`; `--out <dir>` persists evidence; `--json` exposes roles |
-| know when / in which version something changed | `--sources releases,history` (`history` = git pickaxe) |
-| orient on an unfamiliar repo before drilling | `overview` — cached markdown digest (packages, layout, **core modules** ranked by what depends on them, public API, docs map). Navigation, **never citable** |
-| expand ONE thin area | `code`·`issues`·`prs`·`docs`·`releases`·`history`·`discussions`·`so`·`web` `--q "…"` — prints evidence, writes nothing |
-| ground a specific page you already found | `web --url <u,…>` |
-| scope a monorepo | `--package <name\|dir>` on any retrieval command |
-| write a whole reference doc | `doc` → `DOC.md` (see **Generate a documentation**) |
-| fan the run's worklists out | `orchestrate` (see **Orchestration**) |
-| reach what no wording will match | `--semantic` (see **Optional semantic mode**) |
-| tune caps, cost, cache | `--help` · `references/tuning.md` · `cache status\|clean` |
+| One local fact or named declaration | Fast answer below |
+| Behavior, ambiguity, interpretation, issue/PR evidence | Standard answer below |
+| Whole-project/package reference documentation | `doc` workflow in [workflow.md](references/workflow.md#generate-a-documentation) |
+| Declaration body/callers | `symbol --repo <path> --name <symbol>`; lexical search alone cannot establish calls |
+| Cross-file implementation → callers → tests | `trace`; first read [trace.md](references/trace.md) |
+| Version/change history | Retrieve `releases,history`, pin `--ref` when specified |
 
-For `trace`, read `references/trace.md`: budgets, ambiguity stops and coverage
-limits. Validate the answer with `check --strict`, as for `ask`.
+Use `node <skill-dir>/scripts/ultradoc.mjs --help` for flags. A local-only request
+uses `--sources code,docs`; do not probe remote providers for it. Do not load the
+full workflow, overview, optional semantic setup or orchestration for a small
+question unless evidence exposes a gap.
 
-`ask` persists a run (`EVIDENCE.md`, `evidence.json`, `meta.json`,
-`drill-plan.json`) beside the clone at `<clone>/.ultradoc/runs/<id>` — a stable,
-commit-pinned home reused across questions — unless you pass `--out`. Default
-sources are `code,issues,prs,docs`; the clone and index are cached per user, so
-every drill after the first `ask` is near-free (`references/tuning.md`).
+## Fast answer
 
-## Budget the run
+For one fact settled by at most three literal code/docs claims:
 
-Match the effort to the ask; escalate on evidence, not on reflex.
+1. Run `ask --repo <path> --q "<identifier and question>" --sources code,docs
+   --out <run-dir>`. Read its retrieval notes, then the relevant excerpts in
+   `EVIDENCE.md`. One named declaration may instead start with `symbol`, then
+   persist the evidence needed by the answer/check workflow.
+2. Read [citation-format.md](references/citation-format.md), write `ANSWER.md`
+   in the run directory: answer first, one claim per sentence, each cited `[E#]`.
+   Put the pinned commit from `meta.json` in an HTML comment. Put unresolved
+   matters under `## Unknowns`; never fill them from memory.
+3. Run `check --run <run-dir> --strict`. Repair citation/coverage failures and
+   rerun. Present the answer, clickable source refs, commit and unknowns.
 
-| Tier | Use when | Path | Stop when |
-|---|---|---|---|
-| **fast** | one fact, one named declaration | `symbol --name X`, or one `ask --sources code,docs` | the excerpt settles it |
-| **standard** (default) | how a behavior works | `ask` (default sources) → one drill round | every sub-question has ≥2 on-topic items |
-| **deep** | "why", contested, multi-part, version-sensitive, whole-repo | `overview` → `ask` → fan-out, ≤3 rounds, `--semantic`, cross-source | a round surfaces no new on-topic evidence id |
+Stop when the excerpt settles the question and the gate passes. Do not execute
+unrelated project tests for a read-only explanation. Additional retrieval is for
+an identified evidence gap, not a required number of commands.
 
-**The gates do not scale down.** `check --strict` always. `verify` +
-`check --semantic` always, *except* on the fast path when the answer is ≤3 claims
-all cited to code/docs excerpts — those are exactly the citations `check`
-re-validates line-by-line against the pinned clone. Any claim that **interprets**
-evidence, or rests on an issue/PR, goes through `verify`.
+Any interpretation, disputed behavior or issue/PR claim requires the semantic
+verification below. A resolvable citation alone does not prove its claim.
 
-## Workflow
+## Standard answer and semantic verification
 
-You own this task end-to-end: return one grounded, cited answer, never a
-half-retrieved dossier. Retrieval and verification are independent, near-free
-calls — **parallelize when your harness can** (batch independent drills in one
-message; fan out to subagents or a workflow if available), inline otherwise.
-See `references/orchestration.md`.
+1. Resolve the project, precise question and requested version. Ask only when
+   target ambiguity prevents retrieval. Split multipart questions into explicit
+   subquestions. Read [retrieval-playbook.md](references/retrieval-playbook.md)
+   when choosing sources/query variants; use `ask` to persist a pinned dossier.
+2. Read retrieval notes before snippets: truncation, rate limits, regex-tier
+   analysis and missing providers bound the answer. Decode unclear notes using
+   [reading-evidence.md](references/reading-evidence.md) and
+   [engine-evidence.md](references/engine-evidence.md).
+3. Drill only unresolved subquestions. Standard: one drill round, targeting two
+   on-topic items per subquestion. Deep/contested: up to three rounds; stop when
+   a round yields no new on-topic evidence. State remaining gaps explicitly.
+4. Write the same answer contract as the fast path. Always run `check --strict`.
+5. Run `verify --run <run-dir>`, judge every claim↔evidence pair skeptically as
+   `supported`, `partial`, `refuted` or `unsupported`, with a concrete note.
+   Cross-check issue/PR assertions against current code. Fold verdicts into one
+   file, then run `verify --apply <verdicts.json> --run <run-dir>` and
+   `check --semantic --run <run-dir>`. Missing verification fails closed.
+   Fix, weaken, drop or re-retrieve unsupported claims and re-verify; never
+   bypass the gate to obtain a pass.
+6. Review [answer-rubric.md](references/answer-rubric.md), then present the
+   answer in the user's language with source links, commit and coverage gaps.
 
-**When a command fails, recover — don't guess:**
+## Evidence rules
 
-| symptom | what to do |
-|---|---|
-| `git clone failed` (404 / auth) | check the URL; a private repo → ask the user for a local checkout and pass `--repo <path>` |
-| offline / every network source notes a failure | answer from `code,docs,releases,history` only, and state the gap in the answer |
-| a `web`/`docs` excerpt is nav/cookie chrome, or a docs page came back empty | the page is JS-rendered or chrome-heavy — `firecrawl up`, then re-run the drill |
-| a note says GitHub is **rate-limited** | set `GITHUB_TOKEN` (or `gh auth login`), or continue with the other sources and say so |
-| huge repo, slow index / a "truncated" note | scope with `--package`; raise a cap only per `references/tuning.md` |
-| the **question** is ambiguous (which repo? which behavior?) | ask the user before retrieving — never guess the repo |
-| the dossier is empty/off-topic twice in a row | re-phrase per `references/retrieval-playbook.md`; it's the wording, not a missing answer |
+- Answer only from retrieved evidence. A familiar API or matching keyword is
+  insufficient; the snippet must support the actual statement.
+- Never call an empty, capped or failed retrieval proof of absence. Bound the
+  conclusion to what was searched and disclose missing sources.
+- `check --strict` applies to every answer and every generated `DOC.md`.
+  Semantic verification is required except for the narrow fast path above.
+- Keep going through recoverable errors. Rephrase an off-topic query; scope a
+  truncated monorepo with `--package`; use available local sources offline and
+  state the gap. Do not claim evidence from a failed provider.
+- Retrieval and verification may run sequentially. Optional fan-out never
+  changes the evidence or exit gates.
 
-1. **Resolve the target.** Identify the project and the precise question. With
-   only a name, find the canonical repo URL (your WebSearch, or ask if
-   ambiguous). Note any version/branch the user cares about (`--ref`). Several
-   questions about the same repo, or you don't know where a behavior lives? Run
-   `overview` once and drill its **Core modules** first.
+## Open detail only when needed
 
-2. **Retrieve.** Derive 2–3 **query variants** — the engine searches literally,
-   so phrasing decides what surfaces. Spend variants on **synonyms and
-   identifiers** (`retryBackoff`, `MAX_RETRIES`, the literal error string), never
-   on inflections; conceptual "why designed this way" questions lead with
-   `docs`/`discussions`/`web` or `--semantic`, not `code`. The full variant and
-   source tables are in `references/retrieval-playbook.md`.
-
-   Split a multi-part question into sub-questions **now**; each needs its own
-   evidence or an explicit "unknown" at the end. Then run `ask` with the best
-   variant and the sources that fit — ultradoc auto-discovers the project's
-   official docs URL (override with `--docs-url`). The remaining
-   variants × sources are a fan-out, which `ask` persists as `drill-plan.json`.
-
-3. **Read the dossier.** **Retrieval notes first** — they say what this run could
-   not reach (a capped index, a regex-tier symbol scan, a sliced call-site list,
-   a rate-limited provider) and therefore bound what you may claim. Then the item
-   titles, then the snippets. `references/reading-evidence.md` decodes every
-   note, the item labels, `meta.symbolSpan`/`meta.confidence`, and what `check`'s
-   warnings mean. Read the real code/issue/PR/doc text — never the file name.
-
-4. **Drill the gaps.** Fan the variant drills out **in parallel from the start**;
-   iterate in rounds only when a fan-out surfaces new leads, and stop per the
-   budget table. Two rules decide quality: **triage before writing** — cite an
-   item only if its snippet names the symbol/behavior or describes the same
-   mechanism, never on a shared keyword; and **re-query instead of re-reading** —
-   two off-topic dossiers mean the wording is wrong. A sub-question still
-   unsupported at the cap is an explicit unknown, never filled from memory.
-
-5. **Write the answer** to `ANSWER.md` in the run folder, per **The answer
-   contract** below and `references/citation-format.md`.
-
-6. **Validate (two layers).**
-   - *Structural:* `check --run <dir> --strict` fails on any citation that
-     doesn't resolve, on an answer with no citations, and (with `--strict`) on
-     any uncited claim — so the answer can't be mostly memory around one real
-     reference. Fix and re-run until it passes.
-   - *Semantic (adversarial support-check):* `verify --run <dir>` writes a
-     claim↔evidence worklist. Judge each pair as a **skeptic**: default to
-     `unsupported`/`refuted` unless the cited snippet literally backs the claim
-     (`supported` · `partial` · `refuted` · `unsupported` + a note). A pair
-     flagged **⚠ cross-check** is grounded in an issue/PR and must be judged
-     against CURRENT code. Collect every verdict into a **single**
-     `verdicts.json` (`references/orchestration.md` has the verdict table and the
-     return contract), then:
-     ```
-     node scripts/ultradoc.mjs verify --apply verdicts.json --run <dir>
-     node scripts/ultradoc.mjs check  --semantic            --run <dir>
-     ```
-     `check --semantic` **fails when `VERIFY.json` is missing** (or pass
-     `--allow-unverified` to skip the gate explicitly), and on any refuted or
-     unsupported claim — closing the gap where a citation *resolves* but does not
-     back the claim. Fix the claim (re-cite, weaken, drop, or retrieve better)
-     and re-verify. Then self-review against `references/answer-rubric.md`.
-
-7. **Present** per the answer contract. `references/worked-example.md` walks one
-   full run — retrieve, triage, write, both gates, hand-off.
-
-## The answer contract
-
-`ANSWER.md` **is**: a lead line that answers the question — **cited like any
-other claim**, `--strict` counts it; then one claim per sentence, each carrying
-the evidence id it rests on; identifiers, defaults and values quoted **verbatim**
-from the excerpt; then a `## Unknowns` section naming what the evidence did
-**not** settle (that heading is exempt from the coverage gate — an unknown cites
-nothing by construction, so it never has to be dropped to get a green run). Put
-the commit from `meta.json` in an HTML comment: `check` ignores comments, and a
-bare "Verified against `abc1234`." is an uncited claim that fails `--strict`.
-
-Your message to the user **is**: that answer, plus the clickable refs from the
-evidence (file:line, issue/PR numbers, doc/SO/web URLs), the commit it was
-verified against, and the unknowns — stated, not filled. Write it in the
-conversation's language; identifiers, flags and file paths stay verbatim.
-
-## Red flags — you are about to answer from memory
-
-| The thought | The reality |
-|---|---|
-| "I know this library; the dossier just confirms it" | Then cite it. If no item says it, it does not go in the answer. |
-| "`check` passed, so it's grounded" | Default coverage is 0.7 — 30% of claims may be uncited. Use `--strict`. |
-| "The issue says so" | A tracker describes a point in time. **⚠ cross-check** against current code. |
-| "Close enough to cite" | A shared keyword is not support. The bar: the snippet names the symbol/behavior. |
-| "The evidence is thin, I'll bridge the gap" | A gap is an explicit unknown, not a sentence. |
-| "`verify` is optional here" | `check --semantic` is fail-closed for a reason. Skip it only per the budget table. |
-| "Let me read further down the dossier" | Two off-topic dossiers = wrong wording. Re-query instead. |
-| "The retrieval note is just a warning" | It bounds what you may claim — and is often itself part of the answer. |
-
-## Generate a documentation
-
-When the user wants a *whole-project* (or whole-package) doc rather than one
-answer, `doc` is the same grounded loop fanned out over a section outline:
-
-1. **Scaffold.** `doc --repo <url> [--package <p>] [--sources …]`. The engine
-   builds a deterministic outline (overview, install/usage, public API or one
-   section per workspace package, configuration, architecture, then one section
-   per **central subsystem**), retrieves a dossier **per section**, merges them
-   into one `evidence.json` with global `[E#]` ids, and writes `DOC.todo.md` +
-   `DOC.plan.json` under `<clone>/.ultradoc/doc/`, with an `ARCHITECTURE.mmd`
-   module diagram — navigation like `OVERVIEW.md`, never cited.
-2. **Write each section.** Read `DOC.todo.md` and `EVIDENCE.md`, then write
-   `DOC.md`: one section per outline entry, **every claim cited `[E#]`**. A
-   section with thin evidence is a fan-out unit — drill it or mark the gap an
-   explicit unknown; never write from memory.
-3. **Validate & present.** `check --run <doc-dir>` (and `verify` +
-   `check --semantic`, exactly as in step 6 — both auto-detect `DOC.md`). Fix
-   until grounded, then present `DOC.md` pinned to its commit.
-
-## Orchestration — route by harness
-
-The per-item work fans out: `drill-plan.json` (one cell per {query-variant ×
-source}, plus one `symbol` cell per identifier the question names),
-`VERIFY.todo.json` (one claim↔evidence pair) and `DOC.plan.json` (one section)
-are independent worklists. `orchestrate` emits the orchestration from the
-CURRENT worklists, with absolute paths and real item ids baked in:
-
-```
-node scripts/ultradoc.mjs orchestrate --run <dir> [--phase drill|verify|doc] [--eco] [--list]
-```
-
-| Your harness | How to run each phase |
-|---|---|
-| Has the Workflow tool | `orchestrate --run <RUN> --phase <p>`, then `Workflow({ scriptPath: "<RUN>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments (triaged evidence · verdicts · section drafts); you fold them yourself (ANSWER.md · one `verdicts.json` · DOC.md), then run the gates as usual. |
-| Subagents but no Workflow tool (including Codex) | Same `orchestrate`; dispatch one native subagent per batch following `<RUN>/orchestration/agents/<role>.md`. One writer: you fold results in. |
-| Eco mode, or no subagents | `orchestrate --run <RUN> --eco` → follow `<RUN>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
-
-Fan-out is an optimization, never a requirement — the gates are
-harness-independent and every phase has a sequential fallback with identical
-artifacts. Subagents never write; the folds stay with you, the orchestrator.
-Re-run `orchestrate` whenever a worklist changes (emission is deterministic and
-idempotent); `--phase <p>` before its worklist exists fails and names the command
-that produces it.
-
-## Optional semantic mode (fully local, no API key)
-
-Tier-1 search (ripgrep + symbol index) is the default and needs nothing. Add
-`--semantic` when the question **describes** what the codebase names differently
-— "which helper works out how long to wait before trying again" finds
-`computeBackoff`, which no lexical wording reaches. Two keyless backends:
-
-- **static** — `semantic pull` (~21 MB, once, no container). Embeds symbol names
-  and signatures: answers *which declaration*.
-- **docker** — `semantic up`, then `--semantic-tier docker`. Embeds the real
-  **content** of code and docs, so it is the one that answers *why it is designed
-  this way*. Reach for it when the question needs prose.
-
-`--semantic-tier auto` (default) tries endpoint → static → docker; with no
-backend `--semantic` names the command that would enable one and falls back to
-Tier 1. See `references/semantic-setup.md`.
-
-## Optional page extraction (fully local, no API key)
-
-`firecrawl up|down|status` runs a keyless self-hosted Firecrawl; fetched pages
-then arrive as browser-rendered main-content markdown instead of regex-stripped
-HTML. Reach for it when a `docs`/`web` excerpt is nav/cookie chrome or a page
-came back empty (JS-rendered). Never required — it degrades to the stripper,
-noting any failure. See `references/web-discovery.md`.
-
-## References
-
-| Open it when | File |
-|---|---|
-| the dossier is in front of you: notes, item labels, gate warnings | `references/reading-evidence.md` |
-| choosing sources, phrasing variants, iterating, triaging | `references/retrieval-playbook.md` |
-| writing citations, or `check` rejected one | `references/citation-format.md` |
-| the answer is drafted and you're about to present | `references/answer-rubric.md` |
-| you want the whole loop demonstrated once | `references/worked-example.md` |
-| a run is too slow, too shallow, or too noisy | `references/tuning.md` |
-| parallelizing drills or verification across calls/subagents | `references/orchestration.md` |
-| issues/PRs look wrong or empty for a host | `references/provider-apis.md` |
-| `web` found nothing, or a page extracted badly | `references/web-discovery.md` |
-| setting up a vector tier or the Firecrawl stack | `references/semantic-setup.md` |
+- [workflow.md](references/workflow.md): complete workflow, documentation,
+  recovery table, source routing and optional semantic mode.
+- [tuning.md](references/tuning.md): caps, caching, cost and noisy retrieval.
+- [orchestration.md](references/orchestration.md): independent worklists,
+  subagent contracts and sequential eco mode; one writer folds results.
+- [provider-apis.md](references/provider-apis.md): issue/PR provider problems.
+- [web-discovery.md](references/web-discovery.md): web extraction and discovery.
+- [semantic-setup.md](references/semantic-setup.md): optional local vector tiers.
+- [worked-example.md](references/worked-example.md): complete worked answer.

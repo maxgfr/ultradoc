@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkRun, snippetMatches, REVALIDATION } from "../src/check.js";
+import { buildWorklist } from "../src/verify.js";
 import type { EvidenceItem } from "../src/types.js";
 
 const EVIDENCE: EvidenceItem[] = [
@@ -25,6 +26,17 @@ function answer(body: string): void {
 }
 
 describe("checkRun", () => {
+  it.each(
+    [null, {}, [null], [{ id: "E1" }], [EVIDENCE[0], EVIDENCE[0]]].map((value) => ({ value })),
+  )("rejects malformed or ambiguous evidence without certifying it: $value", ({ value }) => {
+    answer("Backoff doubles each attempt [E1].");
+    writeFileSync(join(dir, "evidence.json"), JSON.stringify(value));
+    const result = checkRun(dir);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/evidence.json/);
+    expect(() => buildWorklist(dir)).toThrow(/evidence.json/);
+    rmSync(dir, { recursive: true, force: true });
+  });
   it("passes when every citation resolves", () => {
     answer("Backoff doubles each attempt [E1]. A PR changes this [E2].");
     const r = checkRun(dir);

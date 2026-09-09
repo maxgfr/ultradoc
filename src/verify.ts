@@ -1,3 +1,4 @@
+import { readEvidence } from "./dossier.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClaimEvidencePair, EvidenceItem, Verdict, VerdictKind, VerifyResult } from "./types.js";
@@ -55,7 +56,7 @@ function claimStrings(text: string): string[] {
 export function buildWorklist(dir: string, opts: { maxVerify?: number; answerFile?: string } = {}): BuiltWorklist {
   const evidencePath = join(dir, "evidence.json");
   if (!existsSync(evidencePath)) throw new Error(`No evidence.json in ${dir} — run \`ultradoc ask\` first.`);
-  const evidence: EvidenceItem[] = JSON.parse(readFileSync(evidencePath, "utf8"));
+  const evidence = readEvidence(evidencePath);
   const byId = new Map(evidence.map((e) => [e.id, e] as const));
   const answerPath = resolveAnswerPath(dir, opts.answerFile);
   if (!answerPath) throw new Error(`No ${opts.answerFile ?? "ANSWER.md or DOC.md"} in ${dir} — write the answer first.`);
@@ -236,7 +237,7 @@ function answerSignatureFor(dir: string): string | null {
     const answerPath = resolveAnswerPath(dir);
     const evidencePath = join(dir, "evidence.json");
     if (!answerPath || !existsSync(evidencePath)) return null;
-    const evidence: EvidenceItem[] = JSON.parse(readFileSync(evidencePath, "utf8"));
+    const evidence = readEvidence(evidencePath);
     return answerClaimSignature(readFileSync(answerPath, "utf8"), evidence);
   } catch {
     return null;

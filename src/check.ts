@@ -1,3 +1,4 @@
+import { readEvidence } from "./dossier.js";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve as resolvePath, sep } from "node:path";
@@ -450,7 +451,7 @@ export function checkRun(dir: string, opts: CheckOptions = {}): CheckResult {
   }
   let evidence: EvidenceItem[];
   try {
-    evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as EvidenceItem[];
+    evidence = readEvidence(evidencePath);
   } catch (e) {
     return {
       ok: false,
