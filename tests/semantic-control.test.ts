@@ -14,14 +14,22 @@ import { firecrawlControl, semanticControl } from "../src/index/semantic/index.j
 // keeps those as separate services, so this repo asks for both — in one compose
 // call, because a second against the same project recreates the first's work.
 
+// The engine asks the daemon (`docker info`) before any compose command, so a
+// stopped Docker Desktop is one clear sentence. The fake daemon answers it, and
+// the probe is kept out of `calls`, which lists the compose commands only.
 function fakeRunner(fail?: (args: string[]) => boolean) {
   const calls: { cmd: string; args: string[]; timeoutMs?: number }[] = [];
+  const probes: string[][] = [];
   const run = (cmd: string, args: string[], opts: { timeoutMs: number }) => {
+    if (args[0] === "info") {
+      probes.push(args);
+      return { ok: true, stdout: "27.0.0\n", stderr: "" };
+    }
     calls.push({ cmd, args, timeoutMs: opts.timeoutMs });
     const ok = !(fail?.(args) ?? false);
     return { ok, stdout: "", stderr: ok ? "" : "boom: network timeout pulling image" };
   };
-  return { calls, run };
+  return { calls, probes, run };
 }
 
 const isImagePull = (args: string[]): boolean => args.includes("pull") && !args.includes("exec");
@@ -153,8 +161,9 @@ describe("firecrawlControl — the extraction stack", () => {
   it("drives the engine's embedded compose file, so an installed copy works", () => {
     // The previous version needed docker-compose.yml beside the bundle. There
     // is no such file in this repo any more.
-    const { calls, run } = fakeRunner();
+    const { calls, probes, run } = fakeRunner();
     semanticControl("status", { run, has: () => true });
+    expect(probes).toHaveLength(1);
     const file = calls[0]!.args[calls[0]!.args.indexOf("-f") + 1]!;
     expect(file).toMatch(/docker-compose\.yml$/);
     expect(existsSync(file)).toBe(true);

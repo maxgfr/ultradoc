@@ -53,7 +53,7 @@ Then fold, as the sole writer:
 4 item(s) in \`<RUN>/VERIFY.todo.json\`.
 
 Fan out: \`Workflow({ scriptPath: "<RUN>/orchestration/verify.workflow.mjs" })\`
-(1 agent(s) of at most 8 item(s), contract \`agents/skeptic.md\`).
+(1 agent(s) of at most 4 item(s), contract \`agents/skeptic.md\`).
 
 Sequentially instead: play \`agents/skeptic.md\` yourself over 'C1:E1,C2:E2,C3:E3,C4:E4'.
 
