@@ -48,10 +48,15 @@ describe("structural index", () => {
   });
 
   it("records which extraction tier built it", () => {
-    // The suite never warms the grammars, so this index is regex-tier: no
-    // endLine, and it must SAY so rather than look complete.
+    // The suite never warms the grammars, so this index is regex-tier, and it
+    // must SAY so rather than look complete. Since codeindex v2.31 the regex
+    // tier also closes each declaration's block, so declarations carry an
+    // endLine; a re-export has no body and still carries none.
     expect(idx.stats!.astTier).toBe(false);
-    expect(idx.symbols.every((s) => s.endLine === undefined)).toBe(true);
+    for (const s of idx.symbols) {
+      if (s.kind === "reexport") expect(s.endLine, s.name).toBeUndefined();
+      else expect(s.endLine, s.name).toBeGreaterThanOrEqual(s.line);
+    }
   });
 });
 

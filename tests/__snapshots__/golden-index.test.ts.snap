@@ -52,6 +52,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
   },
   "symbols": [
     {
+      "endLine": 3,
       "exported": true,
       "file": "packages/alpha/src/createApp.ts",
       "kind": "default",
@@ -61,6 +62,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "export default function () {",
     },
     {
+      "endLine": 1,
       "exported": false,
       "file": "packages/alpha/src/deep.ts",
       "kind": "function",
@@ -70,6 +72,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "function internalOnly(): void {}",
     },
     {
+      "endLine": 3,
       "exported": true,
       "file": "packages/alpha/src/model.ts",
       "kind": "interface",
@@ -88,6 +91,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "export type UserId = string;",
     },
     {
+      "endLine": 5,
       "exported": true,
       "file": "packages/alpha/src/model.ts",
       "kind": "class",
@@ -124,6 +128,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "const helper = (x: number): number => x;",
     },
     {
+      "endLine": 5,
       "exported": true,
       "file": "packages/alpha/src/server.ts",
       "kind": "function",
@@ -133,6 +138,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "function boot(port: number): number {",
     },
     {
+      "endLine": 5,
       "exported": true,
       "file": "packages/alpha/src/server.ts",
       "kind": "function",
@@ -142,6 +148,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "export { start }",
     },
     {
+      "endLine": 6,
       "exported": true,
       "file": "packages/alpha/src/server.ts",
       "kind": "function",
@@ -151,6 +158,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "function shutdown(): void {}",
     },
     {
+      "endLine": 9,
       "exported": true,
       "file": "packages/alpha/src/server.ts",
       "kind": "function",
@@ -160,6 +168,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "export function handleRequest(req: string): string {",
     },
     {
+      "endLine": 1,
       "exported": true,
       "file": "packages/beta/src/index.js",
       "kind": "function",
@@ -169,6 +178,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "export function betaMain() {}",
     },
     {
+      "endLine": 1,
       "exported": true,
       "file": "packages/beta/src/legacy.js",
       "kind": "const",
@@ -178,6 +188,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "module.exports.parse = function () {};",
     },
     {
+      "endLine": 1,
       "exported": true,
       "file": "packages/beta/src/util.js",
       "kind": "function",
@@ -187,6 +198,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "function build() {}",
     },
     {
+      "endLine": 2,
       "exported": true,
       "file": "packages/beta/src/util.js",
       "kind": "function",
@@ -196,6 +208,7 @@ exports[`golden: structural index and overview > snapshots index.json on the gol
       "signature": "function helper() {}",
     },
     {
+      "endLine": 3,
       "exported": true,
       "file": "packages/beta/src/util.js",
       "kind": "const",
