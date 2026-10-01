@@ -4,7 +4,7 @@ description: Answer questions about an open-source project and write reference d
 disable-model-invocation: true
 license: MIT
 metadata:
-  version: 2.31.11
+  version: 2.31.12
   opencode/autoinvoke: 'false'
 ---
 
