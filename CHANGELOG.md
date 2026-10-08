@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.32.0](https://github.com/maxgfr/ultradoc/compare/v2.31.12...v2.32.0) (2026-10-08)
+
+
+### Features
+
+* **skill:** let the agent invoke ultradoc on request ([ec61507](https://github.com/maxgfr/ultradoc/commit/ec61507627ed420bca024246337eae83862eb793))
+
 ## [2.31.12](https://github.com/maxgfr/ultradoc/compare/v2.31.11...v2.31.12) (2026-10-01)
 
 
