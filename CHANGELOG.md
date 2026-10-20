@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+## [2.33.2](https://github.com/maxgfr/ultradoc/compare/v2.33.1...v2.33.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* describe orchestrate generic-first in --help ([#29](https://github.com/maxgfr/ultradoc/issues/29)) ([d07b4f8](https://github.com/maxgfr/ultradoc/commit/d07b4f82eaac081dbe40e5cf5806fc7dbf0ac8be))
+
 ## [2.33.1](https://github.com/maxgfr/ultradoc/compare/v2.33.0...v2.33.1) (2026-10-20)
 
 
