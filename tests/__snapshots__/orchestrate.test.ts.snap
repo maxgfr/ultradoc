@@ -33,17 +33,21 @@ Optional — Claude Code: launch \`<RUN>/orchestration/<p>.workflow.mjs\` with t
 
 
 The subagents return fragments; **you** are the sole writer. Each phase below
-either fans out through its \`*.workflow.mjs\` or runs sequentially here — the
-fold at the end of a phase is yours either way.
+fans out through its \`agents/<role>.md\` contract — one subagent per batch, on
+any host that has subagents — or runs sequentially here. The fold at the end
+of a phase is yours either way.
 
 ## drill
 
 25 item(s) in \`<RUN>/drill-plan.json\`.
 
-Fan out: \`Workflow({ scriptPath: "<RUN>/orchestration/drill.workflow.mjs" })\`
-(4 agent(s) of at most 8 item(s), contract \`agents/explorer.md\`).
+Fan out: dispatch one subagent per batch with the contract \`agents/explorer.md\`
+(4 agent(s) of at most 8 item(s)): 'D1,D2,D3,D4,D5,D6,D7,D8' · 'D9,D10,D11,D12,D13,D14,D15,D16' · 'D17,D18,D19,D20,D21,D22,D23,D24' · 'D25'.
 
 Sequentially instead: play \`agents/explorer.md\` yourself over 'D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19,D20,D21,D22,D23,D24,D25'.
+
+Optional — Claude Code: launch \`drill.workflow.mjs\` (emitted unless \`--eco\`) with the
+Workflow tool for one-call parallel fan-out — \`Workflow({ scriptPath: "<RUN>/orchestration/drill.workflow.mjs" })\`.
 
 Then fold, as the sole writer:
 
@@ -53,10 +57,13 @@ Then fold, as the sole writer:
 
 4 item(s) in \`<RUN>/VERIFY.todo.json\`.
 
-Fan out: \`Workflow({ scriptPath: "<RUN>/orchestration/verify.workflow.mjs" })\`
-(1 agent(s) of at most 4 item(s), contract \`agents/skeptic.md\`).
+Fan out: dispatch one subagent per batch with the contract \`agents/skeptic.md\`
+(1 agent(s) of at most 4 item(s)): 'C1:E1,C2:E2,C3:E3,C4:E4'.
 
 Sequentially instead: play \`agents/skeptic.md\` yourself over 'C1:E1,C2:E2,C3:E3,C4:E4'.
+
+Optional — Claude Code: launch \`verify.workflow.mjs\` (emitted unless \`--eco\`) with the
+Workflow tool for one-call parallel fan-out — \`Workflow({ scriptPath: "<RUN>/orchestration/verify.workflow.mjs" })\`.
 
 Then fold, as the sole writer:
 
@@ -101,8 +108,11 @@ Return ONLY the structured output specified above. Do NOT write, edit, or delete
 exports[`orchestrate — contracts & runbook > golden shape (paths normalized) > verify.workflow.mjs 1`] = `
 "export const meta = {"name":"ultradoc-verify","description":"Adversarially verify the 4 claim↔evidence pair(s) of an ultradoc answer (skeptic fan-out)","phases":[{"title":"Verify"}]}
 
-// NOT a plain Node script: launch it with the Workflow tool —
+// Optional Claude Code fast path — NOT a plain Node script: launch it with the
+// Workflow tool for a one-call parallel fan-out:
 // Workflow({ scriptPath: "<RUN>/orchestration/verify.workflow.mjs" }).
+// Any other host: dispatch one subagent per batch with
+// <RUN>/orchestration/agents/skeptic.md, or follow RUNBOOK.md alone.
 //
 // Emitted by \`ultradoc orchestrate\` from the CURRENT worklist. The worklist is the
 // source of truth: if it changes, re-run \`ultradoc orchestrate --phase verify\`
