@@ -41,6 +41,18 @@ describe("bundled engine (subprocess)", () => {
     expect(r.stdout).toMatch(/\bask\b/);
   });
 
+  it("--help describes orchestrate generic-first: contracts + RUNBOOK, the Workflow script optional", () => {
+    const h = cli("--help").stdout;
+    const block = h.slice(h.indexOf("  orchestrate "), h.indexOf("  semantic "));
+    const contracts = block.indexOf("agents/<role>.md");
+    const runbook = block.indexOf("RUNBOOK.md");
+    const workflow = block.indexOf(".workflow.mjs");
+    expect(contracts).toBeGreaterThan(-1);
+    expect(runbook).toBeGreaterThan(contracts);
+    expect(workflow).toBeGreaterThan(runbook);
+    expect(block.slice(runbook, workflow)).toMatch(/optionally/);
+  });
+
   it("exits 1 with a message on an unknown command", () => {
     const r = cli("frobnicate");
     expect(r.status).toBe(1);

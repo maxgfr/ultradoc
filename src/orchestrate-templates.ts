@@ -3,8 +3,9 @@ import type { PhaseInfo } from "./engine.js";
 
 // ---------------------------------------------------------------------------
 // Templates for `ultradoc orchestrate` — the generator that turns the run's
-// CURRENT worklists into a launchable multi-agent Workflow per phase, the
-// dispatch contracts it references, and a sequential RUNBOOK fallback.
+// CURRENT worklists into the dispatch contracts any host's subagents run, a
+// sequential RUNBOOK for a single agent, and — optionally, for Claude Code's
+// Workflow tool — a launchable multi-agent workflow per phase.
 // Everything here is emitted by string concatenation with the run's constants
 // injected as JSON literals, so the workflow runs as-is under the Workflow
 // tool: `export const meta` stays a pure literal, and no emitted line ever
