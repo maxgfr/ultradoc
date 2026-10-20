@@ -44315,10 +44315,12 @@ Commands:
              then (--apply <verdicts.json>) gate on refuted/unsupported claims.
   orchestrate  Emit the run's multi-agent orchestration from its CURRENT
              worklists (drill-plan.json, VERIFY.todo.json, DOC.plan.json):
-             one launchable workflow per ready phase + the agents/<role>.md
-             dispatch contracts + a sequential RUNBOOK.md fallback, under
-             <RUN>/orchestration/. Subagents RETURN fragments; the folds
-             (verdicts.json, ANSWER.md/DOC.md) stay with the orchestrator.
+             the agents/<role>.md dispatch contracts any host's subagents can
+             run + a sequential RUNBOOK.md, plus \u2014 optionally, for Claude
+             Code's Workflow tool \u2014 one launchable <phase>.workflow.mjs per
+             ready phase, under <RUN>/orchestration/. Subagents RETURN
+             fragments; the folds (verdicts.json, ANSWER.md/DOC.md) stay with
+             the orchestrator.
   semantic   Manage the optional vector backends. 'pull' fetches the local
              static model (~21 MB, once per machine) so --semantic works with
              NO container; 'up|down|status' drive the Docker stack (Qdrant +
