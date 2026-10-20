@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here, generated automatically from the [Conventional Commits](https://www.conventionalcommits.org/) by [semantic-release](https://github.com/semantic-release/semantic-release).
 
+# [2.33.0](https://github.com/maxgfr/ultradoc/compare/v2.32.0...v2.33.0) (2026-10-20)
+
+
+### Features
+
+* make the skill agent-neutral, Claude Code paths optional ([#26](https://github.com/maxgfr/ultradoc/issues/26)) ([e9b1f29](https://github.com/maxgfr/ultradoc/commit/e9b1f298a0174ff134323b34c51eea77b604fb3c))
+
 # [2.32.0](https://github.com/maxgfr/ultradoc/compare/v2.31.12...v2.32.0) (2026-10-08)
 
 
