@@ -4,7 +4,6 @@ description: Answer questions about an open-source project and write reference d
 license: MIT
 metadata:
   version: 2.32.0
-  opencode/autoinvoke: 'true'
 ---
 
 # ultradoc
