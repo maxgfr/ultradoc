@@ -236,6 +236,22 @@ describe("drill commands (print evidence, write nothing)", () => {
     expect(r.stdout).toMatch(/Skipping/);
   }, 20_000);
 
+  // `host` = "use the agent's built-in web search": no network, just the hint.
+  it("web --web-engine host emits the agent-neutral web-search hint", async () => {
+    const r = await runCli(["web", "--repo", gitRepo, "--q", "retry backoff", "--web-engine", "host"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toMatch(/agent's built-in web search/);
+    expect(r.stderr).not.toMatch(/deprecated/);
+  });
+
+  // `claude` was the engine's name before the rename — still accepted, mapped to `host`.
+  it("accepts the deprecated --web-engine claude alias as host", async () => {
+    const r = await runCli(["web", "--repo", gitRepo, "--q", "retry backoff", "--web-engine", "claude"]);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toMatch(/agent's built-in web search/);
+    expect(r.stderr).toMatch(/--web-engine claude is deprecated; use --web-engine host/);
+  });
+
   it("rejects an unknown --web-engine", async () => {
     const r = await runCli(["web", "--repo", gitRepo, "--q", "x", "--web-engine", "bing"]);
     expect(r.exitCode).toBe(1);

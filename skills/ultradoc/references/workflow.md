@@ -75,7 +75,7 @@ See `./orchestration.md`.
 | the dossier is empty/off-topic twice in a row | re-phrase per `./retrieval-playbook.md`; it's the wording, not a missing answer |
 
 1. **Resolve the target.** Identify the project and the precise question. With
-   only a name, find the canonical repo URL (your WebSearch, or ask if
+   only a name, find the canonical repo URL (your agent's web search, or ask if
    ambiguous). Note any version/branch the user cares about (`--ref`). Several
    questions about the same repo, or you don't know where a behavior lives? Run
    `overview` once and drill its **Core modules** first.
@@ -200,9 +200,9 @@ node scripts/ultradoc.mjs orchestrate --run <dir> [--phase drill|verify|doc] [--
 
 | Your harness | How to run each phase |
 |---|---|
-| Has the Workflow tool | `orchestrate --run <RUN> --phase <p>`, then `Workflow({ scriptPath: "<RUN>/orchestration/<p>.workflow.mjs" })`. Subagents RETURN fragments (triaged evidence · verdicts · section drafts); you fold them yourself (ANSWER.md · one `verdicts.json` · DOC.md), then run the gates as usual. |
-| Subagents but no Workflow tool (including Codex) | Same `orchestrate`; dispatch one native subagent per batch following `<RUN>/orchestration/agents/<role>.md`. One writer: you fold results in. |
-| Eco mode, or no subagents | `orchestrate --run <RUN> --eco` → follow `<RUN>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+| Has subagents (any host) | `orchestrate --run <RUN> --phase <p>`, then dispatch one native subagent per batch following `<RUN>/orchestration/agents/<role>.md`. Subagents RETURN fragments (triaged evidence · verdicts · section drafts); you fold them yourself (ANSWER.md · one `verdicts.json` · DOC.md), then run the gates as usual. |
+| Single agent (eco mode, or no subagents) | `orchestrate --run <RUN> --eco` → follow `<RUN>/orchestration/RUNBOOK.md` sequentially, playing each role yourself. Correctness-identical; only wall-clock differs. |
+| Optional — Claude Code | Same `orchestrate`, then launch `<RUN>/orchestration/<p>.workflow.mjs` with the Workflow tool (`Workflow({ scriptPath: "…" })`) for one-call parallel fan-out. Same contracts, same fold. |
 
 Fan-out is an optimization, never a requirement — the gates are
 harness-independent and every phase has a sequential fallback with identical

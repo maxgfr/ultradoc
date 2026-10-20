@@ -100,11 +100,23 @@ export interface IndexStats {
   callSiteCapHits?: number; // symbol names whose call-site list was capped
 }
 
-// Which web-discovery engine to use; "auto" tries searxng → ddg → claude.
+// Which web-discovery engine to use; "auto" tries searxng → ddg → host.
+// "host" returns no URLs and tells the agent to use its own built-in web search
+// (whatever the host provides), then ground the URLs via `ultradoc web --url`.
 // "firecrawl" (the self-hosted /search) is explicit-only and never part of
 // "auto" — it cascades to the same keyless engines server-side, so it would add
 // a container in front of what auto already reaches directly.
-export type WebEngine = "auto" | "searxng" | "ddg" | "claude" | "firecrawl";
+export type WebEngine = "auto" | "searxng" | "ddg" | "host" | "firecrawl";
+
+// `claude` is the engine's former name — still accepted on input (CLI flag,
+// programmatic callers) and mapped to `host`. Deprecated; do not emit it.
+export type WebEngineInput = WebEngine | "claude";
+export const WEB_ENGINES: readonly WebEngine[] = ["auto", "searxng", "ddg", "host", "firecrawl"];
+
+/** Map a web-engine name (including the deprecated `claude` alias) onto a WebEngine. */
+export function normalizeWebEngine(engine: WebEngineInput): WebEngine {
+  return engine === "claude" ? "host" : engine;
+}
 
 // Which vector backend `--semantic` should use. "auto" tries endpoint → static
 // → docker, i.e. the tiers that need no infrastructure first. "docker" is the

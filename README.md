@@ -150,7 +150,7 @@ Two retrieval tiers:
 | Issues / PRs | GitHub via your existing `gh` login (or public REST, optional `GITHUB_TOKEN`); GitLab & Gitea/Forgejo/Codeberg public REST |
 | Docs | in-repo README/docs/** + an optional `--docs-url` fetch |
 | StackOverflow | the keyless StackExchange API |
-| Web | local SearXNG → DuckDuckGo scrape → your built-in WebSearch (whatever's available) |
+| Web | local SearXNG → DuckDuckGo scrape → the agent's built-in web search (whatever's available) |
 | Page extraction | a built-in zero-dep HTML stripper, optionally upgraded by a local self-hosted **Firecrawl** (`ultradoc firecrawl up`) — keyless, falls back automatically |
 | Semantic | a local static model (no container) or local Docker (Qdrant + Ollama) — no key, no data leaves the machine |
 
@@ -160,7 +160,7 @@ Two retrieval tiers:
 |---------|--------------|
 | `ask` | Retrieve from all selected sources → write an evidence dossier |
 | `code` / `issues` / `prs` / `docs` / `releases` / `history` / `discussions` / `so` | Drill into one source (prints evidence) |
-| `web` | Keyless web discovery (SearXNG → DuckDuckGo → WebSearch) + fetch |
+| `web` | Keyless web discovery (SearXNG → DuckDuckGo → the agent's built-in web search) + fetch |
 | `symbol --name <sym>` | Resolve one declaration: its real body, every call site with the caller it sits in, and where else it is only mentioned — for "where is X used / who calls X / is X dead" |
 | `trace --q "…"` / `trace --name <sym>` | Resolve a question or symbol, retrieve implementations, follow callers and reserve evidence for test calls within explicit budgets |
 | `overview` | Generate a cached markdown digest of the repo (packages, layout, core modules, public API, docs map) |
@@ -206,16 +206,22 @@ It serves all three MCP primitives, because a skill is three things: the engine
 (**tools**), the method (**prompts**), and the documentation the method refers
 to (**resources**). A client given only the tools has to invent the rest.
 
-```bash
-# stdio — the default, and what Claude Code / Claude Desktop / Cursor expect
-claude mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp
+Any MCP client works. Register the server with your agent's own command:
 
-# or over HTTP, on loopback
+```bash
+# stdio — the default transport
+claude mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp     # Claude Code
+codex mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp      # Codex
+opencode mcp add ultradoc -- node /abs/path/to/scripts/ultradoc.mjs mcp   # OpenCode
+
+# or over HTTP, on loopback (the server prints these hints with its URL)
 node scripts/ultradoc.mjs mcp --transport http --port 7337
-claude mcp add --transport http ultradoc http://127.0.0.1:7337/mcp
+claude mcp add --transport http ultradoc http://127.0.0.1:7337/mcp        # Claude Code
+codex mcp add ultradoc --url http://127.0.0.1:7337/mcp                    # Codex
+opencode mcp add ultradoc --url http://127.0.0.1:7337/mcp                 # OpenCode
 ```
 
-Claude Desktop (`claude_desktop_config.json`) and Cursor (`.cursor/mcp.json`):
+Config-file clients — Claude Desktop (`claude_desktop_config.json`) and Cursor (`.cursor/mcp.json`):
 
 ```jsonc
 // Claude Desktop takes stdio servers only — a remote URL here will not work.
@@ -250,7 +256,7 @@ auto-approving agent cannot reach it.
 
 ### Prompts — the workflow, not just the tools
 
-Two prompts carry the protocol SKILL.md carries inside Claude Code: retrieve
+Two prompts carry the protocol SKILL.md carries inside a skills-aware agent: retrieve
 before answering, cite every claim, name what the evidence did not settle, and
 let `check` fail you rather than talk past it.
 
@@ -372,8 +378,12 @@ retrieved evidence.
 ## Install as a skill
 
 ```
-npx skills add maxgfr/ultradoc
+npx skills add maxgfr/ultradoc            # every agent skills.sh detects
+npx skills add maxgfr/ultradoc -a codex   # or target one agent (-a claude-code, -a opencode, …)
 ```
+
+The skill is agent-neutral: any host that loads `SKILL.md` and can run `node`
+drives it the same way.
 
 Then ask your agent a precise question about a named open-source project — the
 skill drives the retrieve → cite → verify loop for you, and refuses to answer

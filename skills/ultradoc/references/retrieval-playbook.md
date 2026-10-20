@@ -103,7 +103,7 @@ fan-out these run alongside the query drills (`orchestration.md`).
      added?"). `history --q "<identifier>"` — git pickaxe: the commits that
      introduced or changed the symbol (first run on a remote repo fetches full
      history once). `discussions --q "..."` — GitHub Discussions via `gh`.
-   - `web --q "..."` or, after your own WebSearch, `web --url <u>` to ground a
+   - `web --q "..."` or, after your own web search, `web --url <u>` to ground a
      specific page.
 4. Repeat until you can answer every part of the question from evidence.
 

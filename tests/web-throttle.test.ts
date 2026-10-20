@@ -63,3 +63,23 @@ describe("SearXNG throttling", () => {
     expect(down.notes.join(" ")).toMatch(/unreachable/i);
   });
 });
+
+// The last step of the cascade is host-agnostic: it tells the agent to use its
+// own web search. `claude` is the deprecated name of that engine.
+describe("host engine", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(["host", "claude"] as const)("%s skips keyless discovery and emits the generic hint", async (engine) => {
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("no network expected");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const r = await discover("anything", engine, 5);
+    expect(r.urls).toHaveLength(0);
+    expect(r.via).toBe("none");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const note = r.notes.join(" ");
+    expect(note).toContain("the agent's built-in web search");
+    expect(note).not.toMatch(/WebSearch/);
+  });
+});

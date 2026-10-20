@@ -71,7 +71,7 @@ mcp/              the MCP server — a second front-end over the same library
 
 `tools` alone ships the ENGINE. It does not ship the method — answer only from
 retrieved evidence, cite every claim, treat a failed `check` as a verdict — which
-inside Claude Code arrives as SKILL.md and nowhere else arrives at all. So the
+inside a skills-aware agent arrives as SKILL.md and nowhere else arrives at all. So the
 same payload is served two more ways: `resources` expose SKILL.md and every
 `references/*.md` under `skill://`, and `prompts` expose the workflows as
 ready-to-run instructions naming the exact tool sequence.
@@ -160,7 +160,7 @@ zero — see `providers/github.ts`.
 - `discussion` — GitHub Discussions via `gh api graphql` (skips honestly
   without the gh CLI).
 - `so` — keyless StackExchange API.
-- `web` — layered keyless discovery (SearXNG → DuckDuckGo → WebSearch hint, plus
+- `web` — layered keyless discovery (SearXNG → DuckDuckGo → host web-search hint, plus
   the explicit-only `firecrawl` engine) then fetch + extraction.
 
 ### Page extraction (`sources/fetch.ts`, `sources/firecrawl.ts`, `sources/page-cache.ts`)
