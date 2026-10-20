@@ -1,4 +1,5 @@
-import type { RunContext, SourceResult, EvidenceItem, WebEngine } from "../types.js";
+import type { RunContext, SourceResult, EvidenceItem, WebEngineInput } from "../types.js";
+import { normalizeWebEngine } from "../types.js";
 import { keywords } from "../util.js";
 import { httpGet, excerptsFromText } from "./fetch.js";
 import { type FirecrawlOptions, firecrawlBase, searchViaFirecrawl } from "./firecrawl.js";
@@ -71,9 +72,10 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
 }
 
 // Resolve candidate URLs for a query under the chosen engine policy. `auto`
-// tries SearXNG, then DuckDuckGo. The `claude` engine (and the all-failed case)
-// returns no URLs and signals the orchestrator/model to use its built-in
-// WebSearch and feed URLs back via `ultradoc web --url`.
+// tries SearXNG, then DuckDuckGo. The `host` engine (and the all-failed case)
+// returns no URLs and signals the agent to use its own built-in web search and
+// feed URLs back via `ultradoc web --url`. The deprecated `claude` name is
+// accepted and treated as `host`.
 //
 // `firecrawl` is EXPLICIT ONLY and deliberately absent from `auto`: its /search
 // cascades to SearXNG and DuckDuckGo server-side, so putting it in the default
@@ -83,11 +85,12 @@ async function viaDuckDuckGo(query: string, n: number): Promise<string[] | null>
 // sibling repos (construct exports its equivalent).
 export async function discover(
   query: string,
-  engine: WebEngine,
+  engineInput: WebEngineInput,
   n: number,
   opts: FirecrawlOptions = {},
 ): Promise<{ urls: string[]; via: string; notes: string[] }> {
   const notes: string[] = [];
+  const engine = normalizeWebEngine(engineInput);
   if (engine === "firecrawl") {
     // The engine answers { hits } or { why } rather than a bare list-or-null, so
     // "reachable but empty" and "not reachable" stop being the same value — and
@@ -117,9 +120,10 @@ export async function discover(
     if (d?.length) return { urls: d, via: "duckduckgo", notes };
     if (engine === "ddg") notes.push("DuckDuckGo returned no results.");
   }
-  if (engine === "claude" || engine === "auto") {
+  if (engine === "host" || engine === "auto") {
     notes.push(
-      "No keyless engine returned results. Use your built-in WebSearch to find URLs, " + "then ground them with `ultradoc web --repo <repo> --url <url>`.",
+      "No keyless engine returned results. Use the agent's built-in web search to find URLs, " +
+        "then ground them with `ultradoc web --repo <repo> --url <url>`.",
     );
   }
   return { urls: [], via: "none", notes };

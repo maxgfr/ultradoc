@@ -179,7 +179,8 @@ ${status}
 5. **Gate**: \`${engine} check --semantic --run ${runAbs}\` must exit 0 before presenting anything.
 6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join(runAbs, "DOC.plan.json")}\` + \`${join(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join(runAbs, "DOC.md")}\` in plan order; then steps 4–5 (the gates auto-detect DOC.md).
 
-With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` — you stay the sole writer either way.
+With subagents available (any host), fan out instead: \`orchestrate --run ${runAbs} --phase <p>\`, then dispatch one subagent per batch following its contract in \`${join(runAbs, "orchestration", "agents")}/<role>.md\`.
+Optional — Claude Code: launch \`${join(runAbs, "orchestration", "<p>.workflow.mjs")}\` with the Workflow tool (\`Workflow({ scriptPath: "…" })\`) for one-call parallel fan-out. You stay the sole writer either way.
 `,
   ];
 }

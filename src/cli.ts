@@ -4,6 +4,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { warmGrammars } from "./vendor/codeindex-engine.mjs";
 import { VERSION } from "./types.js";
 import type { AskOptions, SourceKind, SemanticTier, WebEngine, DossierMeta } from "./types.js";
+import { WEB_ENGINES } from "./types.js";
 import { runAsk, runSingleSource, buildContext } from "./ask.js";
 import { runDoc } from "./doc.js";
 import { renderEvidenceMarkdown, writeDossier } from "./dossier.js";
@@ -50,7 +51,7 @@ Commands:
   releases   Drill into release notes + changelog ("when was X added?").
   history    Drill into git history (pickaxe: "when/why did X change?").
   discussions  Drill into GitHub Discussions (needs the gh CLI).
-  web        Discover + fetch web pages (keyless: SearXNG → DuckDuckGo → WebSearch).
+  web        Discover + fetch web pages (keyless: SearXNG → DuckDuckGo → host web search).
   symbol     Resolve ONE declaration: its definition (real body), every call
              site with the caller it sits in, and where else it is mentioned.
              Use it for "where is X used / who calls X / is X dead" — lexical
@@ -90,7 +91,7 @@ Commands:
              regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
   mcp        Serve ultradoc over the Model Context Protocol, so any MCP client
-             (Claude Code, Claude Desktop, Cursor) calls it as typed tools
+             (Claude Code, Codex, OpenCode, Cursor…) calls it as typed tools
              instead of shelling out: ultradoc_search, ultradoc_read,
              ultradoc_symbol, ultradoc_fetch, ultradoc_ask, ultradoc_check…
              Speaks stdio by default; --transport http serves JSON-RPC over
@@ -105,8 +106,9 @@ Options:
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
-  --web-engine <e>     auto | searxng | ddg | claude | firecrawl    (default: auto)
-                       'firecrawl' is explicit-only; auto is unchanged
+  --web-engine <e>     auto | searxng | ddg | host | firecrawl      (default: auto)
+                       'host' = use the agent's built-in web search ('claude'
+                       is a deprecated alias); 'firecrawl' is explicit-only
   --firecrawl <url>    Firecrawl base URL for page extraction, or 'off'
                                               (default: $ULTRADOC_FIRECRAWL or
                                                http://localhost:3002)
@@ -238,6 +240,16 @@ function oneOf<T extends string>(name: string, value: string, allowed: readonly 
   return value as T;
 }
 
+// `--web-engine claude` is the pre-rename spelling of `host`: still accepted (so
+// existing scripts keep working), mapped to `host`, with a one-line deprecation note.
+function parseWebEngine(value: string): WebEngine {
+  if (value === "claude") {
+    process.stderr.write("ultradoc: --web-engine claude is deprecated; use --web-engine host (same behaviour).\n");
+    return "host";
+  }
+  return oneOf<WebEngine>("web-engine", value, WEB_ENGINES);
+}
+
 /** One parsed invocation — this repo's name for the engine's CommandArgs. */
 type Parsed = CommandArgs;
 
@@ -284,7 +296,7 @@ function buildAskOptions(p: Parsed, opts: { requireQuestion?: boolean } = {}): A
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf<WebEngine>("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude", "firecrawl"]);
+  const webEngine = parseWebEngine(p.values["web-engine"] ?? "auto");
   const semanticTier = oneOf<SemanticTier>("semantic-tier", p.values["semantic-tier"] ?? "auto", ["auto", "static", "endpoint", "docker", "off"]);
 
   return {
@@ -729,10 +741,16 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       for (const n of res.notices) process.stderr.write(`ultradoc orchestrate: note — ${n}\n`);
       const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
       if (workflows.length) {
+        const orchDir = join(resolve(dir), "orchestration");
         process.stdout.write("\n");
-        for (const w of workflows) process.stdout.write(`Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })\n`);
         process.stdout.write(
-          "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow — you stay the sole writer.\n",
+          `Next: dispatch one subagent per batch with your host's subagent tool, each following its contract in ${join(orchDir, "agents")}/<role>.md` +
+            ` (single agent / no subagents: re-run with --eco and follow ${join(orchDir, "RUNBOOK.md")} sequentially).\n`,
+        );
+        process.stdout.write("Optional — Claude Code: launch the emitted workflow with the Workflow tool for one-call parallel fan-out:\n");
+        for (const w of workflows) process.stdout.write(`  Workflow({ scriptPath: ${JSON.stringify(w)} })\n`);
+        process.stdout.write(
+          "Either way, fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the phase's gate (see RUNBOOK.md) — you stay the sole writer.\n",
         );
       } else {
         process.stdout.write(`Follow ${join(resolve(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).\n`);
@@ -840,7 +858,10 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
       // remember which is which.
       process.stderr.write(`ultradoc: MCP server listening on ${running.url}\n`);
       process.stderr.write(`  tools:  ${running.server.listening ? "ready" : "starting"} · ${options.allowWrite ? "read/write" : "read-only"}\n`);
-      process.stderr.write(`  client: claude mcp add --transport http ultradoc ${running.url}\n`);
+      process.stderr.write(`  connect any MCP client to ${running.url}, e.g.:\n`);
+      process.stderr.write(`    Claude Code: claude mcp add --transport http ultradoc ${running.url}\n`);
+      process.stderr.write(`    Codex:       codex mcp add ultradoc --url ${running.url}\n`);
+      process.stderr.write(`    OpenCode:    opencode mcp add ultradoc --url ${running.url}\n`);
       for (const sig of ["SIGINT", "SIGTERM"] as const) {
         process.once(sig, () => {
           void running.close().then(() => process.exit(0));

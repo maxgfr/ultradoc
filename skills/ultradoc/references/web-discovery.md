@@ -19,24 +19,25 @@ applies to every fetched page whatever engine found it.
 2. **DuckDuckGo HTML (no Docker).** Scrapes `html.duckduckgo.com/html` and
    decodes the real URLs from DDG's redirector. Autonomous and keyless; a bit
    fragile if DDG changes its markup.
-3. **Claude WebSearch (harness).** If neither keyless engine returns results,
-   the source emits a note telling you to use your built-in **WebSearch** to find
-   URLs, then ground them with:
+3. **The agent's built-in web search (host).** If neither keyless engine returns
+   results, the source emits a note telling you to use your agent's own web
+   search tool (whatever the host provides) to find URLs, then ground them with:
    ```
    node scripts/ultradoc.mjs web --repo <repo> --url <url1,url2,...>
    ```
 
 ## Pinning an engine
 
-`--web-engine searxng|ddg|claude|firecrawl|auto`:
+`--web-engine searxng|ddg|host|firecrawl|auto`:
 - `searxng` — only the local instance (errors with a hint if it's down).
 - `ddg` — only DuckDuckGo scraping.
-- `claude` — skip keyless discovery; just emit the WebSearch hint (use when you
-  want to drive discovery yourself and feed `--url`).
+- `host` — skip keyless discovery; just emit the "use the agent's built-in web
+  search" hint (use when you want to drive discovery yourself and feed `--url`).
+  `claude` is accepted as a deprecated alias of `host`.
 - `firecrawl` — the self-hosted Firecrawl's own `/search` (keyless; it cascades
   to SearXNG then DuckDuckGo **server-side**). Needs `ultradoc firecrawl up`;
   with the stack down it degrades with a note and returns nothing.
-- `auto` (default) — SearXNG → DuckDuckGo → WebSearch hint. **Unchanged**:
+- `auto` (default) — SearXNG → DuckDuckGo → host web-search hint. **Unchanged**:
   `firecrawl` is explicit-only, because its cascade ends at the same two engines
   `auto` already reaches directly, without needing a container.
 

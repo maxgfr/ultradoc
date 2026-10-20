@@ -27099,6 +27099,10 @@ init_text();
 
 // src/types.ts
 var VERSION = "2.32.0";
+var WEB_ENGINES = ["auto", "searxng", "ddg", "host", "firecrawl"];
+function normalizeWebEngine(engine) {
+  return engine === "claude" ? "host" : engine;
+}
 
 // src/clone.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync6, renameSync as renameSync6 } from "fs";
@@ -36558,8 +36562,9 @@ async function viaDuckDuckGo(query4, n) {
   const urls = parseDuckDuckGoResults(r.body, n);
   return urls.length ? urls : null;
 }
-async function discover(query4, engine, n, opts = {}) {
+async function discover(query4, engineInput, n, opts = {}) {
   const notes = [];
+  const engine = normalizeWebEngine(engineInput);
   if (engine === "firecrawl") {
     const f = await searchViaFirecrawl(query4, n, opts);
     if (f.hits?.length) return { urls: f.hits.map((h) => h.url).slice(0, n), via: "firecrawl", notes };
@@ -36579,9 +36584,9 @@ async function discover(query4, engine, n, opts = {}) {
     if (d?.length) return { urls: d, via: "duckduckgo", notes };
     if (engine === "ddg") notes.push("DuckDuckGo returned no results.");
   }
-  if (engine === "claude" || engine === "auto") {
+  if (engine === "host" || engine === "auto") {
     notes.push(
-      "No keyless engine returned results. Use your built-in WebSearch to find URLs, then ground them with `ultradoc web --repo <repo> --url <url>`."
+      "No keyless engine returned results. Use the agent's built-in web search to find URLs, then ground them with `ultradoc web --repo <repo> --url <url>`."
     );
   }
   return { urls: [], via: "none", notes };
@@ -38565,7 +38570,8 @@ ${status}
 5. **Gate**: \`${engine} check --semantic --run ${runAbs}\` must exit 0 before presenting anything.
 6. **Doc mode** (a whole-project doc instead of one answer): \`${engine} doc --repo <url|path> --out ${runAbs}\` writes \`${join52(runAbs, "DOC.plan.json")}\` + \`${join52(runAbs, "DOC.todo.md")}\`. For EVERY section, apply \`${join52(runAbs, "orchestration", "agents", "section-writer.md")}\` yourself and assemble \`${join52(runAbs, "DOC.md")}\` in plan order; then steps 4\u20135 (the gates auto-detect DOC.md).
 
-With subagents available, prefer the emitted workflows instead: \`orchestrate --run ${runAbs} --phase <p>\` then \`Workflow({ scriptPath: "${join52(runAbs, "orchestration", "<p>.workflow.mjs")}" })\` \u2014 you stay the sole writer either way.
+With subagents available (any host), fan out instead: \`orchestrate --run ${runAbs} --phase <p>\`, then dispatch one subagent per batch following its contract in \`${join52(runAbs, "orchestration", "agents")}/<role>.md\`.
+Optional \u2014 Claude Code: launch \`${join52(runAbs, "orchestration", "<p>.workflow.mjs")}\` with the Workflow tool (\`Workflow({ scriptPath: "\u2026" })\`) for one-call parallel fan-out. You stay the sole writer either way.
 `
   ];
 }
@@ -39407,7 +39413,7 @@ Commands:
   releases   Drill into release notes + changelog ("when was X added?").
   history    Drill into git history (pickaxe: "when/why did X change?").
   discussions  Drill into GitHub Discussions (needs the gh CLI).
-  web        Discover + fetch web pages (keyless: SearXNG \u2192 DuckDuckGo \u2192 WebSearch).
+  web        Discover + fetch web pages (keyless: SearXNG \u2192 DuckDuckGo \u2192 host web search).
   symbol     Resolve ONE declaration: its definition (real body), every call
              site with the caller it sits in, and where else it is mentioned.
              Use it for "where is X used / who calls X / is X dead" \u2014 lexical
@@ -39447,7 +39453,7 @@ Commands:
              regex-stripped; when it is down, extraction silently falls back.
   cache      Inspect (status) or clear (clean) the persistent clone/index cache.
   mcp        Serve ultradoc over the Model Context Protocol, so any MCP client
-             (Claude Code, Claude Desktop, Cursor) calls it as typed tools
+             (Claude Code, Codex, OpenCode, Cursor\u2026) calls it as typed tools
              instead of shelling out: ultradoc_search, ultradoc_read,
              ultradoc_symbol, ultradoc_fetch, ultradoc_ask, ultradoc_check\u2026
              Speaks stdio by default; --transport http serves JSON-RPC over
@@ -39462,8 +39468,9 @@ Options:
   --package <p>        Monorepo: scope code/docs retrieval to one workspace
                        package (name like @scope/web, short name, or dir)
   --docs-url <url>     Official docs page to fetch + ground against
-  --web-engine <e>     auto | searxng | ddg | claude | firecrawl    (default: auto)
-                       'firecrawl' is explicit-only; auto is unchanged
+  --web-engine <e>     auto | searxng | ddg | host | firecrawl      (default: auto)
+                       'host' = use the agent's built-in web search ('claude'
+                       is a deprecated alias); 'firecrawl' is explicit-only
   --firecrawl <url>    Firecrawl base URL for page extraction, or 'off'
                                               (default: $ULTRADOC_FIRECRAWL or
                                                http://localhost:3002)
@@ -39592,6 +39599,13 @@ function oneOf(name2, value, allowed) {
   }
   return value;
 }
+function parseWebEngine(value) {
+  if (value === "claude") {
+    process.stderr.write("ultradoc: --web-engine claude is deprecated; use --web-engine host (same behaviour).\n");
+    return "host";
+  }
+  return oneOf("web-engine", value, WEB_ENGINES);
+}
 function parseCli(argv) {
   let parsed2;
   try {
@@ -39624,7 +39638,7 @@ function buildAskOptions(p, opts = {}) {
   const sources = p.values.sources ? parseSources(p.values.sources) : DEFAULT_SOURCES;
   const perSource = p.values["per-source"] ? Number(p.values["per-source"]) : 6;
   if (!Number.isFinite(perSource) || perSource <= 0) fail("invalid --per-source");
-  const webEngine = oneOf("web-engine", p.values["web-engine"] ?? "auto", ["auto", "searxng", "ddg", "claude", "firecrawl"]);
+  const webEngine = parseWebEngine(p.values["web-engine"] ?? "auto");
   const semanticTier = oneOf("semantic-tier", p.values["semantic-tier"] ?? "auto", ["auto", "static", "endpoint", "docker", "off"]);
   return {
     repo,
@@ -40018,11 +40032,17 @@ async function run2(argv = process.argv.slice(2)) {
 `);
       const workflows = res.written.filter((w) => w.endsWith(".workflow.mjs"));
       if (workflows.length) {
+        const orchDir = join53(resolve13(dir), "orchestration");
         process.stdout.write("\n");
-        for (const w of workflows) process.stdout.write(`Launch: Workflow({ scriptPath: ${JSON.stringify(w)} })
+        process.stdout.write(
+          `Next: dispatch one subagent per batch with your host's subagent tool, each following its contract in ${join53(orchDir, "agents")}/<role>.md (single agent / no subagents: re-run with --eco and follow ${join53(orchDir, "RUNBOOK.md")} sequentially).
+`
+        );
+        process.stdout.write("Optional \u2014 Claude Code: launch the emitted workflow with the Workflow tool for one-call parallel fan-out:\n");
+        for (const w of workflows) process.stdout.write(`  Workflow({ scriptPath: ${JSON.stringify(w)} })
 `);
         process.stdout.write(
-          "Then fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the gate shown at the end of each workflow \u2014 you stay the sole writer.\n"
+          "Either way, fold the returned fragments yourself (verdicts.json / ANSWER.md / DOC.md) and run the phase's gate (see RUNBOOK.md) \u2014 you stay the sole writer.\n"
         );
       } else {
         process.stdout.write(`Follow ${join53(resolve13(dir), "orchestration", "RUNBOOK.md")} sequentially (the eco path).
@@ -40114,7 +40134,13 @@ async function run2(argv = process.argv.slice(2)) {
 `);
       process.stderr.write(`  tools:  ${running.server.listening ? "ready" : "starting"} \xB7 ${options.allowWrite ? "read/write" : "read-only"}
 `);
-      process.stderr.write(`  client: claude mcp add --transport http ultradoc ${running.url}
+      process.stderr.write(`  connect any MCP client to ${running.url}, e.g.:
+`);
+      process.stderr.write(`    Claude Code: claude mcp add --transport http ultradoc ${running.url}
+`);
+      process.stderr.write(`    Codex:       codex mcp add ultradoc --url ${running.url}
+`);
+      process.stderr.write(`    OpenCode:    opencode mcp add ultradoc --url ${running.url}
 `);
       for (const sig of ["SIGINT", "SIGTERM"]) {
         process.once(sig, () => {

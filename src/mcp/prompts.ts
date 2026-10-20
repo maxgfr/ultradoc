@@ -5,8 +5,8 @@ import { TOOLS, WRITE_TOOLS } from "./tools.js";
 // Tools are the half of this skill a client can discover on its own. The other
 // half is the protocol: retrieve BEFORE answering, cite every claim, name what
 // the evidence did not settle, and let `check` fail you rather than talk past
-// it. Inside Claude Code SKILL.md carries that. A prompt is how it reaches
-// every other host — one `prompts/get` and the model has the sequence and the
+// it. Inside a skills-aware agent SKILL.md carries that. A prompt is how it
+// reaches every other host — one `prompts/get` and the model has the sequence and the
 // gate, instead of guessing which of ten tools to call first.
 //
 // Each prompt says three things, in this order: the contract, the exact tool

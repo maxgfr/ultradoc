@@ -64,8 +64,10 @@ write"), and move to the next round.
 **With subagents (or a workflow).** Dispatch one explorer per source (or per
 high-value variant). Each runs its drills, reads its slice, triages, and returns a
 distilled result — this keeps *your* context lean and pushes the triage work into the
-leaf where it parallelizes. On Claude Code this maps to the Workflow tool's
-`parallel()` / `pipeline()` patterns; on any harness it's the Task/subagent tool.
+leaf where it parallelizes. On any host this is its native subagent/task tool,
+following the emitted `orchestration/agents/<role>.md` contracts. Optional — Claude
+Code: the emitted `<phase>.workflow.mjs` runs the same fan-out in one call with the
+Workflow tool (`parallel()` / `pipeline()`).
 
 > **Return contract (load-bearing — do not skip).** A retrieval subagent returns ONLY
 > triaged evidence: for each kept item, its `ref` (file:line / issue#/pr#/url), its
