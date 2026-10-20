@@ -9,3 +9,8 @@ coverage/
 .ultradoc/
 **/.ultradoc/
 evals/last-run.json
+
+# agent skill installs (produced by `npx skills add .`, never committed)
+.agents/skills/
+.claude/skills/
+skills-lock.json
