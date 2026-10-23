@@ -18,7 +18,7 @@ npx skills add maxgfr/ultradoc
 it when you request cited answers or reference docs about an open-source
 project, and you can invoke it directly with `$ultradoc` in Codex, `/ultradoc`
 in Claude Code or OpenCode. The agent does not pick it up on its own, and CLI
-commands are unchanged. One setting per host makes it explicit-only — see
+commands are unchanged. One setting makes it explicit-only — see
 [Manual or automatic](#manual-or-automatic).
 
 ---
