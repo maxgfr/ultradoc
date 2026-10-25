@@ -3,7 +3,7 @@ name: ultradoc
 description: Answer questions about an open-source project and write reference documentation with citations to its actual source. Use only when the user explicitly asks for ultradoc or for cited answers or reference docs about an open-source project.
 license: MIT
 metadata:
-  version: 2.33.2
+  version: 2.33.3
 ---
 
 # ultradoc
