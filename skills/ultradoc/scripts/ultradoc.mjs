@@ -112,7 +112,7 @@ var EXTRACTOR_VERSION;
 var init_types = __esm({
   "src/types.ts"() {
     "use strict";
-    ENGINE_VERSION = "2.31.11";
+    ENGINE_VERSION = "2.31.12";
     SCHEMA_VERSION = 5;
     EXTRACTOR_VERSION = 18;
   }
@@ -31007,6 +31007,7 @@ function subtokens2(raw) {
   const spaced = raw.replace(new RegExp("([\\p{Ll}\\p{N}])(\\p{Lu})", "gu"), "$1 $2").replace(new RegExp("(\\p{Lu}+)(\\p{Lu}\\p{Ll})", "gu"), "$1 $2").replace(new RegExp("(\\p{L})(\\p{N})", "gu"), "$1 $2").replace(new RegExp("(\\p{N})(\\p{L})", "gu"), "$1 $2");
   const parts2 = spaced.split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
   if (parts2.length < 2) return [];
+  if (/^[\p{L}\p{M}]+$/u.test(raw) && parts2.some((p) => p.length === 1)) return [];
   const out2 = [];
   for (const p of parts2) {
     const lower = p.toLowerCase();
