@@ -28005,7 +28005,7 @@ ${HELP}`);
 init_text();
 
 // src/types.ts
-var VERSION = "2.33.7";
+var VERSION = "2.33.8";
 var WEB_ENGINES = ["auto", "searxng", "ddg", "host", "firecrawl"];
 function normalizeWebEngine(engine) {
   return engine === "claude" ? "host" : engine;
