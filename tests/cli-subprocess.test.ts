@@ -16,7 +16,7 @@ const tmp = mkdtempSync(join(tmpdir(), "ultradoc-subproc-"));
 
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
-  rmSync(join(LIB, ".ultradoc"), { recursive: true, force: true });
+  rmSync(join(LIB, ".ultradoc"), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 function cli(...args: string[]): SpawnSyncReturns<string> {

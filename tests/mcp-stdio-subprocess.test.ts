@@ -13,7 +13,7 @@ const BUNDLE = resolve("scripts/ultradoc.mjs");
 const LIB = resolve("tests/fixtures/sample-lib");
 
 afterAll(() => {
-  rmSync(join(LIB, ".ultradoc"), { recursive: true, force: true });
+  rmSync(join(LIB, ".ultradoc"), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 interface Session {

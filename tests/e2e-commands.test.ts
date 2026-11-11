@@ -95,7 +95,9 @@ beforeAll(() => {
 afterAll(() => {
   rmSync(root, { recursive: true, force: true });
   // Belt-and-braces: never let a run leave a dossier cache inside a fixture.
-  for (const f of [LIB, MONO]) rmSync(join(f, ".ultradoc"), { recursive: true, force: true });
+  // Other test files write into the same fixture in parallel: an entry landing
+  // mid-removal fails it with ENOTEMPTY, which the retries ride out.
+  for (const f of [LIB, MONO]) rmSync(join(f, ".ultradoc"), { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 // Disable the network for the whole suite: any httpGet-backed source degrades
