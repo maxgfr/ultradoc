@@ -29291,7 +29291,7 @@ ${HELP}`);
 init_text();
 
 // src/types.ts
-var VERSION = "2.33.16";
+var VERSION = "2.33.17";
 var WEB_ENGINES = ["auto", "searxng", "ddg", "host", "firecrawl"];
 function normalizeWebEngine(engine) {
   return engine === "claude" ? "host" : engine;
